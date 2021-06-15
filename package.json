@@ -1,0 +1,32 @@
+{
+  "name": "bintoca",
+  "version": "0.0.1",
+  "description": "monorepo for bintoca libraries",
+  "private": true,
+  "type": "module",
+  "main": "index.js",
+  "scripts": {
+    "test": "node --experimental-vm-modules node_modules/jest/bin/jest.js",
+    "build": "tsc -b src",
+    "watch":"tsc -b -w src"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/bintoca/lib.git"
+  },
+  "author": "",
+  "license": "Apache-2.0 WITH LLVM-exception",
+  "bugs": {
+    "url": "https://github.com/bintoca/lib/issues"
+  },
+  "homepage": "https://github.com/bintoca/lib#readme",
+  "devDependencies": {
+    "typescript": "^4.3.2",
+    "jest": "^27.0.3",
+    "@types/jest": "26.0.23",
+    "ts-jest": "^27.0.2"
+  },
+  "workspaces": [
+    "packages/*"
+  ]
+}
