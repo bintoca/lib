@@ -6,22 +6,22 @@
   "publishConfig": {
     "access": "public"
   },
-  "exports": "./index.js",
-  "types": "./index.d.ts",
+  "exports": {
+    "./core": "./core.js"
+  },
   "license": "Apache-2.0 WITH LLVM-exception",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/bintoca/lib.git",
-    "directory": "packages/cbor"
+    "url": "git+https://github.com/bintoca/lib.git"
   },
   "keywords": [
     "cbor"
   ],
   "files": [
-    "index.js",
-    "index.d.ts"
+    "core.js",
+    "core.d.ts"
   ],
   "dependencies": {
-    "@bintoca/cbor-core": "0.0.1"
+    "wtf-8": "^1.0.1"
   }
 }

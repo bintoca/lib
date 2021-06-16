@@ -12,9 +12,10 @@
         "skipLibCheck": true,
         "moduleResolution": "node",
         "declaration": true,
+        "preserveConstEnums": true,
         "paths": {
             "@bintoca/*": [
-                "./*/"
+                "./*"
             ]
         },
         "outDir": "../packages"
