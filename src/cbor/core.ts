@@ -1,12 +1,17 @@
+const scratchDataView = new DataView(new ArrayBuffer(8))
+let defaultBuffer = new ArrayBuffer(4096)
+let defaultOffset = 0
 const TE = new TextEncoder()
 export const TD = new TextDecoder('utf-8', { fatal: true })
-export const num32 = 0x100000000
-/**
- * get the additional information from a number or length to be combined with a major type
- * @param n number or length
- * @returns 0-27
- */
-export const encodeAdditionalInformation = (n: number) => {
+export const encodeAdditionalInformation = (n: number, float?: boolean) => {
+    if (float) {
+        scratchDataView.setFloat32(0, n)
+        const v1 = scratchDataView.getFloat32(0)
+        if (v1 === n) {
+            return 26
+        }
+        return 27
+    }
     if (n < 24) {
         return n
     } else if (n < 0x100) {
@@ -18,51 +23,79 @@ export const encodeAdditionalInformation = (n: number) => {
     }
     return 27
 }
-export type Output = { buffer: ArrayBuffer, length: number }
-/**
- * expand buffer if necessary for new length
- * @param out Output object
- * @param length additional length to check
- */
-export const checkBuffer = (out: Output, length: number) => {
-    if (out.buffer.byteLength < out.length + length) {
-        const nb = new ArrayBuffer(Math.max(out.buffer.byteLength * 2, out.length + length + 2000))
-        new Uint8Array(nb).set(new Uint8Array(out.buffer))
-        out.buffer = nb
+export const additionalInformationSize = (n: number) => {
+    if (n < 24) {
+        return 0
+    } else if (n == 24) {
+        return 1
+    } else if (n == 25) {
+        return 2
+    } else if (n == 26) {
+        return 4
     }
+    return 8
 }
+export type MajorTypes = 0 | 1 | 2 | 3 | 4 | 5 | 6 | 7
+export type Output = { view: DataView, length: number, stack: any[], measure?: boolean, resumeItem?: { major: MajorTypes, adInfo: number, float?: boolean }, resumeBuffer?: BufferSource }
 export const appendBuffer = (out: Output, b: BufferSource) => {
-    checkBuffer(out, b.byteLength)
-    new Uint8Array(out.buffer).set(b instanceof ArrayBuffer ? new Uint8Array(b) : new Uint8Array(b.buffer, b.byteOffset, b.byteLength), out.length)
-    out.length += b.byteLength
+    out.resumeBuffer = undefined
+    if (out.measure) {
+        out.length += b.byteLength
+    }
+    else if (out.resumeItem) {
+        out.resumeBuffer = b
+    }
+    else {
+        if (out.length + b.byteLength <= out.view.byteLength) {
+            new Uint8Array(out.view.buffer, out.view.byteOffset, out.view.byteLength).set(b instanceof ArrayBuffer ? new Uint8Array(b) : new Uint8Array(b.buffer, b.byteOffset, b.byteLength), out.length)
+            out.length += b.byteLength
+        }
+        else {
+            const len = out.view.byteLength - out.length
+            new Uint8Array(out.view.buffer, out.view.byteOffset, out.view.byteLength).set(b instanceof ArrayBuffer ? new Uint8Array(b, 0, len) : new Uint8Array(b.buffer, b.byteOffset, len), out.length)
+            out.length += len
+            out.resumeBuffer = b instanceof ArrayBuffer ? new Uint8Array(b, len, b.byteLength - len) : new Uint8Array(b.buffer, b.byteOffset + len, b.byteLength - len)
+        }
+    }
 }
-/**
- * write an item to Output
- * @param major cbor major type 0-7
- * @param additionalInformation 
- * @param out Output object
- */
-export const writeItem = (major: 0 | 1 | 2 | 3 | 4 | 5 | 6 | 7, additionalInformation: number, out: Output) => {
-    checkBuffer(out, 9)
-    const ad = encodeAdditionalInformation(additionalInformation)
-    var dv = new DataView(out.buffer)
-    dv.setUint8(out.length, major << 5 | ad)
-    out.length++
-    if (ad == 24) {
-        dv.setUint8(out.length, additionalInformation)
+export const writeItem = (major: MajorTypes, adInfo: number, out: Output, float?: boolean) => {
+    const ai = encodeAdditionalInformation(adInfo, float)
+    const aiSize = additionalInformationSize(ai)
+    out.resumeItem = undefined
+    if (out.measure) {
+        out.length += aiSize + 1
+    }
+    else if (out.length + aiSize + 1 <= out.view.byteLength) {
+        const dv = out.view
+        dv.setUint8(out.length, major << 5 | ai)
         out.length++
+        if (ai == 24) {
+            dv.setUint8(out.length, adInfo)
+        }
+        else if (ai == 25) {
+            dv.setUint16(out.length, adInfo)
+        }
+        else if (ai == 26) {
+            if (major == 7) {
+                dv.setFloat32(out.length, adInfo)
+            }
+            else {
+                dv.setUint32(out.length, adInfo)
+            }
+        }
+        else if (ai == 27) {
+            if (major == 7) {
+                dv.setFloat64(out.length, adInfo)
+            }
+            else {
+                dv.setUint32(out.length, Math.floor(adInfo / 0x100000000))
+                dv.setUint32(out.length + 4, adInfo % 0x100000000)
+            }
+        }
+        out.length += aiSize
     }
-    else if (ad == 25) {
-        dv.setUint16(out.length, additionalInformation)
-        out.length += 2
-    }
-    else if (ad == 26) {
-        dv.setUint32(out.length, additionalInformation)
-        out.length += 4
-    }
-    else if (ad == 27) {
-        dv.setBigUint64(out.length, BigInt(additionalInformation))
-        out.length += 8
+    else {
+        out.resumeItem = { major, adInfo, float }
     }
 }
 export const integerItem = (value: number, out: Output) => value >= 0 ? writeItem(0, value, out) : writeItem(1, -(value + 1), out)
@@ -71,30 +104,25 @@ export const binaryItem = (v: BufferSource, out: Output) => {
     appendBuffer(out, v)
 }
 export const textItem = (s: string, out: Output) => {
-    const v = TE.encode(s)
-    writeItem(3, v.byteLength, out)
-    appendBuffer(out, v)
+    writeItem(3, s.length, out)
+    for (let i = 0; i < s.length; i++) {
+        out.view.setUint8(out.length, s.charCodeAt(i))
+        out.length++
+    }
+    // const v = TE.encode(s)
+    // writeItem(3, v.byteLength, out)
+    // appendBuffer(out, v)
 }
 export const arrayItem = (length: number, out: Output) => writeItem(4, length, out)
 export const mapItem = (length: number, out: Output) => writeItem(5, length, out)
 export const tagItem = (id: number, out: Output) => writeItem(6, id, out)
 export const primitiveItem = (id: number, out: Output) => writeItem(7, id, out)
 export const numberItem = (val: number, out: Output) => {
-    if (Math.floor(val) === val && val < num32 && val > -num32) {
-        return integerItem(val, out)
-    }
-    checkBuffer(out, 9)
-    const dv = new DataView(out.buffer)
-    dv.setFloat32(out.length + 1, val)
-    const v1 = dv.getFloat32(out.length + 1)
-    if (v1 === val) {
-        dv.setUint8(out.length, 7 << 5 | 26)
-        out.length += 5
+    if (Math.floor(val) === val && val <= Number.MAX_SAFE_INTEGER && val >= Number.MIN_SAFE_INTEGER) {
+        integerItem(val, out)
     }
     else {
-        dv.setUint8(out.length, 7 << 5 | 27)
-        dv.setFloat64(out.length + 1, val)
-        out.length += 9
+        writeItem(7, val, out, true)
     }
 }
 export const bigintItem = (val: bigint, out: Output) => {
@@ -111,16 +139,21 @@ export const bigintItem = (val: bigint, out: Output) => {
         v[i] = Number(norm % BigInt(256))
         norm = norm / BigInt(256)
     }
-    writeItem(2, v.byteLength, out)
-    appendBuffer(out, v.reverse())
+    binaryItem(v.reverse(), out)
 }
 export type EncodeObjectFunc = (value, stack: any[], out: Output) => void
 export type EncodeAltFunc = (value, stack: any[], out: Output) => boolean
-export const encodeLoop = (value, out: Output, encodeObject: EncodeObjectFunc, alt?: EncodeAltFunc) => {
-    const stack = [value]
-    while (stack.length > 0) {
-        const a = stack.pop()
-        if (alt && alt(a, stack, out)) {
+export const encodeLoop = (out: Output, encodeObject: EncodeObjectFunc, alt?: EncodeAltFunc) => {
+    const st = out.stack
+    if (out.resumeItem) {
+        writeItem(out.resumeItem.major, out.resumeItem.adInfo, out, out.resumeItem.float)
+    }
+    if (out.resumeBuffer) {
+        appendBuffer(out, out.resumeBuffer)
+    }
+    while (st.length > 0 && !out.resumeItem && !out.resumeBuffer) {
+        const a = st.pop()
+        if (alt && alt(a, st, out)) {
         }
         else {
             if (a === null) {
@@ -130,7 +163,7 @@ export const encodeLoop = (value, out: Output, encodeObject: EncodeObjectFunc, a
                 primitiveItem(23, out)
             }
             else if (typeof a == 'object') {
-                encodeObject(a, stack, out)
+                encodeObject(a, st, out)
             }
             else if (typeof a == 'string') {
                 textItem(a, out)
@@ -210,45 +243,119 @@ export const encodeObjectFunc = (a, stack: any[], out: Output) => {
         encodeObject(a, stack, out)
     }
 }
-export type DecodeStackItem = { major: 4 | 5 | 6, length: number, temp: any[], tagArray?: number[] }
-export type Input = { buffer: BufferSource, position: number, stack?: DecodeStackItem[] }
-export const decodeAdditionalInformation = (ad: number, dv: DataView, src: Input): number | bigint => {
-    if (ad < 24) {
-        return ad
-    }
-    else if (ad == 24) {
-        const len = dv.getUint8(src.position);
-        src.position++
-        return len
-    }
-    else if (ad == 25) {
-        const len = dv.getUint16(src.position);
-        src.position += 2
-        return len
-    }
-    else if (ad == 26) {
-        const len = dv.getUint32(src.position);
-        src.position += 4
-        return len
-    }
-    else if (ad == 27) {
-        const len = dv.getBigUint64(src.position)
-        src.position += 8
-        if (len <= Number.MAX_SAFE_INTEGER && len >= Number.MIN_SAFE_INTEGER) {
-            return Number(len)
+export const encodeSync = (value): Uint8Array[] => {
+    const buffers: Uint8Array[] = []
+    const out: Output = { view: new DataView(defaultBuffer, defaultOffset, defaultBuffer.byteLength - defaultOffset), length: 0, stack: [value] }
+    do {
+        encodeLoop(out, encodeObjectFunc)
+        buffers.push(new Uint8Array(out.view.buffer, out.view.byteOffset, out.length))
+        if (out.view.byteLength - out.length < 256) {
+            defaultBuffer = new ArrayBuffer(4096)
+            defaultOffset = 0
         }
-        return len
+        else {
+            defaultOffset += out.length
+        }
+        if (out.resumeItem || out.resumeBuffer) {
+            out.view = new DataView(defaultBuffer, defaultOffset, defaultBuffer.byteLength - defaultOffset)
+            out.length = 0
+        }
     }
-    else {
-        throw new Error('invalid length encoding')
-    }
+    while (out.resumeItem || out.resumeBuffer)
+    return buffers
 }
-export const decodeAdditionalInformationNumber = (ad: number, dv: DataView, src: Input): number => {
-    const v = decodeAdditionalInformation(ad, dv, src)
-    if (typeof v == 'bigint') {
-        throw new Error('invalid bigint')
+export const concat = (buffers: Uint8Array[]): Uint8Array => {
+    if (buffers.length == 1) {
+        return buffers[0]
     }
-    return v
+    const u = new Uint8Array(buffers.reduce((a, b) => a + b.byteLength, 0))
+    let offset = 0
+    for (let b of buffers) {
+        u.set(b, offset)
+        offset += b.byteLength
+    }
+    return u
+}
+export type DecodeStackItem = { major: 4 | 5 | 6, length: number, temp: any[], tag?: number | bigint }
+export type Input = { buffer: BufferSource, position: number, stack?: DecodeStackItem[], stopPosition?: number }
+export const getFloat16 = (dv: DataView, offset: number, littleEndian?: boolean): number => {
+    const leadByte = dv.getUint8(offset + (littleEndian ? 1 : 0))
+    const sign = leadByte & 0x80 ? -1 : 1
+    const exp = (leadByte & 0x7C) >> 2
+    const mant = ((leadByte & 0x03) << 8) | dv.getUint8(offset + (littleEndian ? 0 : 1))
+    if (!exp) {
+        return sign * 5.9604644775390625e-8 * mant
+    } else if (exp === 0x1f) {
+        return sign * (mant ? 0 / 0 : 2e308)
+    }
+    return sign * Math.pow(2, exp - 25) * (1024 + mant)
+}
+export const checkInput = (src: Input, length: number, backtrack: number = 0): boolean => {
+    if (src.position + length > src.buffer.byteLength) {
+        src.stopPosition = src.position - 1 - backtrack
+        return false
+    }
+    return true
+}
+export const decodeAdditionalInformation = (major: number, ai: number, dv: DataView, src: Input): number | bigint => {
+    if (ai < 24) {
+        return ai
+    }
+    switch (ai) {
+        case 24:
+            if (major == 7) {
+                throw new Error('not implemented simple type 24')
+            }
+            if (checkInput(src, 1)) {
+                const v = dv.getUint8(src.position);
+                src.position++
+                return v
+            }
+            break
+        case 25:
+            if (checkInput(src, 2)) {
+                const v = major == 7 ? getFloat16(dv, src.position) : dv.getUint16(src.position);
+                src.position += 2
+                return v
+            }
+            break
+        case 26:
+            if (checkInput(src, 4)) {
+                const v = major == 7 ? dv.getFloat32(src.position) : dv.getUint32(src.position);
+                src.position += 4
+                return v
+            }
+            break
+        case 27:
+            if (checkInput(src, 8)) {
+                if (major == 7) {
+                    const v = dv.getFloat64(src.position)
+                    src.position += 8
+                    return v
+                }
+                const hi = dv.getUint32(src.position)
+                const lo = dv.getUint32(src.position + 4)
+                let v
+                if (hi > 0x1fffff) {
+                    v = (BigInt(hi) * BigInt(0x100000000)) + BigInt(lo)
+                }
+                else {
+                    v = hi * 0x100000000 + lo
+                }
+                src.position += 8
+                if (major >= 2 && major <= 5) {
+                    if (typeof v != 'number') {
+                        throw new Error('value too large for length: ' + v)
+                    }
+                    checkInput(src, v, 8)
+                }
+                return v
+            }
+            break
+        default:
+            throw new Error('not implemented additional information: ' + ai)
+    }
+    return 0
 }
 export const slice = (length: number, src: Input) => {
     const b = src.buffer instanceof ArrayBuffer ? src.buffer.slice(src.position, src.position + length) : src.buffer.buffer.slice(src.position + src.buffer.byteOffset, src.position + src.buffer.byteOffset + length)
@@ -259,119 +366,112 @@ export type ParseItemFunc = (major: number, additionalInformation: number, dv: D
 export type FinishItemFunc = (stack: DecodeStackItem[]) => any
 export const decodeLoop = (src: Input, parseItem: ParseItemFunc, finishItem: FinishItemFunc) => {
     const dv = src.buffer instanceof ArrayBuffer ? new DataView(src.buffer) : new DataView(src.buffer.buffer, src.buffer.byteOffset, src.buffer.byteLength)
-    src.stack = []
-    while (src.position < src.buffer.byteLength) {
+    if (!src.stack) {
+        src.stack = []
+    }
+    const st = src.stack
+    while (src.position < src.buffer.byteLength && src.stopPosition === undefined) {
         const c = dv.getUint8(src.position)
         src.position++;
         const major = c >> 5
-        const ad = c & 31
-        const result = parseItem(major, ad, dv, src)
-        let head = src.stack[src.stack.length - 1]
-        if (major == 7 || major < 4) {
-            if (head) {
-                head.temp.push(result)
+        const ai = c & 31
+        const result = parseItem(major, ai, dv, src)
+        if (src.stopPosition === undefined) {
+            let head = st[st.length - 1]
+            if (major == 7 || major < 4) {
+                if (head) {
+                    head.temp.push(result)
+                }
+                else {
+                    return result
+                }
             }
-            else {
-                return result
+            let finishedItem
+            while (head && head.length == head.temp.length) {
+                finishedItem = finishItem(st)
+                st.pop()
+                head = st[st.length - 1]
+                if (head) {
+                    head.temp.push(finishedItem)
+                }
             }
-        }
-        let finishedItem
-        while (head && head.length == head.temp.length) {
-            finishedItem = finishItem(src.stack)
-            src.stack.pop()
-            head = src.stack[src.stack.length - 1]
-            if (head) {
-                head.temp.push(finishedItem)
+            if (st.length == 0) {
+                return finishedItem
             }
-        }
-        if (src.stack.length == 0) {
-            return finishedItem
         }
     }
 }
 export const decodeBigInt = (v: ArrayBuffer, lastTag: number) => {
-    if (typeof BigInt != 'undefined') {
-        let norm = BigInt(0)
-        let base = BigInt(1)
-        const u = new Uint8Array(v).reverse()
-        for (let i = 0; i < u.byteLength; i++) {
-            norm = norm + base * BigInt(u[i])
-            base = base * BigInt(256)
-        }
-        return lastTag == tags.negativeBigNum ? BigInt(-1) - norm : norm
+    let norm = BigInt(0)
+    let base = BigInt(1)
+    const u = new Uint8Array(v).reverse()
+    for (let i = 0; i < u.byteLength; i++) {
+        norm = norm + base * BigInt(u[i])
+        base = base * BigInt(256)
     }
-    return v
+    return lastTag == tags.negativeBigNum ? BigInt(-1) - norm : norm
 }
-export const parseItem: ParseItemFunc = (major: number, ad: number, dv: DataView, src: Input) => {
+export const parseItem: ParseItemFunc = (major: number, ai: number, dv: DataView, src: Input) => {
     let result
     switch (major) {
         case 0:
-            result = decodeAdditionalInformation(ad, dv, src)
+            result = decodeAdditionalInformation(major, ai, dv, src)
             break
         case 1: {
-            const a = decodeAdditionalInformation(ad, dv, src)
-            result = typeof a == 'bigint' ? BigInt(-1) - a : -1 - a
+            const a = decodeAdditionalInformation(major, ai, dv, src)
+            result = typeof a != 'number' ? BigInt(-1) - a : -1 - a
             break
         }
         case 2: {
-            const a = decodeAdditionalInformationNumber(ad, dv, src)
+            const a = decodeAdditionalInformation(major, ai, dv, src) as number
             result = slice(a, src)
             break
         }
         case 3: {
-            const a = decodeAdditionalInformationNumber(ad, dv, src)
-            result = TD.decode(slice(a, src))
+            const a = decodeAdditionalInformation(major, ai, dv, src) as number
+            result = TD.decode(src.buffer instanceof ArrayBuffer ? new DataView(src.buffer, src.position, a) : new DataView(src.buffer.buffer, src.buffer.byteOffset + src.position, a))
+            src.position += a;
             break
         }
         case 4: {
-            const a = decodeAdditionalInformationNumber(ad, dv, src)
+            const a = decodeAdditionalInformation(major, ai, dv, src) as number
             src.stack.push({ major, length: a, temp: [] })
             break
         }
         case 5: {
-            const a = decodeAdditionalInformationNumber(ad, dv, src)
+            const a = decodeAdditionalInformation(major, ai, dv, src) as number
             src.stack.push({ major, length: a * 2, temp: [] })
             break
         }
         case 6: {
-            const tagArray = [decodeAdditionalInformationNumber(ad, dv, src)]
-            while (dv.getUint8(src.position) >> 5 == 6) {
-                const ad = dv.getUint8(src.position) & 31
-                src.position++;
-                tagArray.push(decodeAdditionalInformationNumber(ad, dv, src))
-            }
-            src.stack.push({ major, length: 1, temp: [], tagArray })
+            const a = decodeAdditionalInformation(major, ai, dv, src)
+            src.stack.push({ major, length: 1, temp: [], tag: a })
             break
         }
         case 7: {
-            switch (ad) {
-                case 20:
-                    result = false
-                    break
-                case 21:
-                    result = true
-                    break
-                case 22:
-                    result = null
-                    break
-                case 23:
-                    result = undefined
-                    break
-                case 26:
-                    result = dv.getFloat32(src.position);
-                    src.position += 4
-                    break
-                case 27:
-                    result = dv.getFloat64(src.position);
-                    src.position += 8
-                    break
-                default:
-                    throw new Error('not implemented')
+            if (ai < 24) {
+                switch (ai) {
+                    case 20:
+                        result = false
+                        break
+                    case 21:
+                        result = true
+                        break
+                    case 22:
+                        result = null
+                        break
+                    case 23:
+                        result = undefined
+                        break
+                    default:
+                        throw new Error('not implemented additional information: ' + ai)
+                }
+            }
+            else {
+                result = decodeAdditionalInformation(major, ai, dv, src)
             }
             break
         }
-        default:
-            throw new Error('invalid major: ' + major)
     }
     return result
 }
@@ -394,13 +494,12 @@ export const finishItem: FinishItemFunc = (stack: DecodeStackItem[]) => {
             }
             return o
         case 6:
-            const last = head.tagArray[head.tagArray.length - 1]
             const v = head.temp[0]
             let x
-            switch (last) {
+            switch (head.tag) {
                 case tags.positiveBigNum:
                 case tags.negativeBigNum: {
-                    x = decodeBigInt(v, last)
+                    x = decodeBigInt(v, head.tag)
                     break
                 }
                 case tags.datePOSIX:
@@ -411,6 +510,20 @@ export const finishItem: FinishItemFunc = (stack: DecodeStackItem[]) => {
                     break
             }
             return x
+    }
+}
+export const finalChecks = (src: Input, op: { allowExcessBuffer?: boolean, endPosition?: number }) => {
+    if (src.stack.length > 0) {
+        throw new Error('unfinished depth: ' + src.stack.length)
+    }
+    if (src.stopPosition !== undefined) {
+        throw new Error('unexpected end of buffer: ' + src.stopPosition)
+    }
+    if (!op?.allowExcessBuffer && src.position != src.buffer.byteLength) {
+        throw new Error('length mismatch ' + src.position + ' ' + src.buffer.byteLength)
+    }
+    if (op) {
+        op.endPosition = src.position
     }
 }
 export const enum tags {

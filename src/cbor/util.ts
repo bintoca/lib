@@ -1,8 +1,8 @@
-import { ParseItemFunc, FinishItemFunc, EncodeAltFunc, arrayItem, mapItem, binaryItem, tagItem, encodeArray, encodeDate, encodeMap, encodeSet, encodeObject, textItem, numberItem, bigintItem, primitiveItem, encodeLoop, decodeAdditionalInformation, decodeAdditionalInformationNumber, slice, decodeLoop, decodeBigInt, tags } from '@bintoca/cbor/core'
+import { ParseItemFunc, FinishItemFunc, EncodeAltFunc, arrayItem, mapItem, binaryItem, tagItem, encodeArray, encodeDate, encodeMap, encodeSet, encodeObject, textItem, numberItem, bigintItem, primitiveItem, encodeLoop, decodeAdditionalInformation, slice, decodeLoop, decodeBigInt, tags } from '@bintoca/cbor/core'
 import * as core from '@bintoca/cbor/core'
 import * as wtf8 from 'wtf-8'
-export const asyncCacheSymbol = Symbol('asyncCache')
-export const tagSymbol = Symbol('tag')
+export const asyncCacheSymbol = Symbol.for('github.com/bintoca/lib/cbor/asyncCache')
+export const tagSymbol = Symbol.for('github.com/bintoca/lib/cbor/tag')
 class _DOMPointReadOnly { x; y; z; w; constructor(x, y, z, w) { this.x = x; this.y = y; this.z = z; this.w = w; } }
 class _DOMPoint { x; y; z; w; constructor(x, y, z, w) { this.x = x; this.y = y; this.z = z; this.w = w; } }
 class _DOMRectReadOnly { x; y; width; height; constructor(x, y, z, w) { this.x = x; this.y = y; this.width = z; this.height = w; } }
