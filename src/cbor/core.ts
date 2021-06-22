@@ -1,6 +1,4 @@
 const scratchDataView = new DataView(new ArrayBuffer(8))
-let defaultBuffer = new ArrayBuffer(4096)
-let defaultOffset = 0
 const TE = new TextEncoder()
 export const TD = new TextDecoder('utf-8', { fatal: true })
 export const encodeAdditionalInformation = (n: number, float?: boolean) => {
@@ -35,7 +33,7 @@ export const additionalInformationSize = (n: number) => {
     }
     return 8
 }
-export type MajorTypes = 0 | 1 | 2 | 3 | 4 | 5 | 6 | 7
+export type MajorTypes = 0 | 1 | 2 | 3 | 4 | 5 | 6 | 7 | -1
 export type Output = { view: DataView, length: number, stack: any[], measure?: boolean, resumeItem?: { major: MajorTypes, adInfo: number, float?: boolean }, resumeBuffer?: BufferSource }
 export const appendBuffer = (out: Output, b: BufferSource) => {
     out.resumeBuffer = undefined
@@ -58,44 +56,91 @@ export const appendBuffer = (out: Output, b: BufferSource) => {
         }
     }
 }
-export const writeItem = (major: MajorTypes, adInfo: number, out: Output, float?: boolean) => {
-    const ai = encodeAdditionalInformation(adInfo, float)
-    const aiSize = additionalInformationSize(ai)
-    out.resumeItem = undefined
-    if (out.measure) {
-        out.length += aiSize + 1
+export const writeItemC = (major: MajorTypes, adInfo: number, dv: DataView, offset: number): number => {
+    if (offset + 9 > dv.byteLength) {
+        return 0
     }
-    else if (out.length + aiSize + 1 <= out.view.byteLength) {
-        const dv = out.view
-        dv.setUint8(out.length, major << 5 | ai)
-        out.length++
-        if (ai == 24) {
-            dv.setUint8(out.length, adInfo)
+    if (major == -1) {
+        if (isNaN(adInfo)) {
+            dv.setUint8(offset, 0xf9)
+            dv.setUint16(offset + 1, 0x7e00)
+            return 3
         }
-        else if (ai == 25) {
-            dv.setUint16(out.length, adInfo)
+        if (!isFinite(adInfo)) {
+            dv.setUint8(offset, 0xf9)
+            dv.setUint16(offset + 1, adInfo < 0 ? 0xfc00 : 0x7c00)
+            return 3
         }
-        else if (ai == 26) {
-            if (major == 7) {
-                dv.setFloat32(out.length, adInfo)
-            }
-            else {
-                dv.setUint32(out.length, adInfo)
-            }
+        if (Object.is(adInfo, -0)) {
+            dv.setUint8(offset, 0xf9)
+            dv.setUint16(offset + 1, 0x8000)
+            return 3
         }
-        else if (ai == 27) {
-            if (major == 7) {
-                dv.setFloat64(out.length, adInfo)
+        if (Math.floor(adInfo) !== adInfo || adInfo > Number.MAX_SAFE_INTEGER || adInfo < Number.MIN_SAFE_INTEGER) {
+            if (Math.fround(adInfo) === adInfo) {
+                dv.setFloat32(offset + 1, adInfo)
+                if (adInfo <= 65504 && adInfo >= -65504) {
+                    const u32 = dv.getUint32(offset + 1)
+                    if ((u32 & 0x1FFF) === 0) {
+                        let s = (u32 >> 16) & 0x8000
+                        const e = (u32 >> 23) & 0xff
+                        const m = u32 & 0x7fffff
+                        if ((e >= 113) && (e <= 142)) {
+                            dv.setUint8(offset, 0xf9)
+                            dv.setUint16(offset + 1, s + ((e - 112) << 10) + (m >> 13))
+                            return 3
+                        } else if ((e >= 103) && (e < 113) && !(m & ((1 << (126 - e)) - 1))) {
+                            dv.setUint8(offset, 0xf9)
+                            dv.setUint16(offset + 1, s + ((m + 0x800000) >> (126 - e)))
+                            return 3
+                        }
+                    }
+                }
+                dv.setUint8(offset, 0xfa)
+                return 5
             }
-            else {
-                dv.setUint32(out.length, Math.floor(adInfo / 0x100000000))
-                dv.setUint32(out.length + 4, adInfo % 0x100000000)
-            }
+            dv.setUint8(offset, 0xfb)
+            dv.setFloat64(offset + 1, adInfo)
+            return 9
         }
-        out.length += aiSize
+        if (adInfo >= 0) {
+            major = 0
+        }
+        else {
+            major = 1
+            adInfo = -(adInfo + 1)
+        }
+    }
+    const majorShift = major << 5
+    if (adInfo < 24) {
+        dv.setUint8(offset, majorShift | adInfo)
+        return 1
+    } else if (adInfo < 0x100) {
+        dv.setUint8(offset, majorShift | 24)
+        dv.setUint8(offset + 1, adInfo)
+        return 2
+    } else if (adInfo < 0x10000) {
+        dv.setUint8(offset, majorShift | 25)
+        dv.setUint16(offset + 1, adInfo)
+        return 3
+    } else if (adInfo < 0x100000000) {
+        dv.setUint8(offset, majorShift | 26)
+        dv.setUint32(offset + 1, adInfo)
+        return 5
+    }
+    dv.setUint8(offset, majorShift | 27)
+    dv.setUint32(offset + 1, Math.floor(adInfo / 0x100000000))
+    dv.setUint32(offset + 5, adInfo % 0x100000000)
+    return 9
+}
+export const writeItem = (major: MajorTypes, adInfo: number, out: Output) => {
+    out.resumeItem = undefined
+    const written = writeItemC(major, adInfo, out.view, out.length)
+    if (written) {
+        out.length += written
     }
     else {
-        out.resumeItem = { major, adInfo, float }
+        out.resumeItem = { major, adInfo }
     }
 }
 export const integerItem = (value: number, out: Output) => value >= 0 ? writeItem(0, value, out) : writeItem(1, -(value + 1), out)
@@ -118,12 +163,7 @@ export const mapItem = (length: number, out: Output) => writeItem(5, length, out
 export const tagItem = (id: number, out: Output) => writeItem(6, id, out)
 export const primitiveItem = (id: number, out: Output) => writeItem(7, id, out)
 export const numberItem = (val: number, out: Output) => {
-    if (Math.floor(val) === val && val <= Number.MAX_SAFE_INTEGER && val >= Number.MIN_SAFE_INTEGER) {
-        integerItem(val, out)
-    }
-    else {
-        writeItem(7, val, out, true)
-    }
+    writeItem(-1, val, out)
 }
 export const bigintItem = (val: bigint, out: Output) => {
     tagItem(val >= 0 ? tags.positiveBigNum : tags.negativeBigNum, out)
@@ -141,12 +181,15 @@ export const bigintItem = (val: bigint, out: Output) => {
     }
     binaryItem(v.reverse(), out)
 }
+export const encodeRecursive = (value) => {
+
+}
 export type EncodeObjectFunc = (value, stack: any[], out: Output) => void
 export type EncodeAltFunc = (value, stack: any[], out: Output) => boolean
 export const encodeLoop = (out: Output, encodeObject: EncodeObjectFunc, alt?: EncodeAltFunc) => {
     const st = out.stack
     if (out.resumeItem) {
-        writeItem(out.resumeItem.major, out.resumeItem.adInfo, out, out.resumeItem.float)
+        writeItem(out.resumeItem.major, out.resumeItem.adInfo, out)
     }
     if (out.resumeBuffer) {
         appendBuffer(out, out.resumeBuffer)
@@ -183,13 +226,13 @@ export const encodeLoop = (out: Output, encodeObject: EncodeObjectFunc, alt?: En
         }
     }
 }
-export const encodeArray = (a: any[], stack: any[], out: Output) => {
+export const encodeArrayLoop = (a: any[], stack: any[], out: Output) => {
     arrayItem(a.length, out)
     for (let i = a.length - 1; i >= 0; i--) {
         stack.push(a[i])
     }
 }
-export const encodeObject = (a, stack: any[], out: Output) => {
+export const encodeObjectLoop = (a, stack: any[], out: Output) => {
     const ks = Object.keys(a)
     mapItem(ks.length, out)
     for (let i = ks.length - 1; i >= 0; i--) {
@@ -197,7 +240,7 @@ export const encodeObject = (a, stack: any[], out: Output) => {
         stack.push(ks[i])
     }
 }
-export const encodeMap = (a: Map<any, any>, stack: any[], out: Output) => {
+export const encodeMapLoop = (a: Map<any, any>, stack: any[], out: Output) => {
     mapItem(a.size, out)
     const ks = Array.from(a.entries())
     for (let i = ks.length - 1; i >= 0; i--) {
@@ -219,16 +262,16 @@ export const encodeDate = (a, out: Output) => {
         integerItem(a.getTime() % 1000, out)
     }
 }
-export const encodeSet = (a: Set<any>, stack: any[], out: Output) => {
+export const encodeSetLoop = (a: Set<any>, stack: any[], out: Output) => {
     arrayItem(a.size, out)
     const ks = Array.from(a.values())
     for (let i = ks.length - 1; i >= 0; i--) {
         stack.push(ks[i])
     }
 }
-export const encodeObjectFunc = (a, stack: any[], out: Output) => {
+export const encodeObjectFuncLoop = (a, stack: any[], out: Output) => {
     if (Array.isArray(a)) {
-        encodeArray(a, stack, out)
+        encodeArrayLoop(a, stack, out)
     }
     else if (a instanceof ArrayBuffer || ArrayBuffer.isView(a)) {
         binaryItem(a, out)
@@ -237,27 +280,27 @@ export const encodeObjectFunc = (a, stack: any[], out: Output) => {
         encodeDate(a, out)
     }
     else if (a instanceof Map) {
-        encodeMap(a, stack, out)
+        encodeMapLoop(a, stack, out)
     }
     else {
-        encodeObject(a, stack, out)
+        encodeObjectLoop(a, stack, out)
     }
 }
-export const encodeSync = (value): Uint8Array[] => {
+export const encodeSyncLoop = (value, workingBuffer: { buffer: ArrayBuffer, offset: number }): Uint8Array[] => {
     const buffers: Uint8Array[] = []
-    const out: Output = { view: new DataView(defaultBuffer, defaultOffset, defaultBuffer.byteLength - defaultOffset), length: 0, stack: [value] }
+    const out: Output = { view: new DataView(workingBuffer.buffer, workingBuffer.offset, workingBuffer.buffer.byteLength - workingBuffer.offset), length: 0, stack: [value] }
     do {
-        encodeLoop(out, encodeObjectFunc)
+        encodeLoop(out, encodeObjectFuncLoop)
         buffers.push(new Uint8Array(out.view.buffer, out.view.byteOffset, out.length))
         if (out.view.byteLength - out.length < 256) {
-            defaultBuffer = new ArrayBuffer(4096)
-            defaultOffset = 0
+            workingBuffer.buffer = new ArrayBuffer(4096)
+            workingBuffer.offset = 0
         }
         else {
-            defaultOffset += out.length
+            workingBuffer.offset += out.length
         }
         if (out.resumeItem || out.resumeBuffer) {
-            out.view = new DataView(defaultBuffer, defaultOffset, defaultBuffer.byteLength - defaultOffset)
+            out.view = new DataView(workingBuffer.buffer, workingBuffer.offset, workingBuffer.buffer.byteLength - workingBuffer.offset)
             out.length = 0
         }
     }

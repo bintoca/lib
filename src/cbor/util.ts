@@ -1,4 +1,4 @@
-import { ParseItemFunc, FinishItemFunc, EncodeAltFunc, arrayItem, mapItem, binaryItem, tagItem, encodeArray, encodeDate, encodeMap, encodeSet, encodeObject, textItem, numberItem, bigintItem, primitiveItem, encodeLoop, decodeAdditionalInformation, slice, decodeLoop, decodeBigInt, tags } from '@bintoca/cbor/core'
+import { ParseItemFunc, FinishItemFunc, EncodeAltFunc, arrayItem, mapItem, binaryItem, tagItem, encodeArrayLoop, encodeDate, encodeMapLoop, encodeSetLoop, encodeObjectLoop, textItem, numberItem, bigintItem, primitiveItem, encodeLoop, decodeAdditionalInformation, slice, decodeLoop, decodeBigInt, tags } from '@bintoca/cbor/core'
 import * as core from '@bintoca/cbor/core'
 import * as wtf8 from 'wtf-8'
 export const asyncCacheSymbol = Symbol.for('github.com/bintoca/lib/cbor/asyncCache')
@@ -170,12 +170,12 @@ export const encodeObjectFunc = (a, stack: any[], out: Output) => {
     if (!out.ws.has(a)) {
         out.ws.add(a)
         if (Array.isArray(a)) {
-            encodeArray(a, stack, out)
+            encodeArrayLoop(a, stack, out)
         }
         else {
             const pr = Object.getPrototypeOf(a)
             if (pr === null || pr === Object.prototype) {
-                encodeObject(a, stack, out)
+                encodeObjectLoop(a, stack, out)
             }
             else if (a instanceof ArrayBuffer) {
                 binaryItem(a, out)
@@ -185,11 +185,11 @@ export const encodeObjectFunc = (a, stack: any[], out: Output) => {
             }
             else if (a instanceof Map) {
                 tagItem(tags.Map, out)
-                encodeMap(a, stack, out)
+                encodeMapLoop(a, stack, out)
             }
             else if (a instanceof Set) {
                 tagItem(tags.Set, out)
-                encodeSet(a, stack, out)
+                encodeSetLoop(a, stack, out)
             }
             else if (a instanceof Uint8Array) {
                 tagItem(tags.uint8, out)
