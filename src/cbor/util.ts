@@ -1,4 +1,4 @@
-import { ParseItemFunc, FinishItemFunc, EncodeAltFunc, arrayItem, mapItem, binaryItem, tagItem, encodeArrayLoop, encodeDate, encodeMapLoop, encodeSetLoop, encodeObjectLoop, textItem, numberItem, bigintItem, primitiveItem, encodeLoop, decodeAdditionalInformation, slice, decodeLoop, decodeBigInt, tags } from '@bintoca/cbor/core'
+import { ParseItemFunc, FinishItemFunc, EncodeAltFunc, arrayItem, mapItem, binaryItem, tagItem, encodeArrayLoop, encodeDate, encodeMapLoop, encodeSetLoop, encodeObjectLoop, textItem, numberItem, bigintItem, booleanItem, encodeLoop, decodeAdditionalInformation, slice, decodeLoop, decodeBigInt, tags } from '@bintoca/cbor/core'
 import * as core from '@bintoca/cbor/core'
 import * as wtf8 from 'wtf-8'
 export const asyncCacheSymbol = Symbol.for('github.com/bintoca/lib/cbor/asyncCache')
@@ -301,7 +301,7 @@ export const encodeObjectFunc = (a, stack: any[], out: Output) => {
             }
             else if (a instanceof Boolean) {
                 tagItem(tags.JSBooleanObject, out)
-                primitiveItem(a.valueOf() ? 21 : 20, out)
+                booleanItem(a.valueOf(), out)
             }
             else {
                 throw new Error('unsupported type')

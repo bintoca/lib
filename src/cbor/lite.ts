@@ -1,7 +1,7 @@
-import { Output, Input, parseItem, finishItem, encodeLoop, decodeLoop, finalChecks, encodeSyncLoop, concat } from '@bintoca/cbor/core'
+import { Output, Input, parseItem, finishItem, encodeLoop, decodeLoop, finalChecks, encodeSyncLoop, concat, defaultBufferSize, minViewSize } from '@bintoca/cbor/core'
 
 export class Encoder {
-    workingBuffer = { buffer: new ArrayBuffer(4096), offset: 0 }
+    workingBuffer = { buffer: new ArrayBuffer(defaultBufferSize), offset: 0, newBufferSize: defaultBufferSize, minViewSize }
     encodeSyncLoop = (value): Uint8Array[] => encodeSyncLoop(value, this.workingBuffer)
     encode = (value): Uint8Array => concat(encodeSyncLoop(value, this.workingBuffer))
 }

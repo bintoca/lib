@@ -1,6 +1,8 @@
 const scratchDataView = new DataView(new ArrayBuffer(8))
 const TE = new TextEncoder()
 export const TD = new TextDecoder('utf-8', { fatal: true })
+export const defaultBufferSize = 4096
+export const minViewSize = 512
 export const encodeAdditionalInformation = (n: number, float?: boolean) => {
     if (float) {
         scratchDataView.setFloat32(0, n)
@@ -34,13 +36,10 @@ export const additionalInformationSize = (n: number) => {
     return 8
 }
 export type MajorTypes = 0 | 1 | 2 | 3 | 4 | 5 | 6 | 7 | -1
-export type Output = { view: DataView, length: number, stack: any[], measure?: boolean, resumeItem?: { major: MajorTypes, adInfo: number, float?: boolean }, resumeBuffer?: BufferSource }
+export type Output = { view: DataView, length: number, stack: any[], workingBuffer: WorkingBuffer, buffers: Uint8Array[], resumeItem?: { major: MajorTypes, adInfo: number, float?: boolean }, resumeBuffer?: BufferSource }
 export const appendBuffer = (out: Output, b: BufferSource) => {
     out.resumeBuffer = undefined
-    if (out.measure) {
-        out.length += b.byteLength
-    }
-    else if (out.resumeItem) {
+    if (out.resumeItem) {
         out.resumeBuffer = b
     }
     else {
@@ -56,7 +55,7 @@ export const appendBuffer = (out: Output, b: BufferSource) => {
         }
     }
 }
-export const writeItemC = (major: MajorTypes, adInfo: number, dv: DataView, offset: number): number => {
+export const writeItemCore = (major: MajorTypes, adInfo: number, dv: DataView, offset: number): number => {
     if (offset + 9 > dv.byteLength) {
         return 0
     }
@@ -135,7 +134,7 @@ export const writeItemC = (major: MajorTypes, adInfo: number, dv: DataView, offs
 }
 export const writeItem = (major: MajorTypes, adInfo: number, out: Output) => {
     out.resumeItem = undefined
-    const written = writeItemC(major, adInfo, out.view, out.length)
+    const written = writeItemCore(major, adInfo, out.view, out.length)
     if (written) {
         out.length += written
     }
@@ -144,6 +143,9 @@ export const writeItem = (major: MajorTypes, adInfo: number, out: Output) => {
     }
 }
 export const integerItem = (value: number, out: Output) => value >= 0 ? writeItem(0, value, out) : writeItem(1, -(value + 1), out)
+export const nullItem = (out: Output) => writeItem(7, 22, out)
+export const undefinedItem = (out: Output) => writeItem(7, 23, out)
+export const booleanItem = (value: boolean, out: Output) => writeItem(7, value ? 21 : 20, out)
 export const binaryItem = (v: BufferSource, out: Output) => {
     writeItem(2, v.byteLength, out)
     appendBuffer(out, v)
@@ -161,7 +163,6 @@ export const textItem = (s: string, out: Output) => {
 export const arrayItem = (length: number, out: Output) => writeItem(4, length, out)
 export const mapItem = (length: number, out: Output) => writeItem(5, length, out)
 export const tagItem = (id: number, out: Output) => writeItem(6, id, out)
-export const primitiveItem = (id: number, out: Output) => writeItem(7, id, out)
 export const numberItem = (val: number, out: Output) => {
     writeItem(-1, val, out)
 }
@@ -200,10 +201,10 @@ export const encodeLoop = (out: Output, encodeObject: EncodeObjectFunc, alt?: En
         }
         else {
             if (a === null) {
-                primitiveItem(22, out)
+                nullItem(out)
             }
             else if (a === undefined) {
-                primitiveItem(23, out)
+                undefinedItem(out)
             }
             else if (typeof a == 'object') {
                 encodeObject(a, st, out)
@@ -215,7 +216,7 @@ export const encodeLoop = (out: Output, encodeObject: EncodeObjectFunc, alt?: En
                 numberItem(a, out)
             }
             else if (typeof a == 'boolean') {
-                primitiveItem(a ? 21 : 20, out)
+                booleanItem(a, out)
             }
             else if (typeof a == 'bigint') {
                 bigintItem(a, out)
@@ -286,26 +287,27 @@ export const encodeObjectFuncLoop = (a, stack: any[], out: Output) => {
         encodeObjectLoop(a, stack, out)
     }
 }
-export const encodeSyncLoop = (value, workingBuffer: { buffer: ArrayBuffer, offset: number }): Uint8Array[] => {
-    const buffers: Uint8Array[] = []
-    const out: Output = { view: new DataView(workingBuffer.buffer, workingBuffer.offset, workingBuffer.buffer.byteLength - workingBuffer.offset), length: 0, stack: [value] }
+export type WorkingBuffer = { buffer: ArrayBuffer, offset: number, newBufferSize: number, minViewSize: number }
+export const encodeSyncLoop = (value, workingBuffer: WorkingBuffer): Uint8Array[] => {
+    const out: Output = { view: new DataView(workingBuffer.buffer, workingBuffer.offset, workingBuffer.buffer.byteLength - workingBuffer.offset), length: 0, stack: [value], buffers: [], workingBuffer }
     do {
         encodeLoop(out, encodeObjectFuncLoop)
-        buffers.push(new Uint8Array(out.view.buffer, out.view.byteOffset, out.length))
-        if (out.view.byteLength - out.length < 256) {
-            workingBuffer.buffer = new ArrayBuffer(4096)
-            workingBuffer.offset = 0
-        }
-        else {
-            workingBuffer.offset += out.length
-        }
-        if (out.resumeItem || out.resumeBuffer) {
-            out.view = new DataView(workingBuffer.buffer, workingBuffer.offset, workingBuffer.buffer.byteLength - workingBuffer.offset)
-            out.length = 0
-        }
+        out.buffers.push(new Uint8Array(out.view.buffer, out.view.byteOffset, out.length))
+        resetOutput(out)
     }
     while (out.resumeItem || out.resumeBuffer)
-    return buffers
+    return out.buffers
+}
+export const resetOutput = (out: Output) => {
+    if (out.view.byteLength - out.length < out.workingBuffer.minViewSize) {
+        out.workingBuffer.buffer = new ArrayBuffer(out.workingBuffer.newBufferSize)
+        out.workingBuffer.offset = 0
+    }
+    else {
+        out.workingBuffer.offset += out.length
+    }
+    out.view = new DataView(out.workingBuffer.buffer, out.workingBuffer.offset, out.workingBuffer.buffer.byteLength - out.workingBuffer.offset)
+    out.length = 0
 }
 export const concat = (buffers: Uint8Array[]): Uint8Array => {
     if (buffers.length == 1) {
