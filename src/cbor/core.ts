@@ -222,7 +222,7 @@ export const encodeLoop = (out: Output, encodeObject: EncodeObjectFunc, alt?: En
                 bigintItem(a, out)
             }
             else {
-                throw new Error('unsupported type')
+                throw new Error('unsupported type ' + typeof a)
             }
         }
     }
@@ -298,7 +298,7 @@ export const encodeSyncLoop = (value, workingBuffer: WorkingBuffer): Uint8Array[
     while (out.resumeItem || out.resumeBuffer)
     return out.buffers
 }
-export const resetOutput = (out: Output) => {
+export const resetOutput = (out: Output, view?: ArrayBufferView) => {
     if (out.view.byteLength - out.length < out.workingBuffer.minViewSize) {
         out.workingBuffer.buffer = new ArrayBuffer(out.workingBuffer.newBufferSize)
         out.workingBuffer.offset = 0
@@ -306,7 +306,7 @@ export const resetOutput = (out: Output) => {
     else {
         out.workingBuffer.offset += out.length
     }
-    out.view = new DataView(out.workingBuffer.buffer, out.workingBuffer.offset, out.workingBuffer.buffer.byteLength - out.workingBuffer.offset)
+    out.view = view ? new DataView(view.buffer, view.byteOffset, view.byteLength) : new DataView(out.workingBuffer.buffer, out.workingBuffer.offset, out.workingBuffer.buffer.byteLength - out.workingBuffer.offset)
     out.length = 0
 }
 export const concat = (buffers: Uint8Array[]): Uint8Array => {
