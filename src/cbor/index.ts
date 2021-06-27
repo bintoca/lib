@@ -55,6 +55,9 @@ export class Encoder {
                                         try {
                                             if (that.hasClose) {
                                                 controller.close()
+                                                if (controller.byobRequest) {
+                                                    controller.byobRequest.respond(0)
+                                                }
                                             }
                                             else {
                                                 process()
@@ -81,11 +84,17 @@ export class Encoder {
                         }
                     }
                 },
+                cancel() {
+                    that.hasCancel = true
+                }
             })
         }
         if (typeof WritableStream != 'undefined') {
             this.writable = new WritableStream({
                 write(chunk) {
+                    if (that.hasCancel) {
+                        return Promise.reject('readable cancelled')
+                    }
                     const p = new Promise<void>((resolve, reject) => {
                         that.writeResolve = resolve
                         that.writeReject = reject
@@ -124,6 +133,7 @@ export class Encoder {
     private hasClose: boolean
     private chunk
     private hasChunk: boolean
+    private hasCancel: boolean
     readable: ReadableStream
     writable: WritableStream
     encodeSyncLoop = (value): Uint8Array[] => encodeSyncLoop(value, this.workingBuffer)

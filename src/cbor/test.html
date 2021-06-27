@@ -176,7 +176,26 @@
                 while (!v.done)
                 checkArray('abort', r.map(x => x.toString()), ['101,104,101,108,108,111'])
             }
-            print(['write then read', 'read then write', 'split chunk', 'error', 'abort', 'byob', 'byob error'].map(x => 'Encoder/' + x))
+            {
+                const enc = new Encoder()
+                const wr = enc.writable.getWriter()
+                await wr.ready
+                wr.write('hello')
+                wr.write('doo')
+                enc.readable.cancel()
+                const rr = enc.readable.getReader()
+                let v
+                const r = []
+                do {
+                    v = await rr.read()
+                    if (v.value) {
+                        r.push(v.value)
+                    }
+                }
+                while (!v.done)
+                checkArray('cancel', r.map(x => x.toString()), [])
+            }
+            print(['write then read', 'read then write', 'split chunk', 'error', 'abort', 'byob', 'byob error', 'cancel'].map(x => 'Encoder/' + x))
         }
         test()
     </script>
