@@ -32,13 +32,13 @@ export class Encoder extends Duplex {
                 const out = this.output
                 resetOutput(out)
                 while (true) {
-                    if (out.stack.length == 0) {
+                    if (out.stack.length == 0 && this.chunks.length > 0) {
                         out.stack.push(this.chunks.shift())
                     }
                     encodeLoop(out, encodeObjectFuncLoop)
                     if (out.resumeItem || out.resumeBuffer || this.chunks.length == 0) {
                         this.push(new Uint8Array(out.view.buffer, out.view.byteOffset, out.length))
-                        if (this.chunks.length == 0) {
+                        if (!out.resumeItem && !out.resumeBuffer && this.chunks.length == 0) {
                             this.hasChunks = false
                             this.cb()
                         }

@@ -18,12 +18,17 @@ export class Encoder {
                         const out = that.output
                         resetOutput(out, controller.byobRequest?.view)
                         function process() {
-                            if (out.stack.length == 0) {
+                            if (out.stack.length == 0 && !out.resumeItem && !out.resumeBuffer) {
                                 out.stack.push(that.chunk)
                             }
                             encodeLoop(out, encodeObjectFuncLoop)
                             if (controller.byobRequest) {
-                                controller.byobRequest.respond(out.length)
+                                if (out.length == 0) {
+                                    controller.error(new Error('byob view is too small to write into'))
+                                }
+                                else {
+                                    controller.byobRequest.respond(out.length)
+                                }
                             }
                             else {
                                 controller.enqueue(new Uint8Array(out.view.buffer, out.view.byteOffset, out.length))
@@ -39,13 +44,21 @@ export class Encoder {
                         else {
                             if (that.hasClose) {
                                 controller.close()
+                                if (controller.byobRequest) {
+                                    controller.byobRequest.respond(0)
+                                }
                             }
                             else {
                                 that.hasPull = true
                                 return new Promise<void>((resolve, reject) => {
                                     that.pullResolve = () => {
                                         try {
-                                            process()
+                                            if (that.hasClose) {
+                                                controller.close()
+                                            }
+                                            else {
+                                                process()
+                                            }
                                             resolve()
                                         }
                                         catch (e) {
@@ -73,19 +86,31 @@ export class Encoder {
         if (typeof WritableStream != 'undefined') {
             this.writable = new WritableStream({
                 write(chunk) {
+                    const p = new Promise<void>((resolve, reject) => {
+                        that.writeResolve = resolve
+                        that.writeReject = reject
+                    })
                     that.chunk = chunk
                     that.hasChunk = true
                     if (that.hasPull) {
                         that.hasPull = false
                         that.pullResolve()
                     }
-                    return new Promise<void>((resolve, reject) => {
-                        that.writeResolve = resolve
-                        that.writeReject = reject
-                    })
+                    return p
                 },
                 close() {
                     that.hasClose = true
+                    if (that.hasPull) {
+                        that.hasPull = false
+                        that.pullResolve()
+                    }
+                },
+                abort() {
+                    that.hasClose = true
+                    if (that.hasPull) {
+                        that.hasPull = false
+                        that.pullResolve()
+                    }
                 }
             })
         }

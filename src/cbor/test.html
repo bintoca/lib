@@ -10,7 +10,7 @@
     <script type="importmap">
         {
           "imports": {
-            "@bintoca/cbor": "/packages/cbor/lite.js",
+            "@bintoca/cbor": "/packages/cbor/index.js",
             "@bintoca/cbor/core": "/packages/cbor/core.js",
             "tester": "/packages/cbor/browser-tester.js"
           }
@@ -18,10 +18,64 @@
     </script>
     <script type="module">
         import { Encoder } from '@bintoca/cbor'
-        import { print, checkArray, pushScope } from 'tester'
+        import { print, checkArray, pushScope, eq } from 'tester'
 
         async function test() {
-            pushScope('stream')
+            pushScope('Encoder')
+            {
+                const enc = new Encoder()
+                const wr = enc.writable.getWriter()
+                await wr.ready
+                wr.write('hello')
+                wr.write('doo')
+                wr.close()
+                const rr = enc.readable.getReader({ mode: 'byob' })
+                let v
+                let ab = new ArrayBuffer(16)
+                let offset = 0
+                while (true) {
+                    const a = await rr.read(new Uint8Array(ab, offset))
+                    if (a.done) {
+                        v = new Uint8Array(a.value.buffer, 0, offset)
+                        break
+                    }
+                    else {
+
+                        ab = a.value.buffer
+                        offset += a.value.byteLength
+                    }
+                }
+                checkArray('byob', [v.toString()], ['101,104,101,108,108,111,99,100,111,111'])
+            }
+            {
+                const enc = new Encoder()
+                const wr = enc.writable.getWriter()
+                await wr.ready
+                wr.write('hello')
+                wr.write('doo')
+                wr.close()
+                const rr = enc.readable.getReader({ mode: 'byob' })
+                let v
+                let ab = new ArrayBuffer(8)
+                let offset = 0
+                try {
+                    while (true) {
+                        const a = await rr.read(new Uint8Array(ab, offset))
+                        if (a.done) {
+                            v = new Uint8Array(a.value.buffer, 0, offset)
+                            break
+                        }
+                        else {
+
+                            ab = a.value.buffer
+                            offset += a.value.byteLength
+                        }
+                    }
+                }
+                catch (e) {
+                    eq('byob error', e.message, 'byob view is too small to write into')
+                }
+            }
             {
                 const enc = new Encoder()
                 const wr = enc.writable.getWriter()
@@ -39,9 +93,90 @@
                     }
                 }
                 while (!v.done)
-                checkArray('Encoder stream', r.map(x => x.toString()), ['101,104,101,108,108,111', '99,100,111,111'])
+                checkArray('write then read', r.map(x => x.toString()), ['101,104,101,108,108,111', '99,100,111,111'])
             }
-            print(['Encoder stream'].map(x => 'stream/' + x))
+            {
+                const enc = new Encoder()
+                const wr = enc.writable.getWriter()
+                setTimeout(async () => {
+                    await wr.ready
+                    wr.write('hello')
+                    wr.write('doo')
+                    wr.close()
+                }, 100);
+
+                const rr = enc.readable.getReader()
+                let v
+                const r = []
+                do {
+                    v = await rr.read()
+                    if (v.value) {
+                        r.push(v.value)
+                    }
+                }
+                while (!v.done)
+                checkArray('read then write', r.map(x => x.toString()), ['101,104,101,108,108,111', '99,100,111,111'])
+            }
+            {
+                const enc = new Encoder()
+                const wr = enc.writable.getWriter()
+                await wr.ready
+                wr.write(new Uint8Array(4100))
+                wr.close()
+                const rr = enc.readable.getReader()
+                let v
+                const r = []
+                do {
+                    v = await rr.read()
+                    if (v.value) {
+                        r.push(v.value)
+                    }
+                }
+                while (!v.done)
+                checkArray('split chunk', r.map(x => x.toString()), [new Uint8Array([89, 16, 4].concat(Array(4093))).toString(), new Uint8Array(7).toString()])
+            }
+            {
+                try {
+                    const enc = new Encoder()
+                    const wr = enc.writable.getWriter()
+                    await wr.ready
+                    wr.write({ f: () => { } })
+                    wr.close()
+                    const rr = enc.readable.getReader()
+                    let v
+                    const r = []
+                    do {
+                        v = await rr.read()
+                        if (v.value) {
+                            r.push(v.value)
+                        }
+                    }
+                    while (!v.done)
+                }
+                catch (e) {
+                    eq('error', e.message, 'unsupported type function')
+                }
+            }
+            {
+                const enc = new Encoder()
+                const wr = enc.writable.getWriter()
+                await wr.ready
+                wr.write('hello')
+                wr.write('doo')
+                wr.abort()
+                const rr = enc.readable.getReader()
+                let v
+                const r = []
+                do {
+                    v = await rr.read()
+                    if (v.value) {
+                        r.push(v.value)
+                    }
+                }
+                while (!v.done)
+                checkArray('abort', r.map(x => x.toString()), ['101,104,101,108,108,111'])
+            }
+            print(['write then read', 'read then write', 'split chunk', 'error', 'abort', 'byob', 'byob error'].map(x => 'Encoder/' + x))
         }
         test()
     </script>

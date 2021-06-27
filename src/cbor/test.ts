@@ -1,5 +1,5 @@
 import { encodeAdditionalInformation, additionalInformationSize, integerItem, binaryItem, textItem, numberItem, bigintItem, arrayItem, nullItem, mapItem, tagItem, decodeAdditionalInformation, encodeSyncLoop, writeItem, writeItemCore, getFloat16, undefinedItem, booleanItem, Output } from '@bintoca/cbor/core'
-import * as lite from '@bintoca/cbor/lite'
+import * as lite from '@bintoca/cbor'
 import * as node from '@bintoca/cbor/node'
 
 test.each([[0, 0], [23, 23], [24, 24], [255, 24], [256, 25], [2 ** 16 - 1, 25], [2 ** 16, 26], [2 ** 32 - 1, 26], [2 ** 32, 27]])('encodeAdditionalInformation(%i,%i)', (a, e) => {
@@ -70,8 +70,7 @@ test.each([[{}, [new Uint8Array([160])]],
 [[new ArrayBuffer(4100), new ArrayBuffer(4100)], [new Uint8Array([130, 89, 16, 4].concat(Array(4092))), new Uint8Array(Array(8).concat([89, 16, 4].concat(Array(4085)))), new Uint8Array(Array(15))]], //resumeBuffer 2
 [[new ArrayBuffer(9000)], [new Uint8Array([129, 89, 35, 40].concat(Array(4092))), new Uint8Array(4096), new Uint8Array(Array(812))]], //resumeBuffer large
 ])('encodeSyncLoop(%#)', (a, e) => {
-    const en = new lite.Encoder()
-    const r = en.encodeSyncLoop(a)
+    const r = encodeSyncLoop(a, { buffer: new ArrayBuffer(4096), offset: 0, newBufferSize: 4096, minViewSize: 256 })
     //console.log(r)
     expect(r.length).toBe(e.length)
     expect(r).toEqual(e)
@@ -124,6 +123,23 @@ test.each([['hello', 'doo', '101,104,101,108,108,111', '99,100,111,111']])('node
     expect(new Uint8Array(r[0]).toString()).toBe(a1)
     expect(new Uint8Array(r[1]).toString()).toBe(b1)
 })
+test.each([['hello', 'doo', '101,104,101,108,108,111', '99,100,111,111']])('nodeStreamNextTick2(%s,%s)', async (a, b, a1, b1) => {
+    const r: Uint8Array[] = await new Promise((resolve, reject) => {
+        const bufs = []
+        const enc = new node.Encoder()
+        enc.write(a)
+        enc.write(b)
+        enc.end()
+        process.nextTick(() => {
+            enc.on('data', buf => { bufs.push(buf) })
+            enc.on('error', reject)
+            enc.on('end', () => resolve(bufs))
+        })
+    })
+    expect(r.length).toBe(2)
+    expect(new Uint8Array(r[0]).toString()).toBe(a1)
+    expect(new Uint8Array(r[1]).toString()).toBe(b1)
+})
 test.each([[{ f: () => { } }, 'function']])('nodeStreamError(%s)', async (a, b) => {
     const p = new Promise((resolve, reject) => {
         const bufs = []
@@ -135,6 +151,20 @@ test.each([[{ f: () => { } }, 'function']])('nodeStreamError(%s)', async (a, b) 
         enc.end()
     })
     return expect(p).rejects.toMatchObject(new Error('unsupported type ' + b))
+})
+test.each([[new Uint8Array(Array(4100)), new Uint8Array([89, 16, 4].concat(Array(4093))), new Uint8Array(7)]])('nodeSplitChunk()', async (a, a1, b1) => {
+    const r: Uint8Array[] = await new Promise((resolve, reject) => {
+        const bufs = []
+        const enc = new node.Encoder()
+        enc.on('data', buf => { bufs.push(buf) })
+        enc.on('error', reject)
+        enc.on('end', () => resolve(bufs))
+        enc.write(a)
+        enc.end()
+    })
+    expect(r.length).toBe(2)
+    expect(new Uint8Array(r[0])).toEqual(a1)
+    expect(new Uint8Array(r[1])).toEqual(b1)
 })
 // test.each([[1, -2, 123456n, -123456n, null, undefined, true, false, 'q', 1.4, new Date(1234), new Date(2000), new ArrayBuffer(8)], { a: 1, b: [2.5], c: { a: 3 }, d: 'hey', e: null, f: undefined, g: true, h: false }])('lite(%#)', (a) => {
 //     expect(lite.decode(lite.encode(a))).toEqual(a)
