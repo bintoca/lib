@@ -1,11 +1,13 @@
-import { Output, Input, parseItem, finishItem, encodeLoop, decodeLoop, finalChecks, encodeSyncLoop, concat, defaultBufferSize, minViewSize, WorkingBuffer, resetOutput, encodeObjectFuncLoop } from '@bintoca/cbor/core'
+import { Output, Input, Options, parseItem, finishItem, encodeLoop, decodeLoop, finalChecks, encodeSync, concat, defaultBufferSize, defaultMinViewSize, resetOutput, encodeObjectFuncLoop } from '@bintoca/cbor/core'
 declare var ReadableStreamBYOBReader
 
 export class Encoder {
-    constructor(options?) {
-        const { ...superOpts } = options || {}
-        this.workingBuffer = { buffer: new ArrayBuffer(defaultBufferSize), offset: 0, newBufferSize: defaultBufferSize, minViewSize }
-        this.output = { view: new DataView(this.workingBuffer.buffer, this.workingBuffer.offset, this.workingBuffer.buffer.byteLength - this.workingBuffer.offset), length: 0, stack: [], buffers: [], workingBuffer: this.workingBuffer }
+    constructor(options?: Options) {
+        let { backingView, newBufferSize, minViewSize, useWTF8, ...superOpts } = options || {}
+        backingView = backingView || new Uint8Array(defaultBufferSize)
+        newBufferSize = newBufferSize || defaultBufferSize
+        minViewSize = minViewSize || defaultMinViewSize
+        this.output = { view: new DataView(backingView.buffer, backingView.byteOffset, backingView.byteLength), length: 0, stack: [], buffers: [], backingView, offset: 0, newBufferSize, minViewSize, useWTF8 }
         const that = this
         if (typeof ReadableStream == 'undefined') {
             throw new Error('ReadableStream is undefined. If this is a Node.js application you probably want to import { Encoder } from "@bintoca/cbor/node"')
@@ -124,7 +126,6 @@ export class Encoder {
             })
         }
     }
-    private workingBuffer: WorkingBuffer
     private output: Output
     private writeResolve: () => void
     private writeReject: (reason?) => void
@@ -136,12 +137,8 @@ export class Encoder {
     private hasCancel: boolean
     readable: ReadableStream
     writable: WritableStream
-    encodeSyncLoop = (value): Uint8Array[] => encodeSyncLoop(value, this.workingBuffer)
-    encode = (value): Uint8Array => concat(encodeSyncLoop(value, this.workingBuffer))
-
-
+    encode = (value): Uint8Array => concat(encodeSync(value, this.output))
 }
-export const encode = (value): Uint8Array => concat(encodeSyncLoop(value, null))
 export const decode = (b: BufferSource, op?: { allowExcessBuffer?: boolean, endPosition?: number }): any => {
     const src: Input = { buffer: b, position: 0 }
     const v = decodeLoop(src, parseItem, finishItem)

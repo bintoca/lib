@@ -1,14 +1,15 @@
 import { Duplex } from 'stream'
-import { Output, Input, parseItem, finishItem, encodeLoop, decodeLoop, finalChecks, encodeSyncLoop, concat, encodeObjectFuncLoop, WorkingBuffer, writeItem, appendBuffer, resetOutput, defaultBufferSize, minViewSize } from '@bintoca/cbor/core'
+import { Output, Input, parseItem, finishItem, encodeLoop, decodeLoop, finalChecks, encodeSync, concat, encodeObjectFuncLoop, resetOutput, defaultBufferSize, defaultMinViewSize, Options } from '@bintoca/cbor/core'
 
 export class Encoder extends Duplex {
-    constructor(options?) {
-        const { ...superOpts } = options || {}
-        super({ readableObjectMode: false, writableObjectMode: true, ...superOpts })
-        this.workingBuffer = { buffer: new ArrayBuffer(defaultBufferSize), offset: 0, newBufferSize: defaultBufferSize, minViewSize }
-        this.output = { view: new DataView(this.workingBuffer.buffer, this.workingBuffer.offset, this.workingBuffer.buffer.byteLength - this.workingBuffer.offset), length: 0, stack: [], buffers: [], workingBuffer: this.workingBuffer }
+    constructor(options?: Options & { superOpts?}) {
+        super({ readableObjectMode: false, writableObjectMode: true, ...options?.superOpts })
+        let { backingView, newBufferSize, minViewSize, useWTF8, useRecursion } = options || {}
+        backingView = backingView || new Uint8Array(defaultBufferSize)
+        newBufferSize = newBufferSize || defaultBufferSize
+        minViewSize = minViewSize || defaultMinViewSize
+        this.output = { view: new DataView(backingView.buffer, backingView.byteOffset, backingView.byteLength), length: 0, stack: [], buffers: [], backingView, offset: 0, newBufferSize, minViewSize, useWTF8, useRecursion }
     }
-    private workingBuffer: WorkingBuffer
     private output: Output
     private chunks: any[]
     private cb: (error?: Error | null) => void
@@ -57,4 +58,5 @@ export class Encoder extends Duplex {
             this.destroy(e)
         }
     }
+    encode = (value): Uint8Array => concat(encodeSync(value, this.output))
 }

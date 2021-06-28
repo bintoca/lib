@@ -1,4 +1,4 @@
-import { encodeAdditionalInformation, additionalInformationSize, integerItem, binaryItem, textItem, numberItem, bigintItem, arrayItem, nullItem, mapItem, tagItem, decodeAdditionalInformation, encodeSyncLoop, writeItem, writeItemCore, getFloat16, undefinedItem, booleanItem, Output } from '@bintoca/cbor/core'
+import { encodeAdditionalInformation, additionalInformationSize, integerItem, binaryItem, textItem, numberItem, bigintItem, arrayItem, nullItem, mapItem, tagItem, decodeAdditionalInformation, encodeSync, hasBadSurrogates, undefinedItem, booleanItem, Output } from '@bintoca/cbor/core'
 import * as lite from '@bintoca/cbor'
 import * as node from '@bintoca/cbor/node'
 
@@ -26,18 +26,44 @@ test.each([[0, '0,0,0,0,0,0,0,0,0', 1], [23, '23,0,0,0,0,0,0,0,0', 1], [24, '24,
     expect(new Uint8Array(out.view.buffer).toString()).toBe(e)
     expect(out.length).toBe(l)
 })
-
 test.each([[new Uint8Array([1, 2, 3]), '67,1,2,3,0,0,0,0,0', 4]])('binaryItem(%s)', (a, e, l) => {
     const out = { view: new DataView(new ArrayBuffer(9)), length: 0 } as Output
     binaryItem(a, out)
     expect(new Uint8Array(out.view.buffer).toString()).toBe(e)
     expect(out.length).toBe(l)
 })
-test.each([['hello', '101,104,101,108,108,111,0,0,0', 6]])('textItem(%s)', (a, e, l) => {
-    const out = { view: new DataView(new ArrayBuffer(9)), length: 0 } as Output
+test.each([['hello', '101,104,101,108,108,111', ''], ['😊', '100,240,159,152,138', ''], ['😊😊😊', '108,240,159,152,138,240,159,152,138,240', '159,152,138'], ['a\uD800\uD800', '103,97,239,191,189,239,191,189', '']])('textItem(%s)', (a, e, e2) => {
+    const out = { view: new DataView(new ArrayBuffer(10)), length: 0 } as Output
     textItem(a, out)
-    expect(new Uint8Array(out.view.buffer).toString()).toBe(e)
-    expect(out.length).toBe(l)
+    expect(new Uint8Array(out.view.buffer, 0, out.length).toString()).toBe(e)
+    if (e2) {
+        expect(out.resumeBuffer.toString()).toBe(e2)
+    } else {
+        expect(out.resumeBuffer).toBeUndefined()
+    }
+})
+test.each([['hello', '101,104,101,108,108,111', ''], ['😊', '100,240,159,152,138', ''], ['😊😊😊', '108,240,159,152,138,240,159,152,138,240', '159,152,138'], ['a\uD800\uD800', '217,1,17', '97,195,173,194,160,194,128,195,173,194,160,194,128']])('textItemWTF8(%s)', (a, e, e2) => {
+    const out = { view: new DataView(new ArrayBuffer(10)), length: 0, useWTF8: true } as Output
+    textItem(a, out)
+    expect(new Uint8Array(out.view.buffer, 0, out.length).toString()).toBe(e)
+    if (e2) {
+        expect(out.resumeBuffer.toString()).toBe(e2)
+    } else {
+        expect(out.resumeBuffer).toBeUndefined()
+    }
+})
+test.each([['a\uD800\uD800', '217,1,17', '97,195,173,194,160,194,128,195,173,194,160,194,128']])('multipleResumeItem(%s)', (a, e, e2) => {
+    const out = { view: new DataView(new ArrayBuffer(10), 8, 2), length: 0, useWTF8: true } as Output
+    textItem(a, out)
+    expect(out.length).toBe(0)
+    expect(out.resumeItem).toEqual([{ major: 6, adInfo: 273 }, { major: 2, adInfo: 13 }])
+    expect(out.resumeBuffer.toString()).toBe(e2)
+})
+test.each(['\uD800', '\uDC00', '\uD800\uD800', '\uDBFF', '\uDFFF', '\uDFFF\uDFFF', 'a\uD800', 'a\uD800\uD800', 'a\uDC00', '\uD800a', '\uD800\uD800a', '\uDC00a', '\uD800a\uDC00', '\uDC00\uD800'])('hasBadSurrogates(%s)', (a) => {
+    expect(hasBadSurrogates(a)).toBeTruthy()
+})
+test.each(['\uD800\uDC00', '\uDBFF\uDFFF'])('hasBadSurrogatesFalse(%s)', (a) => {
+    expect(hasBadSurrogates(a)).toBeFalsy()
 })
 test.each([[BigInt(1234), '194,66,4,210,0,0,0,0,0,0', 4], [BigInt(-1234), '195,66,4,209,0,0,0,0,0,0', 4]])('bigintItem(%s)', (a, e, l) => {
     const out = { view: new DataView(new ArrayBuffer(10)), length: 0 } as Output
@@ -64,14 +90,25 @@ test.each([[[0, 1], 0, 1], [[24, 50], 50, 2], [[25, 1, 0], 256, 3], [[26, 1, 0, 
     expect(decodeAdditionalInformation(0, a[0], dv, inp)).toBe(e)
     expect(inp.position).toBe(p)
 })
-test.each([[{}, [new Uint8Array([160])]],
+test.each([[{ a: 1, b: [2, 3] }, [new Uint8Array([162, 97, 97, 1, 97, 98, 130, 2, 3])]],
 [[new ArrayBuffer(4092), new ArrayBuffer(8)], [new Uint8Array([130, 89, 15, 252].concat(Array(4092))), new Uint8Array([72].concat(Array(8)))]], //resumeItem
 [[new ArrayBuffer(4100)], [new Uint8Array([129, 89, 16, 4].concat(Array(4092))), new Uint8Array(Array(8))]], //resumeBuffer
 [[new ArrayBuffer(4100), new ArrayBuffer(4100)], [new Uint8Array([130, 89, 16, 4].concat(Array(4092))), new Uint8Array(Array(8).concat([89, 16, 4].concat(Array(4085)))), new Uint8Array(Array(15))]], //resumeBuffer 2
 [[new ArrayBuffer(9000)], [new Uint8Array([129, 89, 35, 40].concat(Array(4092))), new Uint8Array(4096), new Uint8Array(Array(812))]], //resumeBuffer large
 ])('encodeSyncLoop(%#)', (a, e) => {
-    const r = encodeSyncLoop(a, { buffer: new ArrayBuffer(4096), offset: 0, newBufferSize: 4096, minViewSize: 256 })
-    //console.log(r)
+    const backingView = new Uint8Array(4096)
+    const r = encodeSync(a, { view: new DataView(backingView.buffer, backingView.byteOffset, backingView.byteLength), length: 0, backingView, offset: 0, newBufferSize: 4096, minViewSize: 512, stack: [], buffers: [] })
+    expect(r.length).toBe(e.length)
+    expect(r).toEqual(e)
+})
+test.each([[{ a: 1, b: [2, 3] }, [new Uint8Array([162, 97, 97, 1, 97, 98, 130, 2, 3])]],
+[[new ArrayBuffer(4092), new ArrayBuffer(8)], [new Uint8Array([130, 89, 15, 252].concat(Array(4092))), new Uint8Array([72].concat(Array(8)))]], //resumeItem
+[[new ArrayBuffer(4100)], [new Uint8Array([129, 89, 16, 4].concat(Array(4092))), new Uint8Array(Array(8))]], //resumeBuffer
+[[new ArrayBuffer(4100), new ArrayBuffer(4100)], [new Uint8Array([130, 89, 16, 4].concat(Array(4092))), new Uint8Array(Array(8).concat([89, 16, 4].concat(Array(4085)))), new Uint8Array(Array(15))]], //resumeBuffer 2
+[[new ArrayBuffer(9000)], [new Uint8Array([129, 89, 35, 40].concat(Array(4092))), new Uint8Array(4096), new Uint8Array(Array(812))]], //resumeBuffer large
+])('encodeSyncRecursive(%#)', (a, e) => {
+    const backingView = new Uint8Array(4096)
+    const r = encodeSync(a, { view: new DataView(backingView.buffer, backingView.byteOffset, backingView.byteLength), length: 0, backingView, offset: 0, newBufferSize: 4096, minViewSize: 512, stack: [], buffers: [], useRecursion: true })
     expect(r.length).toBe(e.length)
     expect(r).toEqual(e)
 })

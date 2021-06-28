@@ -1,8 +1,9 @@
-const scratchDataView = new DataView(new ArrayBuffer(8))
+import wtf8 from 'wtf-8'
+const scratchDataView = new DataView(new ArrayBuffer(9))
 const TE = new TextEncoder()
 export const TD = new TextDecoder('utf-8', { fatal: true })
 export const defaultBufferSize = 4096
-export const minViewSize = 512
+export const defaultMinViewSize = 512
 export const encodeAdditionalInformation = (n: number, float?: boolean) => {
     if (float) {
         scratchDataView.setFloat32(0, n)
@@ -36,7 +37,10 @@ export const additionalInformationSize = (n: number) => {
     return 8
 }
 export type MajorTypes = 0 | 1 | 2 | 3 | 4 | 5 | 6 | 7 | -1
-export type Output = { view: DataView, length: number, stack: any[], workingBuffer: WorkingBuffer, buffers: Uint8Array[], resumeItem?: { major: MajorTypes, adInfo: number, float?: boolean }, resumeBuffer?: BufferSource }
+export type Output = {
+    view: DataView, length: number, stack: any[], buffers: Uint8Array[], useWTF8?: boolean, useRecursion?: boolean
+    resumeItem?: { major: MajorTypes, adInfo: number, float?: boolean }[], resumeBuffer?: BufferSource, backingView: ArrayBufferView, offset: number, newBufferSize: number, minViewSize: number
+}
 export const appendBuffer = (out: Output, b: BufferSource) => {
     out.resumeBuffer = undefined
     if (out.resumeItem) {
@@ -52,6 +56,11 @@ export const appendBuffer = (out: Output, b: BufferSource) => {
             new Uint8Array(out.view.buffer, out.view.byteOffset, out.view.byteLength).set(b instanceof ArrayBuffer ? new Uint8Array(b, 0, len) : new Uint8Array(b.buffer, b.byteOffset, len), out.length)
             out.length += len
             out.resumeBuffer = b instanceof ArrayBuffer ? new Uint8Array(b, len, b.byteLength - len) : new Uint8Array(b.buffer, b.byteOffset + len, b.byteLength - len)
+            if (out.useRecursion) {
+                out.buffers.push(new Uint8Array(out.view.buffer, out.view.byteOffset, out.length))
+                resetOutput(out)
+                appendBuffer(out, out.resumeBuffer)
+            }
         }
     }
 }
@@ -133,13 +142,22 @@ export const writeItemCore = (major: MajorTypes, adInfo: number, dv: DataView, o
     return 9
 }
 export const writeItem = (major: MajorTypes, adInfo: number, out: Output) => {
-    out.resumeItem = undefined
     const written = writeItemCore(major, adInfo, out.view, out.length)
     if (written) {
         out.length += written
     }
     else {
-        out.resumeItem = { major, adInfo }
+        if (out.useRecursion) {
+            out.buffers.push(new Uint8Array(out.view.buffer, out.view.byteOffset, out.length))
+            resetOutput(out)
+            writeItem(major, adInfo, out)
+        }
+        else {
+            if (!out.resumeItem) {
+                out.resumeItem = []
+            }
+            out.resumeItem.push({ major, adInfo })
+        }
     }
 }
 export const integerItem = (value: number, out: Output) => value >= 0 ? writeItem(0, value, out) : writeItem(1, -(value + 1), out)
@@ -150,15 +168,93 @@ export const binaryItem = (v: BufferSource, out: Output) => {
     writeItem(2, v.byteLength, out)
     appendBuffer(out, v)
 }
-export const textItem = (s: string, out: Output) => {
-    writeItem(3, s.length, out)
+export const hasBadSurrogates = (s: string): boolean => {
+    let low = false
     for (let i = 0; i < s.length; i++) {
-        out.view.setUint8(out.length, s.charCodeAt(i))
-        out.length++
+        const c = s.charCodeAt(i)
+        if (c >= 0xD800 && c <= 0xDBFF) {
+            if (low) {
+                return true
+            }
+            low = true
+        }
+        else if (c >= 0xDC00 && c <= 0xDFFF) {
+            if (!low) {
+                return true
+            }
+            low = false
+        }
+        else {
+            if (low) {
+                return true
+            }
+            low = false
+        }
     }
-    // const v = TE.encode(s)
-    // writeItem(3, v.byteLength, out)
-    // appendBuffer(out, v)
+    return low
+}
+export const textItemCopy = (s: string, out: Output) => {
+    let major: MajorTypes = 3
+    if (out.useWTF8 && hasBadSurrogates(s)) {
+        s = wtf8.encode(s)
+        tagItem(tags.WTF8, out)
+        major = 2
+    }
+    const v = TE.encode(s)
+    writeItem(major, v.byteLength, out)
+    appendBuffer(out, v)
+}
+export const textItem = (s: string, out: Output) => {
+    const maybeFitsView = out.length + s.length + 9 <= out.view.byteLength
+    const start = out.length
+    let fullEncode
+    if (maybeFitsView) {
+        const dv = out.view
+        writeItem(3, s.length, out)
+        const len = out.length
+        for (let i = 0; i < s.length; i++) {
+            const ch = s.charCodeAt(i)
+            if (ch < 128) {
+                dv.setUint8(len + i, ch)
+            }
+            else {
+                fullEncode = true
+                break
+            }
+        }
+        out.length += s.length
+    }
+    else {
+        textItemCopy(s, out)
+    }
+    if (fullEncode) {
+        out.length = start
+        if (!out.useWTF8 && TE.encodeInto && maybeFitsView) {
+            writeItem(3, s.length, out)
+            const r = TE.encodeInto(s, new Uint8Array(out.view.buffer, out.view.byteOffset + out.length, out.view.byteLength - out.length))
+            if (r.read == s.length) {
+                if (r.written == s.length) {
+                    out.length += r.written
+                }
+                else {
+                    if (out.length - start == writeItemCore(3, r.written, out.view, start)) {
+                        out.length += r.written
+                    }
+                    else {
+                        out.length = start
+                        textItemCopy(s, out)
+                    }
+                }
+            }
+            else {
+                out.length = start
+                textItemCopy(s, out)
+            }
+        }
+        else {
+            textItemCopy(s, out)
+        }
+    }
 }
 export const arrayItem = (length: number, out: Output) => writeItem(4, length, out)
 export const mapItem = (length: number, out: Output) => writeItem(5, length, out)
@@ -182,15 +278,80 @@ export const bigintItem = (val: bigint, out: Output) => {
     }
     binaryItem(v.reverse(), out)
 }
-export const encodeRecursive = (value) => {
-
+export const encodeArrayRecursive = (a: any[], out: Output) => {
+    arrayItem(a.length, out)
+    for (let k of a) {
+        encodeRecursive(k, out)
+    }
+}
+export const encodeObjectRecursive = (a, out: Output) => {
+    const ks = Object.keys(a)
+    mapItem(ks.length, out)
+    for (let k of ks) {
+        encodeRecursive(k, out)
+        encodeRecursive(a[k], out)
+    }
+}
+export const encodeMapRecursive = (a: Map<any, any>, out: Output) => {
+    mapItem(a.size, out)
+    for (let i of a.entries()) {
+        encodeRecursive(i[0], out)
+        encodeRecursive(i[1], out)
+    }
+}
+export const encodeObjectFuncRecursive = (a, out: Output) => {
+    if (a === null) {
+        nullItem(out)
+    }
+    else if (Array.isArray(a)) {
+        encodeArrayRecursive(a, out)
+    }
+    else if (a instanceof ArrayBuffer || ArrayBuffer.isView(a)) {
+        binaryItem(a, out)
+    }
+    else if (a instanceof Date) {
+        encodeDate(a, out)
+    }
+    else if (a instanceof Map) {
+        encodeMapRecursive(a, out)
+    }
+    else {
+        encodeObjectRecursive(a, out)
+    }
+}
+export const encodeRecursive = (a, out: Output) => {
+    if (typeof a == 'string') {
+        textItem(a, out)
+    }
+    else if (typeof a == 'number') {
+        numberItem(a, out)
+    }
+    else if (typeof a == 'object') {
+        encodeObjectFuncRecursive(a, out)
+    }
+    else if (typeof a == 'boolean') {
+        booleanItem(a, out)
+    }
+    else if (typeof a == 'bigint') {
+        bigintItem(a, out)
+    }
+    else if (a === undefined) {
+        undefinedItem(out)
+    }
+    else {
+        throw new Error('unsupported type ' + typeof a)
+    }
 }
 export type EncodeObjectFunc = (value, stack: any[], out: Output) => void
 export type EncodeAltFunc = (value, stack: any[], out: Output) => boolean
 export const encodeLoop = (out: Output, encodeObject: EncodeObjectFunc, alt?: EncodeAltFunc) => {
     const st = out.stack
     if (out.resumeItem) {
-        writeItem(out.resumeItem.major, out.resumeItem.adInfo, out)
+        const resume = out.resumeItem
+        out.resumeItem = undefined
+        for (let r of resume) {
+            writeItem(r.major, r.adInfo, out)
+        }
     }
     if (out.resumeBuffer) {
         appendBuffer(out, out.resumeBuffer)
@@ -200,26 +361,23 @@ export const encodeLoop = (out: Output, encodeObject: EncodeObjectFunc, alt?: En
         if (alt && alt(a, st, out)) {
         }
         else {
-            if (a === null) {
-                nullItem(out)
-            }
-            else if (a === undefined) {
-                undefinedItem(out)
-            }
-            else if (typeof a == 'object') {
-                encodeObject(a, st, out)
-            }
-            else if (typeof a == 'string') {
+            if (typeof a == 'string') {
                 textItem(a, out)
             }
             else if (typeof a == 'number') {
                 numberItem(a, out)
+            }
+            else if (typeof a == 'object') {
+                encodeObject(a, st, out)
             }
             else if (typeof a == 'boolean') {
                 booleanItem(a, out)
             }
             else if (typeof a == 'bigint') {
                 bigintItem(a, out)
+            }
+            else if (a === undefined) {
+                undefinedItem(out)
             }
             else {
                 throw new Error('unsupported type ' + typeof a)
@@ -271,7 +429,10 @@ export const encodeSetLoop = (a: Set<any>, stack: any[], out: Output) => {
     }
 }
 export const encodeObjectFuncLoop = (a, stack: any[], out: Output) => {
-    if (Array.isArray(a)) {
+    if (a === null) {
+        nullItem(out)
+    }
+    else if (Array.isArray(a)) {
         encodeArrayLoop(a, stack, out)
     }
     else if (a instanceof ArrayBuffer || ArrayBuffer.isView(a)) {
@@ -287,9 +448,18 @@ export const encodeObjectFuncLoop = (a, stack: any[], out: Output) => {
         encodeObjectLoop(a, stack, out)
     }
 }
-export type WorkingBuffer = { buffer: ArrayBuffer, offset: number, newBufferSize: number, minViewSize: number }
-export const encodeSyncLoop = (value, workingBuffer: WorkingBuffer): Uint8Array[] => {
-    const out: Output = { view: new DataView(workingBuffer.buffer, workingBuffer.offset, workingBuffer.buffer.byteLength - workingBuffer.offset), length: 0, stack: [value], buffers: [], workingBuffer }
+export const encodeSync = (value, out: Output): Uint8Array[] => {
+    resetOutput(out)
+    out.buffers = []
+    if (out.useRecursion) {
+        encodeRecursive(value, out)
+        out.buffers.push(new Uint8Array(out.view.buffer, out.view.byteOffset, out.length))
+        return out.buffers
+    }
+    out.stack = [value]
+    return encodeSyncLoop(out)
+}
+export const encodeSyncLoop = (out: Output): Uint8Array[] => {
     do {
         encodeLoop(out, encodeObjectFuncLoop)
         out.buffers.push(new Uint8Array(out.view.buffer, out.view.byteOffset, out.length))
@@ -299,14 +469,14 @@ export const encodeSyncLoop = (value, workingBuffer: WorkingBuffer): Uint8Array[
     return out.buffers
 }
 export const resetOutput = (out: Output, view?: ArrayBufferView) => {
-    if (out.view.byteLength - out.length < out.workingBuffer.minViewSize) {
-        out.workingBuffer.buffer = new ArrayBuffer(out.workingBuffer.newBufferSize)
-        out.workingBuffer.offset = 0
+    if (out.view.byteLength - out.length < out.minViewSize) {
+        out.backingView = new Uint8Array(out.newBufferSize)
+        out.offset = 0
     }
     else {
-        out.workingBuffer.offset += out.length
+        out.offset += out.length
     }
-    out.view = view ? new DataView(view.buffer, view.byteOffset, view.byteLength) : new DataView(out.workingBuffer.buffer, out.workingBuffer.offset, out.workingBuffer.buffer.byteLength - out.workingBuffer.offset)
+    out.view = view ? new DataView(view.buffer, view.byteOffset, view.byteLength) : new DataView(out.backingView.buffer, out.backingView.byteOffset + out.offset, out.backingView.byteLength - out.offset)
     out.length = 0
 }
 export const concat = (buffers: Uint8Array[]): Uint8Array => {
@@ -616,3 +786,4 @@ export const enum tags {
 
     extendedTime = 1001,
 }
+export type Options = { backingView?: ArrayBufferView, newBufferSize?: number, minViewSize?: number, useWTF8?: boolean, useRecursion?: boolean }
