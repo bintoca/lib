@@ -2,4 +2,3 @@ node_modules
 
 packages/**/*.js
 packages/**/*.d.ts
-src/**/*.js

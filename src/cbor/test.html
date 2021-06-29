@@ -7,59 +7,37 @@
 </head>
 
 <body>
+    <input type="file" multiple id="fileIn">
     <script type="importmap">
         {
           "imports": {
             "@bintoca/cbor": "/packages/cbor/index.js",
             "@bintoca/cbor/core": "/packages/cbor/core.js",
             "tester": "/packages/cbor/browser-tester.js",
-            "wtf-8": "/packages/cbor/wtf8.js"
+            "wtf-8": "data:text/javascript,export default {}",
+            "idb/":"/node_modules/idb/"
           }
         }
     </script>
     <script type="module">
         import { Encoder } from '@bintoca/cbor'
-        import { print, checkArray, pushScope, eq } from 'tester'
+        import { print, checkArray, pushScope, popScope, eq } from 'tester'
+        //import * as idb from 'idb/with-async-ittr.js'
 
         async function test() {
-            pushScope('Encoder')
-            {
-                const enc = new Encoder()
-                const wr = enc.writable.getWriter()
-                await wr.ready
-                wr.write('hello')
-                wr.write('doo')
-                wr.close()
-                const rr = enc.readable.getReader({ mode: 'byob' })
-                let v
-                let ab = new ArrayBuffer(16)
-                let offset = 0
-                while (true) {
-                    const a = await rr.read(new Uint8Array(ab, offset))
-                    if (a.done) {
-                        v = new Uint8Array(a.value.buffer, 0, offset)
-                        break
-                    }
-                    else {
-
-                        ab = a.value.buffer
-                        offset += a.value.byteLength
-                    }
-                }
-                checkArray('byob', [v.toString()], ['101,104,101,108,108,111,99,100,111,111'])
-            }
-            {
-                const enc = new Encoder()
-                const wr = enc.writable.getWriter()
-                await wr.ready
-                wr.write('hello')
-                wr.write('doo')
-                wr.close()
-                const rr = enc.readable.getReader({ mode: 'byob' })
-                let v
-                let ab = new ArrayBuffer(8)
-                let offset = 0
-                try {
+            {//Encoder
+                pushScope('Encoder')
+                {
+                    const enc = new Encoder()
+                    const wr = enc.writable.getWriter()
+                    await wr.ready
+                    wr.write('hello')
+                    wr.write('doo')
+                    wr.close()
+                    const rr = enc.readable.getReader({ mode: 'byob' })
+                    let v
+                    let ab = new ArrayBuffer(16)
+                    let offset = 0
                     while (true) {
                         const a = await rr.read(new Uint8Array(ab, offset))
                         if (a.done) {
@@ -72,76 +50,43 @@
                             offset += a.value.byteLength
                         }
                     }
+                    checkArray('byob', [v.toString()], ['101,104,101,108,108,111,99,100,111,111'])
                 }
-                catch (e) {
-                    eq('byob error', e.message, 'byob view is too small to write into')
-                }
-            }
-            {
-                const enc = new Encoder()
-                const wr = enc.writable.getWriter()
-                await wr.ready
-                wr.write('hello')
-                wr.write('doo')
-                wr.close()
-                const rr = enc.readable.getReader()
-                let v
-                const r = []
-                do {
-                    v = await rr.read()
-                    if (v.value) {
-                        r.push(v.value)
-                    }
-                }
-                while (!v.done)
-                checkArray('write then read', r.map(x => x.toString()), ['101,104,101,108,108,111', '99,100,111,111'])
-            }
-            {
-                const enc = new Encoder()
-                const wr = enc.writable.getWriter()
-                setTimeout(async () => {
+                {
+                    const enc = new Encoder()
+                    const wr = enc.writable.getWriter()
                     await wr.ready
                     wr.write('hello')
                     wr.write('doo')
                     wr.close()
-                }, 100);
+                    const rr = enc.readable.getReader({ mode: 'byob' })
+                    let v
+                    let ab = new ArrayBuffer(8)
+                    let offset = 0
+                    try {
+                        while (true) {
+                            const a = await rr.read(new Uint8Array(ab, offset))
+                            if (a.done) {
+                                v = new Uint8Array(a.value.buffer, 0, offset)
+                                break
+                            }
+                            else {
 
-                const rr = enc.readable.getReader()
-                let v
-                const r = []
-                do {
-                    v = await rr.read()
-                    if (v.value) {
-                        r.push(v.value)
+                                ab = a.value.buffer
+                                offset += a.value.byteLength
+                            }
+                        }
+                    }
+                    catch (e) {
+                        eq('byob error', e.message, 'byob view is too small to write into')
                     }
                 }
-                while (!v.done)
-                checkArray('read then write', r.map(x => x.toString()), ['101,104,101,108,108,111', '99,100,111,111'])
-            }
-            {
-                const enc = new Encoder()
-                const wr = enc.writable.getWriter()
-                await wr.ready
-                wr.write(new Uint8Array(4100))
-                wr.close()
-                const rr = enc.readable.getReader()
-                let v
-                const r = []
-                do {
-                    v = await rr.read()
-                    if (v.value) {
-                        r.push(v.value)
-                    }
-                }
-                while (!v.done)
-                checkArray('split chunk', r.map(x => x.toString()), [new Uint8Array([89, 16, 4].concat(Array(4093))).toString(), new Uint8Array(7).toString()])
-            }
-            {
-                try {
+                {
                     const enc = new Encoder()
                     const wr = enc.writable.getWriter()
                     await wr.ready
-                    wr.write({ f: () => { } })
+                    wr.write('hello')
+                    wr.write('doo')
                     wr.close()
                     const rr = enc.readable.getReader()
                     let v
@@ -153,110 +98,283 @@
                         }
                     }
                     while (!v.done)
+                    checkArray('write then read', r.map(x => x.toString()), ['101,104,101,108,108,111', '99,100,111,111'])
                 }
-                catch (e) {
-                    eq('error', e.message, 'unsupported type function')
+                {
+                    const cycle1 = {}
+                    const cycle2 = {}
+                    cycle1['a'] = cycle1
+                    cycle1['b'] = [cycle2, cycle2]
+                    const enc = new Encoder({ encodeCycles: true })
+                    const wr = enc.writable.getWriter()
+                    await wr.ready
+                    wr.write('hello')
+                    wr.write(cycle1)
+                    wr.close()
+                    const rr = enc.readable.getReader()
+                    let v
+                    const r = []
+                    do {
+                        v = await rr.read()
+                        if (v.value) {
+                            r.push(v.value)
+                        }
+                    }
+                    while (!v.done)
+                    checkArray('cycles', r.map(x => x.toString()), ['101,104,101,108,108,111', '216,28,162,97,97,216,29,0,97,98,130,216,28,160,216,29,1'])
                 }
-            }
-            {
-                const enc = new Encoder()
-                const wr = enc.writable.getWriter()
-                await wr.ready
-                wr.write('hello')
-                wr.write('doo')
-                wr.abort()
-                const rr = enc.readable.getReader()
-                let v
-                const r = []
-                do {
-                    v = await rr.read()
-                    if (v.value) {
-                        r.push(v.value)
+                {
+                    const enc = new Encoder()
+                    const wr = enc.writable.getWriter()
+                    setTimeout(async () => {
+                        await wr.ready
+                        wr.write('hello')
+                        wr.write('doo')
+                        wr.close()
+                    }, 100);
+
+                    const rr = enc.readable.getReader()
+                    let v
+                    const r = []
+                    do {
+                        v = await rr.read()
+                        if (v.value) {
+                            r.push(v.value)
+                        }
+                    }
+                    while (!v.done)
+                    checkArray('read then write', r.map(x => x.toString()), ['101,104,101,108,108,111', '99,100,111,111'])
+                }
+                {
+                    const enc = new Encoder()
+                    const wr = enc.writable.getWriter()
+                    await wr.ready
+                    wr.write(new Uint8Array(4100))
+                    wr.close()
+                    const rr = enc.readable.getReader()
+                    let v
+                    const r = []
+                    do {
+                        v = await rr.read()
+                        if (v.value) {
+                            r.push(v.value)
+                        }
+                    }
+                    while (!v.done)
+                    checkArray('split chunk', r.map(x => x.toString()), [new Uint8Array([89, 16, 4].concat(Array(4093))).toString(), new Uint8Array(7).toString()])
+                }
+                {
+                    try {
+                        const enc = new Encoder()
+                        const wr = enc.writable.getWriter()
+                        await wr.ready
+                        wr.write({ f: () => { } })
+                        wr.close()
+                        const rr = enc.readable.getReader()
+                        let v
+                        const r = []
+                        do {
+                            v = await rr.read()
+                            if (v.value) {
+                                r.push(v.value)
+                            }
+                        }
+                        while (!v.done)
+                    }
+                    catch (e) {
+                        eq('error', e.message, 'unsupported type function')
                     }
                 }
-                while (!v.done)
-                checkArray('abort', r.map(x => x.toString()), ['101,104,101,108,108,111'])
-            }
-            {
-                const enc = new Encoder()
-                const wr = enc.writable.getWriter()
-                await wr.ready
-                wr.write('hello')
-                wr.write('doo')
-                enc.readable.cancel()
-                const rr = enc.readable.getReader()
-                let v
-                const r = []
-                do {
-                    v = await rr.read()
-                    if (v.value) {
-                        r.push(v.value)
+                {
+                    const enc = new Encoder()
+                    const wr = enc.writable.getWriter()
+                    await wr.ready
+                    wr.write('hello')
+                    wr.write('doo')
+                    wr.abort()
+                    const rr = enc.readable.getReader()
+                    let v
+                    const r = []
+                    do {
+                        v = await rr.read()
+                        if (v.value) {
+                            r.push(v.value)
+                        }
                     }
+                    while (!v.done)
+                    checkArray('abort', r.map(x => x.toString()), ['101,104,101,108,108,111'])
                 }
-                while (!v.done)
-                checkArray('cancel', r.map(x => x.toString()), [])
-            }
-            {
-                const data = ['hello', 'doo']
-                let ind = 0
-                const rs = new ReadableStream({
-                    pull(controller) {
-                        controller.enqueue(data[ind])
-                        if (data.length - 1 == ind) {
-                            controller.close()
+                {
+                    const enc = new Encoder()
+                    const wr = enc.writable.getWriter()
+                    await wr.ready
+                    wr.write('hello')
+                    wr.write('doo')
+                    enc.readable.cancel()
+                    const rr = enc.readable.getReader()
+                    let v
+                    const r = []
+                    do {
+                        v = await rr.read()
+                        if (v.value) {
+                            r.push(v.value)
                         }
-                        else {
-                            ind++
-                        }
-                    },
-                })
-                const enc = new Encoder()
-                rs.pipeTo(enc.writable)
-                const rr = enc.readable.getReader()
-                let v
-                const r = []
-                do {
-                    v = await rr.read()
-                    if (v.value) {
-                        r.push(v.value)
                     }
+                    while (!v.done)
+                    checkArray('cancel', r.map(x => x.toString()), [])
                 }
-                while (!v.done)
-                checkArray('pipeTo', r.map(x => x.toString()), ['101,104,101,108,108,111', '99,100,111,111'])
-            }
-            {
-                const data = ['hello', 'doo']
-                let ind = 0
-                const rs = new ReadableStream({
-                    pull(controller) {
-                        controller.enqueue(data[ind])
-                        if (data.length - 1 == ind) {
-                            controller.close()
+                {
+                    const data = ['hello', 'doo']
+                    let ind = 0
+                    const rs = new ReadableStream({
+                        pull(controller) {
+                            controller.enqueue(data[ind])
+                            if (data.length - 1 == ind) {
+                                controller.close()
+                            }
+                            else {
+                                ind++
+                            }
+                        },
+                    })
+                    const enc = new Encoder()
+                    rs.pipeTo(enc.writable)
+                    const rr = enc.readable.getReader()
+                    let v
+                    const r = []
+                    do {
+                        v = await rr.read()
+                        if (v.value) {
+                            r.push(v.value)
                         }
-                        else {
-                            ind++
-                        }
-                    },
-                })
-                const enc = new Encoder()
-                rs.pipeThrough(enc)
-                const rr = enc.readable.getReader()
-                let v
-                const r = []
-                do {
-                    v = await rr.read()
-                    if (v.value) {
-                        r.push(v.value)
                     }
+                    while (!v.done)
+                    checkArray('pipeTo', r.map(x => x.toString()), ['101,104,101,108,108,111', '99,100,111,111'])
                 }
-                while (!v.done)
-                checkArray('pipeThrough', r.map(x => x.toString()), ['101,104,101,108,108,111', '99,100,111,111'])
+                {
+                    const data = ['hello', 'doo']
+                    let ind = 0
+                    const rs = new ReadableStream({
+                        pull(controller) {
+                            controller.enqueue(data[ind])
+                            if (data.length - 1 == ind) {
+                                controller.close()
+                            }
+                            else {
+                                ind++
+                            }
+                        },
+                    })
+                    const enc = new Encoder()
+                    rs.pipeThrough(enc)
+                    const rr = enc.readable.getReader()
+                    let v
+                    const r = []
+                    do {
+                        v = await rr.read()
+                        if (v.value) {
+                            r.push(v.value)
+                        }
+                    }
+                    while (!v.done)
+                    checkArray('pipeThrough', r.map(x => x.toString()), ['101,104,101,108,108,111', '99,100,111,111'])
+                }
+                print(['write then read', 'read then write', 'split chunk', 'error', 'abort', 'byob', 'byob error', 'cancel', 'pipeTo', 'pipeThrough', 'cycles'].map(x => 'Encoder/' + x))
+                popScope()
             }
-            print(['write then read', 'read then write', 'split chunk', 'error', 'abort', 'byob', 'byob error', 'cancel', 'pipeTo', 'pipeThrough'].map(x => 'Encoder/' + x))
+
         }
         test()
     </script>
+    <script src="/node_modules/idb/build/iife/with-async-ittr-min.js">
+    </script>
     <script>
+        async function doIDB() {
+            const cycle1 = {}
+            const cycle2 = {}
+            cycle1['a'] = cycle1
+            cycle1['b'] = [cycle2, cycle2]
+            const ss = new String('ss')
+            const sy = Symbol('sy')
+            ss[sy] = 5
+            ss.prop = 'prop'
+            const db = await idb.openDB('structuredclone', 1, { upgrade(db) { db.createObjectStore('test1') } });
+            const o = {
+                a: 1,
+                b: 's',
+                c: true,
+                d: new Number(2),
+                e: new String('S'),
+                f: new Boolean(true),
+                g: 3n,
+                h: Object(4n),
+                i: undefined,
+                j: null,
+                k: new Date(),
+                l: [],
+                m: new ArrayBuffer(8),
+                n0: new Int8Array(8),
+                n1: new Uint8Array(8),
+                n2: new Uint8ClampedArray(8),
+                n3: new Int16Array([1, 2, 3, 4]),
+                n4: new Uint16Array(8),
+                n5: new Int32Array(8),
+                n6: new Uint32Array(8),
+                n7: new Float32Array(8),
+                n8: new Float64Array(8),
+                n9: typeof BigInt64Array != 'function' ? 'placeholder for BigInt64Array' : new BigInt64Array(8),
+                n10: typeof BigUint64Array != 'function' ? 'placeholder for BigUint64Array' : new BigUint64Array(8),
+                o: new Blob(),
+                p: new File([''], 'name'),
+                q: navigator.vendor === '' ? 'placeholder for FileList' : document.getElementById('fileIn').files,//FileList
+                r: ss, //Symbol and extra members get dropped
+                s: { [sy]: 6 }, //Symbol and extra members get dropped
+                t: new RegExp('d'),
+                u: new DataView(new ArrayBuffer(4)),
+                v: navigator.vendor === '' || typeof createImageBitmap != 'function' ? 'placeholder for ImageBitmap' : (await createImageBitmap(new ImageData(5, 5))),
+                w: new ImageData(new Uint8ClampedArray([1, 2, 3, 4, 5, 6, 7, 8]), 2, 1),
+                x: new Map(),
+                y: new Set(),
+                z: await crypto.subtle.generateKey({ name: 'HMAC', hash: 'SHA-256' }, true, ['verify']),
+                z0: navigator.vendor === '' ? 'placeholder for ECDSA key' : await crypto.subtle.generateKey({ name: 'ECDSA', namedCurve: 'P-256' }, true, ['sign', 'verify']),
+                za: NaN,
+                zb: navigator.vendor === '' || navigator.vendor === 'Apple Computer, Inc.' ? 'placeholder for Error' : new Error('err'),
+                zc: new DOMPointReadOnly(),
+                zd: new DOMPoint(),
+                ze: new DOMRectReadOnly(),
+                zf: new DOMRect(),
+                zg: new DOMMatrixReadOnly(),
+                zh: new DOMMatrix([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16]),
+                zi: new DOMQuad(),
+                zj: navigator.vendor === 'Google Inc.' || navigator.vendor === 'Apple Computer, Inc.' ? 'placeholder for URLSearchParams' : new URLSearchParams(),
+                //zk: await RTCPeerConnection.generateCertificate({ name: "ECDSA", namedCurve: "P-256" }), //RTCCertificate ****can't export ***can't move to worker in FF
+                zl: navigator.vendor === 'Google Inc.' ? 'placeholder for cycle' : cycle1, //***makes whole object null on chrome ***identity of cycle2 not preserved on safari
+                zm: '\uD800\uD801',
+            }
+
+            self.onmessage = ev => {
+                console.log('message', ev.data)
+            }
+            self.onmessageerror = ev => {
+                console.log('mer', ev.data)
+            }
+            const w = new Worker('test-worker.js')
+            w.onerror = ev => {
+                console.log('er', ev)
+            }
+            w.onmessageerror = ev => {
+                console.log('wmer', ev)
+            }
+            w.postMessage(o)
+
+            console.log('object going into idb', o)
+            await db.put('test1', o, 'k1')
+            const o1 = await db.get('test1', 'k1')
+            console.log('object out of idb', o1)
+
+            db.close()
+        }
+        doIDB()
     </script>
 </body>
 

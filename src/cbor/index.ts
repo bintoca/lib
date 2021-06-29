@@ -1,13 +1,13 @@
-import { Output, Input, Options, parseItem, finishItem, encodeLoop, decodeLoop, finalChecks, encodeSync, concat, defaultBufferSize, defaultMinViewSize, resetOutput, encodeObjectFuncLoop } from '@bintoca/cbor/core'
+import { Output, Input, EncoderOptions, parseItem, finishItem, encodeLoop, decodeLoop, finalChecks, encodeSync, concat, defaultBufferSize, defaultMinViewSize, resetOutput, detectCycles } from '@bintoca/cbor/core'
 declare var ReadableStreamBYOBReader
 
 export class Encoder {
-    constructor(options?: Options) {
-        let { backingView, newBufferSize, minViewSize, useWTF8, ...superOpts } = options || {}
-        backingView = backingView || new Uint8Array(defaultBufferSize)
+    constructor(options?: EncoderOptions) {
+        let { backingView, newBufferSize, minViewSize, useWTF8, encodeCycles } = options || {}
+        backingView = backingView || new Uint8Array(newBufferSize || defaultBufferSize)
         newBufferSize = newBufferSize || defaultBufferSize
         minViewSize = minViewSize || defaultMinViewSize
-        this.output = { view: new DataView(backingView.buffer, backingView.byteOffset, backingView.byteLength), length: 0, stack: [], buffers: [], backingView, offset: 0, newBufferSize, minViewSize, useWTF8 }
+        this.output = { view: new DataView(backingView.buffer, backingView.byteOffset, backingView.byteLength), length: 0, stack: [], buffers: [], backingView, offset: 0, newBufferSize, minViewSize, useWTF8, encodeCycles }
         const that = this
         if (typeof ReadableStream == 'undefined') {
             throw new Error('ReadableStream is undefined. If this is a Node.js application you probably want to import { Encoder } from "@bintoca/cbor/node"')
@@ -22,8 +22,9 @@ export class Encoder {
                         function process() {
                             if (out.stack.length == 0 && !out.resumeItem && !out.resumeBuffer) {
                                 out.stack.push(that.chunk)
+                                detectCycles(out.stack[0], out)
                             }
-                            encodeLoop(out, encodeObjectFuncLoop)
+                            encodeLoop(out)
                             if (controller.byobRequest) {
                                 if (out.length == 0) {
                                     controller.error(new Error('byob view is too small to write into'))
@@ -37,6 +38,7 @@ export class Encoder {
                             }
                             if (out.stack.length == 0 && !out.resumeItem && !out.resumeBuffer) {
                                 that.hasChunk = false
+                                that.chunk = undefined
                                 that.writeResolve()
                             }
                         }
@@ -70,6 +72,7 @@ export class Encoder {
                                             reject(e)
                                             if (that.hasChunk) {
                                                 that.hasChunk = false
+                                                that.chunk = undefined
                                                 that.writeReject(e)
                                             }
                                         }
@@ -82,6 +85,7 @@ export class Encoder {
                         controller.error(e)
                         if (that.hasChunk) {
                             that.hasChunk = false
+                            that.chunk = undefined
                             that.writeReject(e)
                         }
                     }

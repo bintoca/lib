@@ -1,16 +1,6 @@
-import { encodeAdditionalInformation, additionalInformationSize, integerItem, binaryItem, textItem, numberItem, bigintItem, arrayItem, nullItem, mapItem, tagItem, decodeAdditionalInformation, encodeSync, hasBadSurrogates, undefinedItem, booleanItem, Output } from '@bintoca/cbor/core'
-import * as lite from '@bintoca/cbor'
+import { integerItem, binaryItem, textItem, numberItem, bigintItem, arrayItem, nullItem, mapItem, tagItem, decodeAdditionalInformation, encodeSync, hasBadSurrogates, undefinedItem, booleanItem, Output } from '@bintoca/cbor/core'
 import * as node from '@bintoca/cbor/node'
 
-test.each([[0, 0], [23, 23], [24, 24], [255, 24], [256, 25], [2 ** 16 - 1, 25], [2 ** 16, 26], [2 ** 32 - 1, 26], [2 ** 32, 27]])('encodeAdditionalInformation(%i,%i)', (a, e) => {
-    expect(encodeAdditionalInformation(a)).toBe(e)
-})
-test.each([[1.5, 26], [1.1, 27]])('encodeAdditionalInformationFloat(%f,%i)', (a, e) => {
-    expect(encodeAdditionalInformation(a, true)).toBe(e)
-})
-test.each([[0, 0], [23, 0], [24, 1], [25, 2], [26, 4], [27, 8]])('additionalInformationSize(%i,%i)', (a, e) => {
-    expect(additionalInformationSize(a)).toBe(e)
-})
 test.each([[0, '0,0,0,0,0,0,0,0,0', 1], [23, '23,0,0,0,0,0,0,0,0', 1], [24, '24,24,0,0,0,0,0,0,0', 2], [256, '25,1,0,0,0,0,0,0,0', 3], [2 ** 16, '26,0,1,0,0,0,0,0,0', 5], [2 ** 32, '27,0,0,0,1,0,0,0,0', 9],
 [-23, '54,0,0,0,0,0,0,0,0', 1], [-25, '56,24,0,0,0,0,0,0,0', 2], [-257, '57,1,0,0,0,0,0,0,0', 3], [-(2 ** 16 + 1), '58,0,1,0,0,0,0,0,0', 5], [-(2 ** 32 + 1), '59,0,0,0,1,0,0,0,0', 9]])('integerItem(%i)', (a, e, l) => {
     const out = { view: new DataView(new ArrayBuffer(9)), length: 0 } as Output
@@ -90,32 +80,38 @@ test.each([[[0, 1], 0, 1], [[24, 50], 50, 2], [[25, 1, 0], 256, 3], [[26, 1, 0, 
     expect(decodeAdditionalInformation(0, a[0], dv, inp)).toBe(e)
     expect(inp.position).toBe(p)
 })
-test.each([[{ a: 1, b: [2, 3] }, [new Uint8Array([162, 97, 97, 1, 97, 98, 130, 2, 3])]],
+
+const cycle1 = {}
+const cycle2 = {}
+cycle1['a'] = cycle1
+cycle1['b'] = [cycle2, cycle2]
+
+test.each([[{ a: 1, b: [2, 3] }, [new Uint8Array([162, 97, 97, 1, 97, 98, 130, 2, 3])]], [cycle1, [new Uint8Array([216, 28, 162, 97, 97, 216, 29, 0, 97, 98, 130, 216, 28, 160, 216, 29, 1])]],
 [[new ArrayBuffer(4092), new ArrayBuffer(8)], [new Uint8Array([130, 89, 15, 252].concat(Array(4092))), new Uint8Array([72].concat(Array(8)))]], //resumeItem
 [[new ArrayBuffer(4100)], [new Uint8Array([129, 89, 16, 4].concat(Array(4092))), new Uint8Array(Array(8))]], //resumeBuffer
 [[new ArrayBuffer(4100), new ArrayBuffer(4100)], [new Uint8Array([130, 89, 16, 4].concat(Array(4092))), new Uint8Array(Array(8).concat([89, 16, 4].concat(Array(4085)))), new Uint8Array(Array(15))]], //resumeBuffer 2
 [[new ArrayBuffer(9000)], [new Uint8Array([129, 89, 35, 40].concat(Array(4092))), new Uint8Array(4096), new Uint8Array(Array(812))]], //resumeBuffer large
 ])('encodeSyncLoop(%#)', (a, e) => {
     const backingView = new Uint8Array(4096)
-    const r = encodeSync(a, { view: new DataView(backingView.buffer, backingView.byteOffset, backingView.byteLength), length: 0, backingView, offset: 0, newBufferSize: 4096, minViewSize: 512, stack: [], buffers: [] })
+    const r = encodeSync(a, { view: new DataView(backingView.buffer, backingView.byteOffset, backingView.byteLength), length: 0, backingView, offset: 0, newBufferSize: 4096, minViewSize: 512, stack: [], buffers: [], encodeCycles: true })
     expect(r.length).toBe(e.length)
     expect(r).toEqual(e)
 })
-test.each([[{ a: 1, b: [2, 3] }, [new Uint8Array([162, 97, 97, 1, 97, 98, 130, 2, 3])]],
+test.each([[{ a: 1, b: [2, 3] }, [new Uint8Array([162, 97, 97, 1, 97, 98, 130, 2, 3])]], [cycle1, [new Uint8Array([216, 28, 162, 97, 97, 216, 29, 0, 97, 98, 130, 216, 28, 160, 216, 29, 1])]],
 [[new ArrayBuffer(4092), new ArrayBuffer(8)], [new Uint8Array([130, 89, 15, 252].concat(Array(4092))), new Uint8Array([72].concat(Array(8)))]], //resumeItem
 [[new ArrayBuffer(4100)], [new Uint8Array([129, 89, 16, 4].concat(Array(4092))), new Uint8Array(Array(8))]], //resumeBuffer
 [[new ArrayBuffer(4100), new ArrayBuffer(4100)], [new Uint8Array([130, 89, 16, 4].concat(Array(4092))), new Uint8Array(Array(8).concat([89, 16, 4].concat(Array(4085)))), new Uint8Array(Array(15))]], //resumeBuffer 2
 [[new ArrayBuffer(9000)], [new Uint8Array([129, 89, 35, 40].concat(Array(4092))), new Uint8Array(4096), new Uint8Array(Array(812))]], //resumeBuffer large
 ])('encodeSyncRecursive(%#)', (a, e) => {
     const backingView = new Uint8Array(4096)
-    const r = encodeSync(a, { view: new DataView(backingView.buffer, backingView.byteOffset, backingView.byteLength), length: 0, backingView, offset: 0, newBufferSize: 4096, minViewSize: 512, stack: [], buffers: [], useRecursion: true })
+    const r = encodeSync(a, { view: new DataView(backingView.buffer, backingView.byteOffset, backingView.byteLength), length: 0, backingView, offset: 0, newBufferSize: 4096, minViewSize: 512, stack: [], buffers: [], encodeCycles: true, useRecursion: true })
     expect(r.length).toBe(e.length)
     expect(r).toEqual(e)
 })
-test.each([['hello', 'doo', '101,104,101,108,108,111', '99,100,111,111']])('nodeStream(%s,%s)', async (a, b, a1, b1) => {
+test.each([['hello', 'doo', '101,104,101,108,108,111', '99,100,111,111'], ['hello', cycle1, '101,104,101,108,108,111', '216,28,162,97,97,216,29,0,97,98,130,216,28,160,216,29,1']])('nodeStream(%s,%s)', async (a, b, a1, b1) => {
     const r: Uint8Array[] = await new Promise((resolve, reject) => {
         const bufs = []
-        const enc = new node.Encoder()
+        const enc = new node.Encoder({ encodeCycles: true })
         enc.on('data', buf => { bufs.push(buf) })
         enc.on('error', reject)
         enc.on('end', () => resolve(bufs))

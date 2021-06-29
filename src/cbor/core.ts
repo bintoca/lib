@@ -1,48 +1,14 @@
 import wtf8 from 'wtf-8'
-const scratchDataView = new DataView(new ArrayBuffer(9))
 const TE = new TextEncoder()
 export const TD = new TextDecoder('utf-8', { fatal: true })
 export const defaultBufferSize = 4096
 export const defaultMinViewSize = 512
-export const encodeAdditionalInformation = (n: number, float?: boolean) => {
-    if (float) {
-        scratchDataView.setFloat32(0, n)
-        const v1 = scratchDataView.getFloat32(0)
-        if (v1 === n) {
-            return 26
-        }
-        return 27
-    }
-    if (n < 24) {
-        return n
-    } else if (n < 0x100) {
-        return 24
-    } else if (n < 0x10000) {
-        return 25
-    } else if (n < 0x100000000) {
-        return 26
-    }
-    return 27
-}
-export const additionalInformationSize = (n: number) => {
-    if (n < 24) {
-        return 0
-    } else if (n == 24) {
-        return 1
-    } else if (n == 25) {
-        return 2
-    } else if (n == 26) {
-        return 4
-    }
-    return 8
-}
 export type MajorTypes = 0 | 1 | 2 | 3 | 4 | 5 | 6 | 7 | -1
 export type Output = {
-    view: DataView, length: number, stack: any[], buffers: Uint8Array[], useWTF8?: boolean, useRecursion?: boolean
+    view: DataView, length: number, stack: any[], buffers: Uint8Array[], useWTF8?: boolean, useRecursion?: boolean, encodeCycles?: boolean, cycleMap?: WeakMap<any, number>, cycleSet?: WeakSet<any>
     resumeItem?: { major: MajorTypes, adInfo: number, float?: boolean }[], resumeBuffer?: BufferSource, backingView: ArrayBufferView, offset: number, newBufferSize: number, minViewSize: number
 }
 export const appendBuffer = (out: Output, b: BufferSource) => {
-    out.resumeBuffer = undefined
     if (out.resumeItem) {
         out.resumeBuffer = b
     }
@@ -300,6 +266,11 @@ export const encodeMapRecursive = (a: Map<any, any>, out: Output) => {
     }
 }
 export const encodeObjectFuncRecursive = (a, out: Output) => {
+    if (out.encodeCycles) {
+        if (encodeCycles(a, out)) {
+            return
+        }
+    }
     if (a === null) {
         nullItem(out)
     }
@@ -342,9 +313,7 @@ export const encodeRecursive = (a, out: Output) => {
         throw new Error('unsupported type ' + typeof a)
     }
 }
-export type EncodeObjectFunc = (value, stack: any[], out: Output) => void
-export type EncodeAltFunc = (value, stack: any[], out: Output) => boolean
-export const encodeLoop = (out: Output, encodeObject: EncodeObjectFunc, alt?: EncodeAltFunc) => {
+export const encodeLoop = (out: Output) => {
     const st = out.stack
     if (out.resumeItem) {
         const resume = out.resumeItem
@@ -354,34 +323,32 @@ export const encodeLoop = (out: Output, encodeObject: EncodeObjectFunc, alt?: En
         }
     }
     if (out.resumeBuffer) {
-        appendBuffer(out, out.resumeBuffer)
+        const buf = out.resumeBuffer
+        out.resumeBuffer = undefined
+        appendBuffer(out, buf)
     }
     while (st.length > 0 && !out.resumeItem && !out.resumeBuffer) {
         const a = st.pop()
-        if (alt && alt(a, st, out)) {
+        if (typeof a == 'string') {
+            textItem(a, out)
+        }
+        else if (typeof a == 'number') {
+            numberItem(a, out)
+        }
+        else if (typeof a == 'object') {
+            encodeObjectFuncLoop(a, st, out)
+        }
+        else if (typeof a == 'boolean') {
+            booleanItem(a, out)
+        }
+        else if (typeof a == 'bigint') {
+            bigintItem(a, out)
+        }
+        else if (a === undefined) {
+            undefinedItem(out)
         }
         else {
-            if (typeof a == 'string') {
-                textItem(a, out)
-            }
-            else if (typeof a == 'number') {
-                numberItem(a, out)
-            }
-            else if (typeof a == 'object') {
-                encodeObject(a, st, out)
-            }
-            else if (typeof a == 'boolean') {
-                booleanItem(a, out)
-            }
-            else if (typeof a == 'bigint') {
-                bigintItem(a, out)
-            }
-            else if (a === undefined) {
-                undefinedItem(out)
-            }
-            else {
-                throw new Error('unsupported type ' + typeof a)
-            }
+            throw new Error('unsupported type ' + typeof a)
         }
     }
 }
@@ -428,7 +395,26 @@ export const encodeSetLoop = (a: Set<any>, stack: any[], out: Output) => {
         stack.push(ks[i])
     }
 }
+export const encodeCycles = (a, out: Output): boolean => {
+    const shareIndex = out.cycleMap.get(a)
+    if (shareIndex >= 0) {
+        if (out.cycleSet.has(a)) {
+            tagItem(tags.sharedRef, out)
+            integerItem(shareIndex, out)
+            return true
+        }
+        else {
+            out.cycleSet.add(a)
+            tagItem(tags.shareable, out)
+        }
+    }
+}
 export const encodeObjectFuncLoop = (a, stack: any[], out: Output) => {
+    if (out.encodeCycles) {
+        if (encodeCycles(a, out)) {
+            return
+        }
+    }
     if (a === null) {
         nullItem(out)
     }
@@ -450,23 +436,27 @@ export const encodeObjectFuncLoop = (a, stack: any[], out: Output) => {
 }
 export const encodeSync = (value, out: Output): Uint8Array[] => {
     resetOutput(out)
-    out.buffers = []
+    const buf = []
+    out.buffers = buf
+    detectCycles(value, out)
     if (out.useRecursion) {
         encodeRecursive(value, out)
-        out.buffers.push(new Uint8Array(out.view.buffer, out.view.byteOffset, out.length))
-        return out.buffers
+        buf.push(new Uint8Array(out.view.buffer, out.view.byteOffset, out.length))
     }
-    out.stack = [value]
-    return encodeSyncLoop(out)
+    else {
+        out.stack = [value]
+        encodeSyncLoop(out)
+    }
+    out.buffers = undefined
+    return buf
 }
-export const encodeSyncLoop = (out: Output): Uint8Array[] => {
+export const encodeSyncLoop = (out: Output) => {
     do {
-        encodeLoop(out, encodeObjectFuncLoop)
+        encodeLoop(out)
         out.buffers.push(new Uint8Array(out.view.buffer, out.view.byteOffset, out.length))
         resetOutput(out)
     }
     while (out.resumeItem || out.resumeBuffer)
-    return out.buffers
 }
 export const resetOutput = (out: Output, view?: ArrayBufferView) => {
     if (out.view.byteLength - out.length < out.minViewSize) {
@@ -478,6 +468,50 @@ export const resetOutput = (out: Output, view?: ArrayBufferView) => {
     }
     out.view = view ? new DataView(view.buffer, view.byteOffset, view.byteLength) : new DataView(out.backingView.buffer, out.backingView.byteOffset + out.offset, out.backingView.byteLength - out.offset)
     out.length = 0
+}
+export const detectCycles = (value, out: Output) => {
+    if (out.encodeCycles) {
+        const w = new WeakMap()
+        let index = 0
+        const stack = [value]
+        while (stack.length > 0) {
+            let v = stack.pop()
+            if (w.has(v)) {
+                w.set(v, index)
+                index++
+                continue
+            }
+            if (typeof v == 'object' && v !== null) {
+                w.set(v, -1)
+                if (v instanceof Map) {
+                    const ks = Array.from(v.entries())
+                    for (let i = ks.length - 1; i >= 0; i--) {
+                        stack.push(ks[i][1])
+                        stack.push(ks[i][0])
+                    }
+                }
+                else if (v instanceof Set) {
+                    const ks = Array.from(v.values())
+                    for (let i = ks.length - 1; i >= 0; i--) {
+                        stack.push(ks[i])
+                    }
+                }
+                else if (Array.isArray(v)) {
+                    for (let i = v.length - 1; i >= 0; i--) {
+                        stack.push(v[i])
+                    }
+                }
+                else {
+                    const ks = Object.keys(v)
+                    for (let i = ks.length - 1; i >= 0; i--) {
+                        stack.push(v[ks[i]])
+                    }
+                }
+            }
+        }
+        out.cycleMap = w
+        out.cycleSet = new WeakSet()
+    }
 }
 export const concat = (buffers: Uint8Array[]): Uint8Array => {
     if (buffers.length == 1) {
@@ -786,4 +820,4 @@ export const enum tags {
 
     extendedTime = 1001,
 }
-export type Options = { backingView?: ArrayBufferView, newBufferSize?: number, minViewSize?: number, useWTF8?: boolean, useRecursion?: boolean }
+export type EncoderOptions = { backingView?: ArrayBufferView, newBufferSize?: number, minViewSize?: number, useWTF8?: boolean, useRecursion?: boolean, encodeCycles?: boolean }

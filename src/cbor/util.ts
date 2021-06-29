@@ -1,4 +1,4 @@
-import { ParseItemFunc, FinishItemFunc, EncodeAltFunc, arrayItem, mapItem, binaryItem, tagItem, encodeArrayLoop, encodeDate, encodeMapLoop, encodeSetLoop, encodeObjectLoop, textItem, numberItem, bigintItem, booleanItem, encodeLoop, decodeAdditionalInformation, slice, decodeLoop, decodeBigInt, tags } from '@bintoca/cbor/core'
+import { ParseItemFunc, FinishItemFunc, arrayItem, mapItem, binaryItem, tagItem, encodeArrayLoop, encodeDate, encodeMapLoop, encodeSetLoop, encodeObjectLoop, textItem, numberItem, bigintItem, booleanItem, encodeLoop, decodeAdditionalInformation, slice, decodeLoop, decodeBigInt, tags } from '@bintoca/cbor/core'
 import * as core from '@bintoca/cbor/core'
 import * as wtf8 from 'wtf-8'
 export const asyncCacheSymbol = Symbol.for('github.com/bintoca/lib/cbor/asyncCache')
@@ -436,7 +436,7 @@ export const hasBadSurrogates = (s: string): boolean => {
     }
     return low
 }
-export const altEncodeFunc: EncodeAltFunc = (value, stack: any[], out: Output): boolean => {
+export const altEncodeFunc = (value, stack: any[], out: Output): boolean => {
     if (out.useWTF8 && (typeof value == 'string' || value instanceof String) && hasBadSurrogates(value.valueOf())) {
         if (value instanceof String) {
             tagItem(tags.JSStringObject, out)
