@@ -1,5 +1,5 @@
 import { parseItem, finishItem, encodeLoop, decodeLoop, finalChecks } from '@bintoca/cbor/core'
-import { traverse, traverseSync, encodeObjectFunc, Output, Input, altEncodeFunc, browser } from '@bintoca/cbor/util'
+import { traverse, traverseSync, Output, Input, altEncodeFunc, browser } from '@bintoca/cbor/util'
 
 // export async function encode(value): Promise<ArrayBuffer>;
 // export async function encode(value, op?: { useWTF8?: boolean, uint8?: true }): Promise<Uint8Array>;

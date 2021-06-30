@@ -1,13 +1,9 @@
-import { Output, Input, EncoderOptions, parseItem, finishItem, encodeLoop, decodeLoop, finalChecks, encodeSync, concat, defaultBufferSize, defaultMinViewSize, resetOutput, detectCycles } from '@bintoca/cbor/core'
+import { EncoderState, Input, EncoderOptions, parseItem, finishItem, encodeLoop, decodeLoop, finalChecks, encodeSync, concat, resetOutput, detectCycles, setupEncoder } from '@bintoca/cbor/core'
 declare var ReadableStreamBYOBReader
 
 export class Encoder {
     constructor(options?: EncoderOptions) {
-        let { backingView, newBufferSize, minViewSize, useWTF8, encodeCycles } = options || {}
-        backingView = backingView || new Uint8Array(newBufferSize || defaultBufferSize)
-        newBufferSize = newBufferSize || defaultBufferSize
-        minViewSize = minViewSize || defaultMinViewSize
-        this.output = { view: new DataView(backingView.buffer, backingView.byteOffset, backingView.byteLength), length: 0, stack: [], buffers: [], backingView, offset: 0, newBufferSize, minViewSize, useWTF8, encodeCycles }
+        this.state = setupEncoder(options)
         const that = this
         if (typeof ReadableStream == 'undefined') {
             throw new Error('ReadableStream is undefined. If this is a Node.js application you probably want to import { Encoder } from "@bintoca/cbor/node"')
@@ -17,33 +13,41 @@ export class Encoder {
                 type: typeof ReadableStreamBYOBReader == 'function' ? 'bytes' as undefined : undefined,
                 pull(controller: ReadableStreamController<any> & { byobRequest?: { view: Uint8Array, respond: (n: number) => void } }) {
                     try {
-                        const out = that.output
+                        const out = that.state
                         resetOutput(out, controller.byobRequest?.view)
                         function process() {
-                            if (out.stack.length == 0 && !out.resumeItem && !out.resumeBuffer) {
+                            if (out.stack.length == 0 && !out.resume) {
                                 out.stack.push(that.chunk)
                                 detectCycles(out.stack[0], out)
                             }
                             encodeLoop(out)
-                            if (controller.byobRequest) {
-                                if (out.length == 0) {
-                                    controller.error(new Error('byob view is too small to write into'))
-                                }
-                                else {
-                                    controller.byobRequest.respond(out.length)
-                                }
+                            if (out.resume?.promise) {
+                                return out.resume.promise.then(() => {
+                                    out.resume = undefined
+                                    return process()
+                                })
                             }
                             else {
-                                controller.enqueue(new Uint8Array(out.view.buffer, out.view.byteOffset, out.length))
-                            }
-                            if (out.stack.length == 0 && !out.resumeItem && !out.resumeBuffer) {
-                                that.hasChunk = false
-                                that.chunk = undefined
-                                that.writeResolve()
+                                if (controller.byobRequest) {
+                                    if (out.length == 0) {
+                                        controller.error(new Error('byob view is too small to write into'))
+                                    }
+                                    else {
+                                        controller.byobRequest.respond(out.length)
+                                    }
+                                }
+                                else {
+                                    controller.enqueue(new Uint8Array(out.view.buffer, out.view.byteOffset, out.length))
+                                }
+                                if (out.stack.length == 0 && !out.resume) {
+                                    that.hasChunk = false
+                                    that.chunk = undefined
+                                    that.writeResolve()
+                                }
                             }
                         }
                         if (that.hasChunk) {
-                            process()
+                            return process()
                         }
                         else {
                             if (that.hasClose) {
@@ -57,6 +61,7 @@ export class Encoder {
                                 return new Promise<void>((resolve, reject) => {
                                     that.pullResolve = () => {
                                         try {
+                                            let r 
                                             if (that.hasClose) {
                                                 controller.close()
                                                 if (controller.byobRequest) {
@@ -64,9 +69,9 @@ export class Encoder {
                                                 }
                                             }
                                             else {
-                                                process()
+                                                r = process()
                                             }
-                                            resolve()
+                                            resolve(r)
                                         }
                                         catch (e) {
                                             reject(e)
@@ -130,18 +135,18 @@ export class Encoder {
             })
         }
     }
-    private output: Output
-    private writeResolve: () => void
-    private writeReject: (reason?) => void
-    private pullResolve: () => void
-    private hasPull: boolean
-    private hasClose: boolean
-    private chunk
-    private hasChunk: boolean
-    private hasCancel: boolean
+    protected state: EncoderState
+    protected writeResolve: () => void
+    protected writeReject: (reason?) => void
+    protected pullResolve: () => void
+    protected hasPull: boolean
+    protected hasClose: boolean
+    protected chunk
+    protected hasChunk: boolean
+    protected hasCancel: boolean
     readable: ReadableStream
     writable: WritableStream
-    encode = (value): Uint8Array => concat(encodeSync(value, this.output))
+    encode = (value): Uint8Array => concat(encodeSync(value, this.state))
 }
 export const decode = (b: BufferSource, op?: { allowExcessBuffer?: boolean, endPosition?: number }): any => {
     const src: Input = { buffer: b, position: 0 }

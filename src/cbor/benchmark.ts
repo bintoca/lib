@@ -25,13 +25,15 @@ function bench(f, newCode) {
         });
     })
 }
-bench('./node_modules/cbor-x/tests/benchmark.cjs', `import('../../../packages/cbor/node.js').then(x=>{
+async function go() {
+    await bench('./node_modules/cbor-x/tests/benchmark.cjs', `import('../../../packages/cbor/node.js').then(x=>{
     const enc = new x.Encoder({ useRecursion:true, newBufferSize:8192,minViewSize:2048 })
-  buf = bench('buf = require("@bintoca/cbor").encode(obj);', enc.encode, data);
-  //obj = bench('obj = require("@bintoca/cbor").decode(buf);', cbor.decode, buf);
-  //test(obj);
-})`).then(() => {
-    bench('./node_modules/cbor-x/tests/benchmark-stream.cjs', `import('../../../packages/cbor/node.js').then(x=>{
+    buf = bench('buf = require("@bintoca/cbor").encode(obj);', enc.encode, data);
+    //obj = bench('obj = require("@bintoca/cbor").decode(buf);', cbor.decode, buf);
+    //test(obj);
+    })`)
+
+    await bench('./node_modules/cbor-x/tests/benchmark-stream.cjs', `import('../../../packages/cbor/node.js').then(x=>{
         function be(callback) {
             var stream = new x.Encoder()
             var cnt = counter(callback);
@@ -45,4 +47,6 @@ bench('./node_modules/cbor-x/tests/benchmark.cjs', `import('../../../packages/cb
           }
           list.push(['bintoca encode;', be])
     })`)
-})
+
+}
+go()

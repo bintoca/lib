@@ -1,16 +1,16 @@
-import wtf8 from 'wtf-8'
 const TE = new TextEncoder()
 export const TD = new TextDecoder('utf-8', { fatal: true })
 export const defaultBufferSize = 4096
 export const defaultMinViewSize = 512
 export type MajorTypes = 0 | 1 | 2 | 3 | 4 | 5 | 6 | 7 | -1
-export type Output = {
-    view: DataView, length: number, stack: any[], buffers: Uint8Array[], useWTF8?: boolean, useRecursion?: boolean, encodeCycles?: boolean, cycleMap?: WeakMap<any, number>, cycleSet?: WeakSet<any>
-    resumeItem?: { major: MajorTypes, adInfo: number, float?: boolean }[], resumeBuffer?: BufferSource, backingView: ArrayBufferView, offset: number, newBufferSize: number, minViewSize: number
+export type EncoderState = {
+    view: DataView, length: number, stack: any[], buffers?: Uint8Array[], useWTF8?: { encode: (s: string) => string }, encodeCycles?: boolean, cycleMap?: WeakMap<any, number>, cycleSet?: WeakSet<any>, omitMapTag?: boolean,
+    typeMap: Map<Function, (a, out: EncoderState) => void>, backingView: ArrayBufferView, offset: number, newBufferSize: number, minViewSize: number,
+    encodeItemFunc: (a, out: EncoderState) => void, resume?: { items?: { major: MajorTypes, adInfo: number, float?: boolean }[], buffer?: BufferSource, promise?: Promise<void> }, resumeFunc: (out: EncoderState) => void
 }
-export const appendBuffer = (out: Output, b: BufferSource) => {
-    if (out.resumeItem) {
-        out.resumeBuffer = b
+export const appendBuffer = (out: EncoderState, b: BufferSource) => {
+    if (out.resume) {
+        out.resume.buffer = b
     }
     else {
         if (out.length + b.byteLength <= out.view.byteLength) {
@@ -21,12 +21,10 @@ export const appendBuffer = (out: Output, b: BufferSource) => {
             const len = out.view.byteLength - out.length
             new Uint8Array(out.view.buffer, out.view.byteOffset, out.view.byteLength).set(b instanceof ArrayBuffer ? new Uint8Array(b, 0, len) : new Uint8Array(b.buffer, b.byteOffset, len), out.length)
             out.length += len
-            out.resumeBuffer = b instanceof ArrayBuffer ? new Uint8Array(b, len, b.byteLength - len) : new Uint8Array(b.buffer, b.byteOffset + len, b.byteLength - len)
-            if (out.useRecursion) {
-                out.buffers.push(new Uint8Array(out.view.buffer, out.view.byteOffset, out.length))
-                resetOutput(out)
-                appendBuffer(out, out.resumeBuffer)
+            if (!out.resume) {
+                out.resume = {}
             }
+            out.resume.buffer = b instanceof ArrayBuffer ? new Uint8Array(b, len, b.byteLength - len) : new Uint8Array(b.buffer, b.byteOffset + len, b.byteLength - len)
         }
     }
 }
@@ -107,30 +105,26 @@ export const writeItemCore = (major: MajorTypes, adInfo: number, dv: DataView, o
     dv.setUint32(offset + 5, adInfo % 0x100000000)
     return 9
 }
-export const writeItem = (major: MajorTypes, adInfo: number, out: Output) => {
+export const writeItem = (major: MajorTypes, adInfo: number, out: EncoderState) => {
     const written = writeItemCore(major, adInfo, out.view, out.length)
     if (written) {
         out.length += written
     }
     else {
-        if (out.useRecursion) {
-            out.buffers.push(new Uint8Array(out.view.buffer, out.view.byteOffset, out.length))
-            resetOutput(out)
-            writeItem(major, adInfo, out)
+        if (!out.resume) {
+            out.resume = {}
         }
-        else {
-            if (!out.resumeItem) {
-                out.resumeItem = []
-            }
-            out.resumeItem.push({ major, adInfo })
+        if (!out.resume.items) {
+            out.resume.items = []
         }
+        out.resume.items.push({ major, adInfo })
     }
 }
-export const integerItem = (value: number, out: Output) => value >= 0 ? writeItem(0, value, out) : writeItem(1, -(value + 1), out)
-export const nullItem = (out: Output) => writeItem(7, 22, out)
-export const undefinedItem = (out: Output) => writeItem(7, 23, out)
-export const booleanItem = (value: boolean, out: Output) => writeItem(7, value ? 21 : 20, out)
-export const binaryItem = (v: BufferSource, out: Output) => {
+export const integerItem = (value: number, out: EncoderState) => value >= 0 ? writeItem(0, value, out) : writeItem(1, -(value + 1), out)
+export const nullItem = (out: EncoderState) => writeItem(7, 22, out)
+export const undefinedItem = (out: EncoderState) => writeItem(7, 23, out)
+export const booleanItem = (value: boolean, out: EncoderState) => writeItem(7, value ? 21 : 20, out)
+export const binaryItem = (v: BufferSource, out: EncoderState) => {
     writeItem(2, v.byteLength, out)
     appendBuffer(out, v)
 }
@@ -159,10 +153,10 @@ export const hasBadSurrogates = (s: string): boolean => {
     }
     return low
 }
-export const textItemCopy = (s: string, out: Output) => {
+export const stringItemCopy = (s: string, out: EncoderState) => {
     let major: MajorTypes = 3
     if (out.useWTF8 && hasBadSurrogates(s)) {
-        s = wtf8.encode(s)
+        s = out.useWTF8.encode(s)
         tagItem(tags.WTF8, out)
         major = 2
     }
@@ -170,7 +164,7 @@ export const textItemCopy = (s: string, out: Output) => {
     writeItem(major, v.byteLength, out)
     appendBuffer(out, v)
 }
-export const textItem = (s: string, out: Output) => {
+export const stringItem = (s: string, out: EncoderState) => {
     const maybeFitsView = out.length + s.length + 9 <= out.view.byteLength
     const start = out.length
     let fullEncode
@@ -191,7 +185,7 @@ export const textItem = (s: string, out: Output) => {
         out.length += s.length
     }
     else {
-        textItemCopy(s, out)
+        stringItemCopy(s, out)
     }
     if (fullEncode) {
         out.length = start
@@ -208,27 +202,27 @@ export const textItem = (s: string, out: Output) => {
                     }
                     else {
                         out.length = start
-                        textItemCopy(s, out)
+                        stringItemCopy(s, out)
                     }
                 }
             }
             else {
                 out.length = start
-                textItemCopy(s, out)
+                stringItemCopy(s, out)
             }
         }
         else {
-            textItemCopy(s, out)
+            stringItemCopy(s, out)
         }
     }
 }
-export const arrayItem = (length: number, out: Output) => writeItem(4, length, out)
-export const mapItem = (length: number, out: Output) => writeItem(5, length, out)
-export const tagItem = (id: number, out: Output) => writeItem(6, id, out)
-export const numberItem = (val: number, out: Output) => {
+export const arrayItem = (length: number, out: EncoderState) => writeItem(4, length, out)
+export const mapItem = (length: number, out: EncoderState) => writeItem(5, length, out)
+export const tagItem = (id: number, out: EncoderState) => writeItem(6, id, out)
+export const numberItem = (val: number, out: EncoderState) => {
     writeItem(-1, val, out)
 }
-export const bigintItem = (val: bigint, out: Output) => {
+export const bigintItem = (val: bigint, out: EncoderState) => {
     tagItem(val >= 0 ? tags.positiveBigNum : tags.negativeBigNum, out)
     let norm = val >= 0 ? val : -(val + BigInt(1))
     let len = 0
@@ -244,61 +238,33 @@ export const bigintItem = (val: bigint, out: Output) => {
     }
     binaryItem(v.reverse(), out)
 }
-export const encodeArrayRecursive = (a: any[], out: Output) => {
-    arrayItem(a.length, out)
-    for (let k of a) {
-        encodeRecursive(k, out)
+export const objectItem = (a: Object, out: EncoderState) => {
+    if (a === null) {
+        nullItem(out)
+        return
     }
-}
-export const encodeObjectRecursive = (a, out: Output) => {
-    const ks = Object.keys(a)
-    mapItem(ks.length, out)
-    for (let k of ks) {
-        encodeRecursive(k, out)
-        encodeRecursive(a[k], out)
-    }
-}
-export const encodeMapRecursive = (a: Map<any, any>, out: Output) => {
-    mapItem(a.size, out)
-    for (let i of a.entries()) {
-        encodeRecursive(i[0], out)
-        encodeRecursive(i[1], out)
-    }
-}
-export const encodeObjectFuncRecursive = (a, out: Output) => {
     if (out.encodeCycles) {
         if (encodeCycles(a, out)) {
             return
         }
     }
-    if (a === null) {
-        nullItem(out)
-    }
-    else if (Array.isArray(a)) {
-        encodeArrayRecursive(a, out)
-    }
-    else if (a instanceof ArrayBuffer || ArrayBuffer.isView(a)) {
-        binaryItem(a, out)
-    }
-    else if (a instanceof Date) {
-        encodeDate(a, out)
-    }
-    else if (a instanceof Map) {
-        encodeMapRecursive(a, out)
+    const typ = out.typeMap.get(a.constructor)
+    if (typ) {
+        typ(a, out)
     }
     else {
-        encodeObjectRecursive(a, out)
+        throw new Error('type mapping not found: ' + a.constructor?.name)
     }
 }
-export const encodeRecursive = (a, out: Output) => {
+export const encodeItem = (a, out: EncoderState) => {
     if (typeof a == 'string') {
-        textItem(a, out)
+        stringItem(a, out)
     }
     else if (typeof a == 'number') {
         numberItem(a, out)
     }
     else if (typeof a == 'object') {
-        encodeObjectFuncRecursive(a, out)
+        objectItem(a, out)
     }
     else if (typeof a == 'boolean') {
         booleanItem(a, out)
@@ -313,89 +279,36 @@ export const encodeRecursive = (a, out: Output) => {
         throw new Error('unsupported type ' + typeof a)
     }
 }
-export const encodeLoop = (out: Output) => {
-    const st = out.stack
-    if (out.resumeItem) {
-        const resume = out.resumeItem
-        out.resumeItem = undefined
-        for (let r of resume) {
-            writeItem(r.major, r.adInfo, out)
+export const resumeItem = (out: EncoderState) => {
+    if (out.resume) {
+        const resume = out.resume
+        out.resume = undefined
+        if (resume.items) {
+            for (let r of resume.items) {
+                writeItem(r.major, r.adInfo, out)
+            }
         }
-    }
-    if (out.resumeBuffer) {
-        const buf = out.resumeBuffer
-        out.resumeBuffer = undefined
-        appendBuffer(out, buf)
-    }
-    while (st.length > 0 && !out.resumeItem && !out.resumeBuffer) {
-        const a = st.pop()
-        if (typeof a == 'string') {
-            textItem(a, out)
-        }
-        else if (typeof a == 'number') {
-            numberItem(a, out)
-        }
-        else if (typeof a == 'object') {
-            encodeObjectFuncLoop(a, st, out)
-        }
-        else if (typeof a == 'boolean') {
-            booleanItem(a, out)
-        }
-        else if (typeof a == 'bigint') {
-            bigintItem(a, out)
-        }
-        else if (a === undefined) {
-            undefinedItem(out)
-        }
-        else {
-            throw new Error('unsupported type ' + typeof a)
+        if (resume.buffer) {
+            appendBuffer(out, resume.buffer)
         }
     }
 }
-export const encodeArrayLoop = (a: any[], stack: any[], out: Output) => {
-    arrayItem(a.length, out)
-    for (let i = a.length - 1; i >= 0; i--) {
-        stack.push(a[i])
+export const encodeLoop = (out: EncoderState) => {
+    out.resumeFunc(out)
+    while (out.stack.length > 0 && !out.resume) {
+        const a = out.stack.pop()
+        out.encodeItemFunc(a, out)
     }
 }
-export const encodeObjectLoop = (a, stack: any[], out: Output) => {
+export const encodeObject = (a: Object, out: EncoderState) => {
     const ks = Object.keys(a)
     mapItem(ks.length, out)
     for (let i = ks.length - 1; i >= 0; i--) {
-        stack.push(a[ks[i]])
-        stack.push(ks[i])
+        out.stack.push(a[ks[i]])
+        out.stack.push(ks[i])
     }
 }
-export const encodeMapLoop = (a: Map<any, any>, stack: any[], out: Output) => {
-    mapItem(a.size, out)
-    const ks = Array.from(a.entries())
-    for (let i = ks.length - 1; i >= 0; i--) {
-        stack.push(ks[i][1])
-        stack.push(ks[i][0])
-    }
-}
-export const encodeDate = (a, out: Output) => {
-    if (a.getTime() % 1000 == 0) {
-        tagItem(tags.datePOSIX, out)
-        integerItem(a.getTime() / 1000, out)
-    }
-    else {
-        tagItem(tags.extendedTime, out)
-        mapItem(2, out)
-        integerItem(1, out)
-        integerItem(Math.floor(a.getTime() / 1000), out)
-        integerItem(-3, out)
-        integerItem(a.getTime() % 1000, out)
-    }
-}
-export const encodeSetLoop = (a: Set<any>, stack: any[], out: Output) => {
-    arrayItem(a.size, out)
-    const ks = Array.from(a.values())
-    for (let i = ks.length - 1; i >= 0; i--) {
-        stack.push(ks[i])
-    }
-}
-export const encodeCycles = (a, out: Output): boolean => {
+export const encodeCycles = (a, out: EncoderState): boolean => {
     const shareIndex = out.cycleMap.get(a)
     if (shareIndex >= 0) {
         if (out.cycleSet.has(a)) {
@@ -409,56 +322,25 @@ export const encodeCycles = (a, out: Output): boolean => {
         }
     }
 }
-export const encodeObjectFuncLoop = (a, stack: any[], out: Output) => {
-    if (out.encodeCycles) {
-        if (encodeCycles(a, out)) {
-            return
-        }
-    }
-    if (a === null) {
-        nullItem(out)
-    }
-    else if (Array.isArray(a)) {
-        encodeArrayLoop(a, stack, out)
-    }
-    else if (a instanceof ArrayBuffer || ArrayBuffer.isView(a)) {
-        binaryItem(a, out)
-    }
-    else if (a instanceof Date) {
-        encodeDate(a, out)
-    }
-    else if (a instanceof Map) {
-        encodeMapLoop(a, stack, out)
-    }
-    else {
-        encodeObjectLoop(a, stack, out)
-    }
-}
-export const encodeSync = (value, out: Output): Uint8Array[] => {
+export const encodeSync = (value, out: EncoderState): Uint8Array[] => {
     resetOutput(out)
     const buf = []
     out.buffers = buf
     detectCycles(value, out)
-    if (out.useRecursion) {
-        encodeRecursive(value, out)
-        buf.push(new Uint8Array(out.view.buffer, out.view.byteOffset, out.length))
-    }
-    else {
-        out.stack = [value]
-        encodeSyncLoop(out)
-    }
-    out.buffers = undefined
-    return buf
-}
-export const encodeSyncLoop = (out: Output) => {
+    out.stack = [value]
     do {
         encodeLoop(out)
         out.buffers.push(new Uint8Array(out.view.buffer, out.view.byteOffset, out.length))
         resetOutput(out)
+        if (out.resume?.promise) {
+            throw new Error('promise based resume not allowed in sync mode')
+        }
     }
-    while (out.resumeItem || out.resumeBuffer)
+    while (out.resume)
+    out.buffers = undefined
+    return buf
 }
-export const resetOutput = (out: Output, view?: ArrayBufferView) => {
+export const resetOutput = (out: EncoderState, view?: ArrayBufferView) => {
     if (out.view.byteLength - out.length < out.minViewSize) {
         out.backingView = new Uint8Array(out.newBufferSize)
         out.offset = 0
@@ -469,7 +351,7 @@ export const resetOutput = (out: Output, view?: ArrayBufferView) => {
     out.view = view ? new DataView(view.buffer, view.byteOffset, view.byteLength) : new DataView(out.backingView.buffer, out.backingView.byteOffset + out.offset, out.backingView.byteLength - out.offset)
     out.length = 0
 }
-export const detectCycles = (value, out: Output) => {
+export const detectCycles = (value, out: EncoderState) => {
     if (out.encodeCycles) {
         const w = new WeakMap()
         let index = 0
@@ -779,6 +661,7 @@ export const enum tags {
     datePOSIX = 1,
     positiveBigNum = 2,
     negativeBigNum = 3,
+    typeConstructor = 27,
     shareable = 28,
     sharedRef = 29,
     uint8 = 64,
@@ -820,4 +703,74 @@ export const enum tags {
 
     extendedTime = 1001,
 }
-export type EncoderOptions = { backingView?: ArrayBufferView, newBufferSize?: number, minViewSize?: number, useWTF8?: boolean, useRecursion?: boolean, encodeCycles?: boolean }
+export type EncoderOptions = Partial<EncoderState>
+export const setupEncoder = (op: EncoderOptions = {}): EncoderState => {
+    op.backingView = op.backingView || new Uint8Array(op.newBufferSize || defaultBufferSize)
+    op.offset = 0
+    op.newBufferSize = op.newBufferSize || defaultBufferSize
+    op.minViewSize = op.minViewSize || defaultMinViewSize
+    op.encodeItemFunc = op.encodeItemFunc || encodeItem
+    op.resumeFunc = op.resumeFunc || resumeItem
+    op.typeMap = op.typeMap || new Map(defaultTypeMap)
+    op.view = new DataView(op.backingView.buffer, op.backingView.byteOffset, op.backingView.byteLength)
+    op.length = 0
+    op.stack = []
+    return op as EncoderState
+}
+export class TagHelper { constructor(t) { this.tag = t }; tag: number }
+export const defaultTypeMap = new Map<Function, (a, out: EncoderState) => void>([[Object, encodeObject], [undefined, encodeObject], [ArrayBuffer, binaryItem],
+[Array, (a: any[], out: EncoderState) => {
+    arrayItem(a.length, out)
+    for (let i = a.length - 1; i >= 0; i--) {
+        out.stack.push(a[i])
+    }
+}],
+[Map, (a: Map<any, any>, out: EncoderState) => {
+    if (!out.omitMapTag) {
+        tagItem(tags.Map, out)
+    }
+    mapItem(a.size, out)
+    const ks = Array.from(a.entries())
+    for (let i = ks.length - 1; i >= 0; i--) {
+        out.stack.push(ks[i][1])
+        out.stack.push(ks[i][0])
+    }
+}],
+[Set, (a: Set<any>, out: EncoderState) => {
+    tagItem(tags.Set, out)
+    arrayItem(a.size, out)
+    const ks = Array.from(a.values())
+    for (let i = ks.length - 1; i >= 0; i--) {
+        out.stack.push(ks[i])
+    }
+}],
+[Date, (a: Date, out: EncoderState) => {
+    if (a.getTime() % 1000 == 0) {
+        tagItem(tags.datePOSIX, out)
+        integerItem(a.getTime() / 1000, out)
+    }
+    else {
+        tagItem(tags.extendedTime, out)
+        mapItem(2, out)
+        integerItem(1, out)
+        integerItem(Math.floor(a.getTime() / 1000), out)
+        integerItem(-3, out)
+        integerItem(a.getTime() % 1000, out)
+    }
+}],
+[Uint8Array, (a: Uint8Array, out: EncoderState) => {
+    tagItem(tags.uint8, out)
+    binaryItem(a, out)
+}],
+[TagHelper, (a: TagHelper, out: EncoderState) => {
+    tagItem(a.tag, out)
+}],
+[typeof Blob == 'function' ? Blob : () => { }, (a: Blob, out: EncoderState) => {
+    out.resume = {
+        promise: a.arrayBuffer().then(x => {
+            out.stack.push(['Blob', [x], { type: a.type }])
+            out.stack.push(new TagHelper(tags.typeConstructor))
+        })
+    }
+}]
+])

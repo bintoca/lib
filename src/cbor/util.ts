@@ -1,4 +1,4 @@
-import { ParseItemFunc, FinishItemFunc, arrayItem, mapItem, binaryItem, tagItem, encodeArrayLoop, encodeDate, encodeMapLoop, encodeSetLoop, encodeObjectLoop, textItem, numberItem, bigintItem, booleanItem, encodeLoop, decodeAdditionalInformation, slice, decodeLoop, decodeBigInt, tags } from '@bintoca/cbor/core'
+import { ParseItemFunc, FinishItemFunc, arrayItem, mapItem, binaryItem, tagItem, encodeObject, stringItem, numberItem, bigintItem, booleanItem, encodeLoop, decodeAdditionalInformation, slice, decodeLoop, decodeBigInt, tags } from '@bintoca/cbor/core'
 import * as core from '@bintoca/cbor/core'
 import * as wtf8 from 'wtf-8'
 export const asyncCacheSymbol = Symbol.for('github.com/bintoca/lib/cbor/asyncCache')
@@ -84,7 +84,7 @@ const _crypto = {
             return Promise.resolve(new _CryptoKey(algorithm, extractable, keyUsages, keyData))
         }
     }
-}
+} 
 class _CryptoKey { type; extractable; algorithm; usages; keyData; constructor(alg, ext, use, kd) { this.type = 'secret', this.algorithm = alg; this.extractable = ext; this.usages = use; this.keyData = kd } }
 export const browserShim = {
     DOMPointReadOnly: _DOMPointReadOnly,
@@ -139,176 +139,9 @@ export const encodeDOMMatrix = (a: DOMMatrix) => {
 export const encodeDOMQuad = (a: DOMQuad) => {
     return { p1: a.p1, p2: a.p2, p3: a.p3, p4: a.p4 }
 }
-export type Output = core.Output & { shared: Map<any, number>, hasWTF8?: boolean, useWTF8: boolean, ws: WeakSet<any> }
+export type Output = core.EncoderState & { shared: Map<any, number>, hasWTF8?: boolean, useWTF8: boolean, ws: WeakSet<any> }
 export type CryptoKeyTemp = { type: KeyType, extractable: boolean, algorithm: KeyAlgorithm, usages: KeyUsage[], keyData: JsonWebKey }
-export const encodeObjectFunc = (a, stack: any[], out: Output) => {
-    if (a && a[tagSymbol] !== undefined) {
-        if (Array.isArray(a[tagSymbol])) {
-            for (let x of a[tagSymbol]) {
-                if (typeof x == 'number') {
-                    if (x == tags.shareable) {
-                        if (out.shared.has(a)) {
-                            tagItem(tags.sharedRef, out)
-                            numberItem(out.shared.get(a), out)
-                            continue
-                        }
-                        else {
-                            out.shared.set(a, out.shared.size)
-                        }
-                    }
-                    tagItem(x, out)
-                }
-                else {
-                    throw new Error('invalid tag symbol type')
-                }
-            }
-        }
-        else {
-            throw new Error('invalid tag symbol type')
-        }
-    }
-    if (!out.ws.has(a)) {
-        out.ws.add(a)
-        if (Array.isArray(a)) {
-            encodeArrayLoop(a, stack, out)
-        }
-        else {
-            const pr = Object.getPrototypeOf(a)
-            if (pr === null || pr === Object.prototype) {
-                encodeObjectLoop(a, stack, out)
-            }
-            else if (a instanceof ArrayBuffer) {
-                binaryItem(a, out)
-            }
-            else if (a instanceof Date) {
-                encodeDate(a, out)
-            }
-            else if (a instanceof Map) {
-                tagItem(tags.Map, out)
-                encodeMapLoop(a, stack, out)
-            }
-            else if (a instanceof Set) {
-                tagItem(tags.Set, out)
-                encodeSetLoop(a, stack, out)
-            }
-            else if (a instanceof Uint8Array) {
-                tagItem(tags.uint8, out)
-                binaryItem(a, out)
-            }
-            else if (a instanceof browser.Blob) {
-                tagItem(tags.JSBlob, out)
-                stack.push(encodeBlob(a))
-            }
-            else if (a instanceof browser.File) {
-                tagItem(tags.JSFile, out)
-                stack.push(encodeFile(a))
-            }
-            else if (a instanceof Int8Array) {
-                tagItem(tags.sint8, out)
-                binaryItem(a, out)
-            }
-            else if (a instanceof Uint8ClampedArray) {
-                tagItem(tags.uint8Clamped, out)
-                binaryItem(a, out)
-            }
-            else if (a instanceof Int16Array) {
-                tagItem(tags.sint16LE, out)
-                binaryItem(a, out)
-            }
-            else if (a instanceof Uint16Array) {
-                tagItem(tags.uint16LE, out)
-                binaryItem(a, out)
-            }
-            else if (a instanceof Int32Array) {
-                tagItem(tags.sint32LE, out)
-                binaryItem(a, out)
-            }
-            else if (a instanceof Uint32Array) {
-                tagItem(tags.uint32LE, out)
-                binaryItem(a, out)
-            }
-            else if (a instanceof Float32Array) {
-                tagItem(tags.float32LE, out)
-                binaryItem(a, out)
-            }
-            else if (a instanceof Float64Array) {
-                tagItem(tags.float64LE, out)
-                binaryItem(a, out)
-            }
-            else if (typeof BigInt64Array != 'undefined' && a instanceof BigInt64Array) {
-                tagItem(tags.sint64LE, out)
-                binaryItem(a, out)
-            }
-            else if (typeof BigUint64Array != 'undefined' && a instanceof BigUint64Array) {
-                tagItem(tags.uint64LE, out)
-                binaryItem(a, out)
-            }
-            else if (a instanceof DataView) {
-                tagItem(tags.JSDataView, out)
-                binaryItem(a, out)
-            }
-            else if (a instanceof browser.ImageData) {
-                tagItem(tags.JSImageData, out)
-                stack.push(encodeImageData(a))
-            }
-            else if (a instanceof RegExp) {
-                tagItem(tags.JSRegExp, out)
-                stack.push(encodeRegEx(a))
-            }
-            else if (a instanceof browser.CryptoKey) {
-                tagItem(tags.JSCryptoKey, out)
-                stack.push(encodeCryptoKey(a))
-            }
-            else if (a instanceof browser.DOMPointReadOnly) {
-                tagItem(tags.JSDOMPointReadOnly, out)
-                stack.push(encodeDOMPointReadOnly(a))
-            }
-            else if (a instanceof browser.DOMPoint) {
-                tagItem(tags.JSDOMPoint, out)
-                stack.push(encodeDOMPoint(a))
-            }
-            else if (a instanceof browser.DOMRectReadOnly) {
-                tagItem(tags.JSDOMRectReadOnly, out)
-                stack.push(encodeDOMRectReadOnly(a))
-            }
-            else if (a instanceof browser.DOMRect) {
-                tagItem(tags.JSDOMRect, out)
-                stack.push(encodeDOMRect(a))
-            }
-            else if (a instanceof browser.DOMMatrixReadOnly) {
-                tagItem(tags.JSDOMMatrixReadOnly, out)
-                stack.push(encodeDOMMatrixReadOnly(a))
-            }
-            else if (a instanceof browser.DOMMatrix) {
-                tagItem(tags.JSDOMMatrix, out)
-                stack.push(encodeDOMMatrix(a))
-            }
-            else if (a instanceof browser.DOMQuad) {
-                tagItem(tags.JSDOMQuad, out)
-                stack.push(encodeDOMQuad(a))
-            }
-            else if (a instanceof String) {
-                tagItem(tags.JSStringObject, out)
-                textItem(a.valueOf(), out)
-            }
-            else if (a instanceof Number) {
-                tagItem(tags.JSNumberObject, out)
-                numberItem(a.valueOf(), out)
-            }
-            else if (a instanceof BigInt) {
-                tagItem(tags.JSBigIntObject, out)
-                bigintItem(a.valueOf(), out)
-            }
-            else if (a instanceof Boolean) {
-                tagItem(tags.JSBooleanObject, out)
-                booleanItem(a.valueOf(), out)
-            }
-            else {
-                throw new Error('unsupported type')
-            }
-        }
-    }
-}
+
 export async function traverse(d) {
     const ws = new WeakSet()
     const stack = [d]

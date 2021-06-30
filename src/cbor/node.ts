@@ -1,20 +1,16 @@
 import { Duplex } from 'stream'
-import { Output, Input, parseItem, finishItem, encodeLoop, decodeLoop, finalChecks, encodeSync, concat, resetOutput, defaultBufferSize, defaultMinViewSize, EncoderOptions, detectCycles } from '@bintoca/cbor/core'
+import { EncoderState, Input, parseItem, finishItem, encodeLoop, decodeLoop, finalChecks, encodeSync, concat, resetOutput, EncoderOptions, detectCycles, setupEncoder } from '@bintoca/cbor/core'
 
 export class Encoder extends Duplex {
     constructor(options?: EncoderOptions & { superOpts?}) {
         super({ readableObjectMode: false, writableObjectMode: true, ...options?.superOpts })
-        let { backingView, newBufferSize, minViewSize, useWTF8, useRecursion, encodeCycles } = options || {}
-        backingView = backingView || new Uint8Array(newBufferSize || defaultBufferSize)
-        newBufferSize = newBufferSize || defaultBufferSize
-        minViewSize = minViewSize || defaultMinViewSize
-        this.output = { view: new DataView(backingView.buffer, backingView.byteOffset, backingView.byteLength), length: 0, stack: [], buffers: [], backingView, offset: 0, newBufferSize, minViewSize, useWTF8, useRecursion, encodeCycles }
+        this.state = setupEncoder(options)
     }
-    private output: Output
-    private chunks: any[]
-    private cb: (error?: Error | null) => void
-    private doRead: boolean
-    private chunkIndex: number
+    protected state: EncoderState
+    protected chunks: any[]
+    protected cb: (error?: Error | null) => void
+    protected doRead: boolean
+    protected chunkIndex: number
     _writev(chunks: { chunk }[], callback: (error?: Error | null) => void) {
         this.chunks = chunks.map(x => x.chunk)
         this.cb = callback
@@ -30,8 +26,13 @@ export class Encoder extends Duplex {
     _read(size) {
         try {
             if (this.chunks) {
-                const out = this.output
-                resetOutput(out)
+                const out = this.state
+                if (out.resume?.promise) {
+                    out.resume = undefined
+                }
+                else {
+                    resetOutput(out)
+                }
                 while (true) {
                     if (out.stack.length == 0 && this.chunkIndex < this.chunks.length) {
                         out.stack.push(this.chunks[this.chunkIndex])
@@ -39,11 +40,18 @@ export class Encoder extends Duplex {
                         detectCycles(out.stack[0], out)
                     }
                     encodeLoop(out)
-                    if (out.resumeItem || out.resumeBuffer || this.chunkIndex == this.chunks.length) {
-                        this.push(new Uint8Array(out.view.buffer, out.view.byteOffset, out.length))
-                        if (!out.resumeItem && !out.resumeBuffer && this.chunkIndex == this.chunks.length) {
-                            this.chunks = undefined
-                            this.cb()
+                    if (out.resume || this.chunkIndex == this.chunks.length) {
+                        if (out.resume?.promise) {
+                            out.resume.promise.then(() => {
+                                this._read(0)
+                            })
+                        }
+                        else {
+                            this.push(new Uint8Array(out.view.buffer, out.view.byteOffset, out.length))
+                            if (!out.resume && this.chunkIndex == this.chunks.length) {
+                                this.chunks = undefined
+                                this.cb()
+                            }
                         }
                         break
                     }
@@ -61,5 +69,6 @@ export class Encoder extends Duplex {
             this.destroy(e)
         }
     }
-    encode = (value): Uint8Array => concat(encodeSync(value, this.output))
+    encode = (value): Uint8Array => concat(encodeSync(value, this.state))
+    get typeMap() { return this.state.typeMap }
 }

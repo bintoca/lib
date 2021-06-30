@@ -86,6 +86,7 @@
                     const wr = enc.writable.getWriter()
                     await wr.ready
                     wr.write('hello')
+                    wr.write(new Blob(['doo'], { type: 't' }))
                     wr.write('doo')
                     wr.close()
                     const rr = enc.readable.getReader()
@@ -98,7 +99,7 @@
                         }
                     }
                     while (!v.done)
-                    checkArray('write then read', r.map(x => x.toString()), ['101,104,101,108,108,111', '99,100,111,111'])
+                    checkArray('write then read', r.map(x => x.toString()), ['101,104,101,108,108,111', '216,27,131,100,66,108,111,98,129,67,100,111,111,161,100,116,121,112,101,97,116', '99,100,111,111'])
                 }
                 {
                     const cycle1 = {}
@@ -149,7 +150,7 @@
                     const enc = new Encoder()
                     const wr = enc.writable.getWriter()
                     await wr.ready
-                    wr.write(new Uint8Array(4100))
+                    wr.write(new ArrayBuffer(4100))
                     wr.close()
                     const rr = enc.readable.getReader()
                     let v
