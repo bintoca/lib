@@ -57,7 +57,7 @@
                     const wr = enc.writable.getWriter()
                     await wr.ready
                     wr.write('hello')
-                    wr.write('doo')
+                    wr.write(1000)
                     wr.close()
                     const rr = enc.readable.getReader({ mode: 'byob' })
                     let v
@@ -183,7 +183,7 @@
                         while (!v.done)
                     }
                     catch (e) {
-                        eq('error', e.message, 'unsupported type function')
+                        eq('error', e.message, 'unsupported type: function')
                     }
                 }
                 {

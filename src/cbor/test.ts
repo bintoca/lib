@@ -1,4 +1,7 @@
-import { integerItem, binaryItem, stringItem, numberItem, bigintItem, arrayItem, nullItem, mapItem, tagItem, decodeAdditionalInformation, encodeSync, hasBadSurrogates, undefinedItem, booleanItem, EncoderState, defaultTypeMap, objectItem, setupEncoder } from '@bintoca/cbor/core'
+import {
+    integerItem, binaryItem, stringItem, numberItem, bigintItem, arrayItem, mapItem, tagItem, decodeInfo, encodeSync, hasBadSurrogates, encodeItem, EncoderState,
+    defaultTypeMap, setupEncoder, setupDecoder, indefiniteBinaryBegin, indefiniteStringBegin, indefiniteArrayBegin, indefiniteMapBegin, indefiniteEnd, decodeLoop
+} from '@bintoca/cbor/core'
 import * as node from '@bintoca/cbor/node'
 import wtf8 from 'wtf-8'
 
@@ -43,7 +46,7 @@ test.each([['hello', '101,104,101,108,108,111', ''], ['😊', '100,240,159,152,1
         expect(out.resume).toBeUndefined()
     }
 })
-test.each([['hello', '101,104,101,108,108,111', ''], ['😊', '100,240,159,152,138', ''], ['😊😊😊', '108,240,159,152,138,240,159,152,138,240', '159,152,138'], ['a\uD800\uD800', '217,1,17', '97,195,173,194,160,194,128,195,173,194,160,194,128']])('stringItemWTF8(%s)', (a, e, e2) => {
+test.each([['hello', '101,104,101,108,108,111', ''], ['😊', '100,240,159,152,138', ''], ['😊😊😊', '108,240,159,152,138,240,159,152,138,240', '159,152,138'], ['a\uD800\uD800', '217,1,17,77,97,195,173,194,160,194', '128,195,173,194,160,194,128']])('stringItemWTF8(%s)', (a, e, e2) => {
     const out = { view: new DataView(new ArrayBuffer(10)), length: 0, useWTF8: wtf8 } as EncoderState
     stringItem(a, out)
     expect(new Uint8Array(out.view.buffer, 0, out.length).toString()).toBe(e)
@@ -73,25 +76,31 @@ test.each([[BigInt(1234), '194,66,4,210,0,0,0,0,0,0', 4], [BigInt(-1234), '195,6
     expect(out.length).toBe(l)
 })
 test('items', () => {
-    const out = { view: new DataView(new ArrayBuffer(18)), length: 0, typeMap: new Map(defaultTypeMap) } as EncoderState
+    const out = { view: new DataView(new ArrayBuffer(40)), length: 0, typeMap: new WeakMap(defaultTypeMap) } as EncoderState
     arrayItem(1, out)
     mapItem(1, out)
     integerItem(1, out)
     tagItem(10, out)
-    nullItem(out)
-    undefinedItem(out)
-    booleanItem(true, out)
-    booleanItem(false, out)
-    objectItem({}, out)
-    objectItem(Object.create(null), out)
-    expect(new Uint8Array(out.view.buffer).toString()).toBe('129,161,1,202,246,247,245,244,160,160,0,0,0,0,0,0,0,0')
-    expect(out.length).toBe(10)
-})
-test.each([[[0, 1], 0, 1], [[24, 50], 50, 2], [[25, 1, 0], 256, 3], [[26, 1, 0, 0, 0], 2 ** 24, 5], [[27, 0, 0, 0, 1, 0, 0, 0, 0], 2 ** 32, 9], [[27, 1, 0, 0, 0, 0, 0, 0, 0], BigInt(2) ** BigInt(56), 9]])('decodeAdditionalInformation(%i,%s)', (a, e, p) => {
-    const inp = { buffer: new Uint8Array(a), position: 1 }
-    const dv = new DataView(inp.buffer.buffer)
-    expect(decodeAdditionalInformation(0, a[0], dv, inp)).toBe(e)
-    expect(inp.position).toBe(p)
+    encodeItem(null, out)
+    encodeItem(undefined, out)
+    encodeItem(true, out)
+    encodeItem(false, out)
+    encodeItem({}, out)
+    encodeItem(Object.create(null), out)
+    indefiniteBinaryBegin(out)
+    indefiniteStringBegin(out)
+    indefiniteArrayBegin(out)
+    indefiniteMapBegin(out)
+    indefiniteEnd(out)
+    encodeItem(new Map(), out)
+    out.omitMapTag = true
+    encodeItem(new Map(), out)
+    encodeItem(new Set(), out)
+    encodeItem([], out)
+    encodeItem(new Date(1234), out)
+    encodeItem(new Date(2000), out)
+    expect(new Uint8Array(out.view.buffer).toString()).toBe('129,161,1,202,246,247,245,244,160,160,95,127,159,191,255,217,1,3,160,160,217,1,2,128,128,217,3,233,162,1,1,34,24,234,193,2,0,0,0,0')
+    expect(out.length).toBe(36)
 })
 
 const cycle1 = {}
@@ -112,13 +121,14 @@ test.each([[{ a: 1, b: [2, 3] }, [new Uint8Array([162, 97, 97, 1, 97, 98, 130, 2
 test.each([['hello', new TestAsync(), '101,104,101,108,108,111', '99,97,115,121'], ['hello', cycle1, '101,104,101,108,108,111', '216,28,162,97,97,216,29,0,97,98,130,216,28,160,216,29,1']])('nodeStream(%s,%s)', async (a, b, a1, b1) => {
     const r: Uint8Array[] = await new Promise((resolve, reject) => {
         const bufs = []
-        const enc = new node.Encoder({ encodeCycles: true })
+        const enc = new node.Encoder({ encodeCycles: true, superOpts: { readableHighWaterMark: 6 } })
         enc.on('data', buf => { bufs.push(buf) })
         enc.on('error', reject)
         enc.on('end', () => resolve(bufs))
         enc.write(a)
         enc.write(b)
         enc.end()
+        expect(enc.readableHighWaterMark).toBe(6)
     })
     expect(r.length).toBe(2)
     expect(new Uint8Array(r[0]).toString()).toBe(a1)
@@ -184,7 +194,7 @@ test.each([[{ f: () => { } }, 'function']])('nodeStreamError(%s)', async (a, b) 
         enc.write(a)
         enc.end()
     })
-    return expect(p).rejects.toMatchObject(new Error('unsupported type ' + b))
+    return expect(p).rejects.toMatchObject(new Error('unsupported type: ' + b))
 })
 test.each([[new ArrayBuffer(4100), new Uint8Array([89, 16, 4].concat(Array(4093))), new Uint8Array(7)]])('nodeSplitChunk()', async (a, a1, b1) => {
     const r: Uint8Array[] = await new Promise((resolve, reject) => {
@@ -199,6 +209,17 @@ test.each([[new ArrayBuffer(4100), new Uint8Array([89, 16, 4].concat(Array(4093)
     expect(r.length).toBe(2)
     expect(new Uint8Array(r[0])).toEqual(a1)
     expect(new Uint8Array(r[1])).toEqual(b1)
+})
+
+test.each([[[0], 0, 1], [[24, 50], 50, 2], [[25, 1, 0], 256, 3], [[26, 1, 0, 0, 0], 2 ** 24, 5], [[27, 0, 0, 0, 1, 0, 0, 0, 0], 2 ** 32, 9], [[27, 1, 0, 0, 0, 0, 0, 0, 0], BigInt(2) ** BigInt(56), 9], [[250, 90, 0, 0, 0], Number.MAX_SAFE_INTEGER + 1, 5],
+[[54], -23, 1], [[56, 24], -25, 2], [[57, 1, 0], -257, 3], [[58, 0, 1, 0, 0], -(2 ** 16 + 1), 5], [[59, 0, 0, 0, 1, 0, 0, 0, 0], -(2 ** 32 + 1), 9], [[250, 218, 0, 0, 0], Number.MIN_SAFE_INTEGER - 1, 5],
+[[249, 62, 0], 1.5, 3], [[250, 71, 128, 0, 64], 2 ** 16 + 0.5, 5], [[251, 65, 240, 0, 0, 0, 8, 0, 0], 2 ** 32 + 0.5, 9], [[249, 128, 0], -0, 3], [[249, 126, 0], NaN, 3], [[249, 124, 0], Infinity, 3], [[249, 252, 0], -Infinity, 3],
+[[216, 64, 67, 1, 2, 3], new Uint8Array([1, 2, 3]), 6], [[101, 104, 101, 108, 108, 111], 'hello', 6], [[130, 1, 2], [1, 2], 3], [[161, 97, 104, 1], { h: 1 }, 4], [[246], null, 1], [[247], undefined, 1], [[244], false, 1], [[245], true, 1],
+[[194, 66, 4, 210], BigInt(1234), 4], [[195, 66, 4, 209], BigInt(-1234), 4], [[217, 1, 3, 160], new Map(), 4], [[217, 1, 2, 128], new Set(), 4], [[217, 3, 233, 162, 1, 1, 34, 24, 234], new Date(1234), 9], [[193, 2], new Date(2000), 2],
+[[192, 100, 50, 48, 48, 48], new Date('2000'), 6], [[216, 28, 162, 97, 97, 216, 29, 0, 97, 98, 130, 216, 28, 160, 216, 29, 1], cycle1, 17]])('decodeLoop(%i,%s)', (a, e, p) => {
+    const state = setupDecoder({ buffer: new Uint8Array(a), position: 0, shared: [] })
+    expect(decodeLoop(state)).toEqual(e)
+    expect(state.position).toBe(p)
 })
 // test.each([[1, -2, 123456n, -123456n, null, undefined, true, false, 'q', 1.4, new Date(1234), new Date(2000), new ArrayBuffer(8)], { a: 1, b: [2.5], c: { a: 3 }, d: 'hey', e: null, f: undefined, g: true, h: false }])('lite(%#)', (a) => {
 //     expect(lite.decode(lite.encode(a))).toEqual(a)

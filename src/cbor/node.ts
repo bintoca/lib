@@ -1,5 +1,5 @@
 import { Duplex } from 'stream'
-import { EncoderState, Input, parseItem, finishItem, encodeLoop, decodeLoop, finalChecks, encodeSync, concat, resetOutput, EncoderOptions, detectCycles, setupEncoder } from '@bintoca/cbor/core'
+import { EncoderState, DecoderState, decodeItem, finishItem, encodeLoop, decodeLoop, finalChecks, encodeSync, concat, resetOutput, EncoderOptions, detectCycles, setupEncoder } from '@bintoca/cbor/core'
 
 export class Encoder extends Duplex {
     constructor(options?: EncoderOptions & { superOpts?}) {

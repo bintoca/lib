@@ -27,7 +27,7 @@ function bench(f, newCode) {
 }
 async function go() {
     await bench('./node_modules/cbor-x/tests/benchmark.cjs', `import('../../../packages/cbor/node.js').then(x=>{
-    const enc = new x.Encoder({ useRecursion:true, newBufferSize:8192,minViewSize:2048 })
+    const enc = new x.Encoder({ newBufferSize:8192, minViewSize:2048 })
     buf = bench('buf = require("@bintoca/cbor").encode(obj);', enc.encode, data);
     //obj = bench('obj = require("@bintoca/cbor").decode(buf);', cbor.decode, buf);
     //test(obj);

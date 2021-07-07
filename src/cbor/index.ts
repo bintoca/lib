@@ -1,4 +1,4 @@
-import { EncoderState, Input, EncoderOptions, parseItem, finishItem, encodeLoop, decodeLoop, finalChecks, encodeSync, concat, resetOutput, detectCycles, setupEncoder } from '@bintoca/cbor/core'
+import { EncoderState, DecoderState, EncoderOptions, decodeItem, finishItem, encodeLoop, decodeLoop, finalChecks, encodeSync, concat, resetOutput, detectCycles, setupEncoder } from '@bintoca/cbor/core'
 declare var ReadableStreamBYOBReader
 
 export class Encoder {
@@ -147,10 +147,4 @@ export class Encoder {
     readable: ReadableStream
     writable: WritableStream
     encode = (value): Uint8Array => concat(encodeSync(value, this.state))
-}
-export const decode = (b: BufferSource, op?: { allowExcessBuffer?: boolean, endPosition?: number }): any => {
-    const src: Input = { buffer: b, position: 0 }
-    const v = decodeLoop(src, parseItem, finishItem)
-    finalChecks(src, op)
-    return v
 }
