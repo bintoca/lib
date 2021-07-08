@@ -76,7 +76,7 @@ test.each([[BigInt(1234), '194,66,4,210,0,0,0,0,0,0', 4], [BigInt(-1234), '195,6
     expect(out.length).toBe(l)
 })
 test('items', () => {
-    const out = { view: new DataView(new ArrayBuffer(40)), length: 0, typeMap: new WeakMap(defaultTypeMap) } as EncoderState
+    const out = { view: new DataView(new ArrayBuffer(40)), length: 0, typeMap: new WeakMap(defaultTypeMap), disableSharedReferences: true } as EncoderState
     arrayItem(1, out)
     mapItem(1, out)
     integerItem(1, out)
@@ -114,14 +114,14 @@ test.each([[{ a: 1, b: [2, 3] }, [new Uint8Array([162, 97, 97, 1, 97, 98, 130, 2
 [[new ArrayBuffer(4100), new ArrayBuffer(4100)], [new Uint8Array([130, 89, 16, 4].concat(Array(4092))), new Uint8Array(Array(8).concat([89, 16, 4].concat(Array(4085)))), new Uint8Array(Array(15))]], //resumeBuffer 2
 [[new ArrayBuffer(9000)], [new Uint8Array([129, 89, 35, 40].concat(Array(4092))), new Uint8Array(4096), new Uint8Array(Array(812))]], //resumeBuffer large
 ])('encodeSync(%#)', (a, e) => {
-    const r = encodeSync(a, setupEncoder({ encodeCycles: true }))
+    const r = encodeSync(a, setupEncoder())
     expect(r.length).toBe(e.length)
     expect(r).toEqual(e)
 })
 test.each([['hello', new TestAsync(), '101,104,101,108,108,111', '99,97,115,121'], ['hello', cycle1, '101,104,101,108,108,111', '216,28,162,97,97,216,29,0,97,98,130,216,28,160,216,29,1']])('nodeStream(%s,%s)', async (a, b, a1, b1) => {
     const r: Uint8Array[] = await new Promise((resolve, reject) => {
         const bufs = []
-        const enc = new node.Encoder({ encodeCycles: true, superOpts: { readableHighWaterMark: 6 } })
+        const enc = new node.Encoder({ superOpts: { readableHighWaterMark: 6 } })
         enc.on('data', buf => { bufs.push(buf) })
         enc.on('error', reject)
         enc.on('end', () => resolve(bufs))
@@ -134,7 +134,7 @@ test.each([['hello', new TestAsync(), '101,104,101,108,108,111', '99,97,115,121'
     expect(new Uint8Array(r[0]).toString()).toBe(a1)
     expect(new Uint8Array(r[1]).toString()).toBe(b1)
 })
-test.each([['hello', new TestAsync(), '101,104,101,108,108,111,99,97,115,121']])('nodeStreamCombine(%s,%s)', async (a, b, e) => {
+test.each([[node.nullSymbol, new TestAsync(), '246,99,97,115,121']])('nodeStreamCombine(%s,%s)', async (a, b, e) => {
     const r: Uint8Array[] = await new Promise((resolve, reject) => {
         const bufs = []
         const enc = new node.Encoder()
@@ -217,9 +217,66 @@ test.each([[[0], 0, 1], [[24, 50], 50, 2], [[25, 1, 0], 256, 3], [[26, 1, 0, 0, 
 [[216, 64, 67, 1, 2, 3], new Uint8Array([1, 2, 3]), 6], [[101, 104, 101, 108, 108, 111], 'hello', 6], [[130, 1, 2], [1, 2], 3], [[161, 97, 104, 1], { h: 1 }, 4], [[246], null, 1], [[247], undefined, 1], [[244], false, 1], [[245], true, 1],
 [[194, 66, 4, 210], BigInt(1234), 4], [[195, 66, 4, 209], BigInt(-1234), 4], [[217, 1, 3, 160], new Map(), 4], [[217, 1, 2, 128], new Set(), 4], [[217, 3, 233, 162, 1, 1, 34, 24, 234], new Date(1234), 9], [[193, 2], new Date(2000), 2],
 [[192, 100, 50, 48, 48, 48], new Date('2000'), 6], [[216, 28, 162, 97, 97, 216, 29, 0, 97, 98, 130, 216, 28, 160, 216, 29, 1], cycle1, 17]])('decodeLoop(%i,%s)', (a, e, p) => {
-    const state = setupDecoder({ buffer: new Uint8Array(a), position: 0, shared: [] })
+    const state = setupDecoder({ queue: [new Uint8Array(a)] })
     expect(decodeLoop(state)).toEqual(e)
     expect(state.position).toBe(p)
+})
+test('decodeLoopChunked', () => {
+    const state = setupDecoder()
+    state.queue.push(new Uint8Array([148].concat(Array(18))))
+    expect(decodeLoop(state)).toEqual(0)
+    expect(state.position).toBe(19)
+    expect(state.stopPosition).toBe(undefined)
+    expect(state.queue).toEqual([])
+    expect(state.stack).toEqual([{ major: 4, length: 20, temp: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0] }])
+    state.queue.push(new Uint8Array([0, 0, 25]))
+    expect(decodeLoop(state)).toEqual([0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0])
+    expect(state.position).toBe(2)
+    expect(state.stopPosition).toBe(undefined)
+    expect(state.queue).toEqual([new Uint8Array([25])])
+    expect(state.stack).toEqual([])
+    expect(decodeLoop(state)).toEqual(0)
+    expect(state.position).toBe(1)
+    expect(state.stopPosition).toBe(0)
+    expect(state.queue).toEqual([new Uint8Array([25])])
+    expect(state.stack).toEqual([])
+    expect(state.buffer).toBe(undefined)
+    state.queue.push(new Uint8Array([1]))
+    expect(decodeLoop(state)).toEqual(0)
+    expect(state.position).toBe(2)
+    expect(state.stopPosition).toBe(0)
+    expect(state.queue).toEqual([new Uint8Array([25]), new Uint8Array([1])])
+    expect(state.stack).toEqual([])
+    state.queue.push(new Uint8Array([0, 148].concat(Array(20))))
+    expect(decodeLoop(state)).toEqual(256)
+    expect(state.position).toBe(3)
+    expect(state.stopPosition).toBe(undefined)
+    expect(state.queue).toEqual([new Uint8Array([148].concat(Array(20)))])
+    expect(state.stack).toEqual([])
+    expect(state.buffer).toBe(undefined)
+    expect(decodeLoop(state)).toEqual([0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0])
+    expect(state.position).toBe(21)
+    expect(state.stopPosition).toBe(undefined)
+    expect(state.queue).toEqual([])
+    expect(state.stack).toEqual([])
+    expect(state.buffer).toBe(undefined)
+})
+test('nonStringKeysToObject', () => {
+    const state = setupDecoder()
+    state.queue.push(new Uint8Array([161, 1, 2]))
+    expect(decodeLoop(state)).toEqual(new Map([[1, 2]]))
+    state.queue.push(new Uint8Array([161, 1, 2]))
+    state.nonStringKeysToObject = true
+    expect(decodeLoop(state)).toEqual({ "1": 2 })
+})
+test('maxBytesPerItem', () => {
+    const state = setupDecoder({ maxBytesPerItem: 10 })
+    state.queue.push(new Uint8Array([27, 0, 0, 0, 1, 0, 0, 0, 0]))
+    expect(decodeLoop(state)).toEqual(2 ** 32)
+    state.queue.push(new Uint8Array([27, 0, 0, 0, 1, 0, 0, 0, 0]))
+    expect(decodeLoop(state)).toEqual(2 ** 32)
+    state.queue.push(new Uint8Array([138].concat(Array(10))))
+    expect(() => decodeLoop(state)).toThrowError('current item consumed 11 bytes')
 })
 // test.each([[1, -2, 123456n, -123456n, null, undefined, true, false, 'q', 1.4, new Date(1234), new Date(2000), new ArrayBuffer(8)], { a: 1, b: [2.5], c: { a: 3 }, d: 'hey', e: null, f: undefined, g: true, h: false }])('lite(%#)', (a) => {
 //     expect(lite.decode(lite.encode(a))).toEqual(a)

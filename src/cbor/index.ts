@@ -1,4 +1,4 @@
-import { EncoderState, DecoderState, EncoderOptions, decodeItem, finishItem, encodeLoop, decodeLoop, finalChecks, encodeSync, concat, resetOutput, detectCycles, setupEncoder } from '@bintoca/cbor/core'
+import { EncoderState, DecoderState, EncoderOptions, decodeItem, finishItem, encodeLoop, decodeLoop, finalChecks, encodeSync, concat, resetEncoder, detectShared, setupEncoder } from '@bintoca/cbor/core'
 declare var ReadableStreamBYOBReader
 
 export class Encoder {
@@ -14,11 +14,11 @@ export class Encoder {
                 pull(controller: ReadableStreamController<any> & { byobRequest?: { view: Uint8Array, respond: (n: number) => void } }) {
                     try {
                         const out = that.state
-                        resetOutput(out, controller.byobRequest?.view)
+                        resetEncoder(out, controller.byobRequest?.view)
                         function process() {
                             if (out.stack.length == 0 && !out.resume) {
                                 out.stack.push(that.chunk)
-                                detectCycles(out.stack[0], out)
+                                detectShared(out.stack[0], out)
                             }
                             encodeLoop(out)
                             if (out.resume?.promise) {

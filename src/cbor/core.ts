@@ -5,27 +5,27 @@ export const defaultBufferSize = 4096
 export const defaultMinViewSize = 512
 export type MajorTypes = 0 | 1 | 2 | 3 | 4 | 5 | 6 | 7 | -1
 export type EncoderState = {
-    view: DataView, length: number, stack: any[], buffers?: Uint8Array[], useWTF8?: { encode: (s: string) => string }, encodeCycles?: boolean, cycleMap?: WeakMap<any, number>, cycleSet?: WeakSet<any>, omitMapTag?: boolean,
-    typeMap: WeakMap<Function, (a, out: EncoderState) => void>, backingView: ArrayBufferView, offset: number, newBufferSize: number, minViewSize: number,
-    encodeItemFunc: (a, out: EncoderState) => void, resume?: { items?: { major: MajorTypes, adInfo: number, float?: boolean }[], buffer?: BufferSource, promise?: Promise<void> }, resumeFunc: (out: EncoderState) => void
+    view: DataView, length: number, stack: any[], buffers?: Uint8Array[], useWTF8?: { encode: (s: string) => string }, cycleMap?: WeakMap<any, number>, cycleSet?: WeakSet<any>, omitMapTag?: boolean,
+    typeMap: WeakMap<Function, (a, out: EncoderState) => void>, backingView: ArrayBufferView, offset: number, newBufferSize: number, minViewSize: number, disableSharedReferences?: boolean,
+    encodeItemFunc: (a, state: EncoderState) => void, resume?: { items?: { major: MajorTypes, adInfo: number, float?: boolean }[], buffer?: BufferSource, promise?: Promise<void> }, resumeFunc: (out: EncoderState) => void
 }
-export const appendBuffer = (out: EncoderState, b: BufferSource) => {
-    if (out.resume) {
-        out.resume.buffer = b
+export const appendBuffer = (state: EncoderState, b: BufferSource) => {
+    if (state.resume) {
+        state.resume.buffer = b
     }
     else {
-        if (out.length + b.byteLength <= out.view.byteLength) {
-            new Uint8Array(out.view.buffer, out.view.byteOffset, out.view.byteLength).set(b instanceof ArrayBuffer ? new Uint8Array(b) : new Uint8Array(b.buffer, b.byteOffset, b.byteLength), out.length)
-            out.length += b.byteLength
+        if (state.length + b.byteLength <= state.view.byteLength) {
+            new Uint8Array(state.view.buffer, state.view.byteOffset, state.view.byteLength).set(b instanceof ArrayBuffer ? new Uint8Array(b) : new Uint8Array(b.buffer, b.byteOffset, b.byteLength), state.length)
+            state.length += b.byteLength
         }
         else {
-            const len = out.view.byteLength - out.length
-            new Uint8Array(out.view.buffer, out.view.byteOffset, out.view.byteLength).set(b instanceof ArrayBuffer ? new Uint8Array(b, 0, len) : new Uint8Array(b.buffer, b.byteOffset, len), out.length)
-            out.length += len
-            if (!out.resume) {
-                out.resume = {}
+            const len = state.view.byteLength - state.length
+            new Uint8Array(state.view.buffer, state.view.byteOffset, state.view.byteLength).set(b instanceof ArrayBuffer ? new Uint8Array(b, 0, len) : new Uint8Array(b.buffer, b.byteOffset, len), state.length)
+            state.length += len
+            if (!state.resume) {
+                state.resume = {}
             }
-            out.resume.buffer = b instanceof ArrayBuffer ? new Uint8Array(b, len, b.byteLength - len) : new Uint8Array(b.buffer, b.byteOffset + len, b.byteLength - len)
+            state.resume.buffer = b instanceof ArrayBuffer ? new Uint8Array(b, len, b.byteLength - len) : new Uint8Array(b.buffer, b.byteOffset + len, b.byteLength - len)
         }
     }
 }
@@ -140,28 +140,28 @@ export const writeItemCore = (major: MajorTypes, adInfo: number, dv: DataView, o
     dv.setUint32(offset + 5, adInfo % 0x100000000)
     return 9
 }
-export const writeItem = (major: MajorTypes, adInfo: number, out: EncoderState) => {
-    const written = out.resume ? 0 : writeItemCore(major, adInfo, out.view, out.length)
+export const writeItem = (major: MajorTypes, adInfo: number, state: EncoderState) => {
+    const written = state.resume ? 0 : writeItemCore(major, adInfo, state.view, state.length)
     if (written) {
-        out.length += written
+        state.length += written
     }
     else {
-        if (!out.resume) {
-            out.resume = {}
+        if (!state.resume) {
+            state.resume = {}
         }
-        if (!out.resume.items) {
-            out.resume.items = []
+        if (!state.resume.items) {
+            state.resume.items = []
         }
-        out.resume.items.push({ major, adInfo })
+        state.resume.items.push({ major, adInfo })
     }
 }
-export const integerItem = (value: number, out: EncoderState) => value >= 0 ? writeItem(0, value, out) : writeItem(1, -(value + 1), out)
-export const nullItem = (out: EncoderState) => writeItem(7, 22, out)
-export const undefinedItem = (out: EncoderState) => writeItem(7, 23, out)
-export const booleanItem = (value: boolean, out: EncoderState) => writeItem(7, value ? 21 : 20, out)
-export const binaryItem = (v: BufferSource, out: EncoderState) => {
-    writeItem(2, v.byteLength, out)
-    appendBuffer(out, v)
+export const integerItem = (value: number, state: EncoderState) => value >= 0 ? writeItem(0, value, state) : writeItem(1, -(value + 1), state)
+export const nullItem = (state: EncoderState) => writeItem(7, 22, state)
+export const undefinedItem = (state: EncoderState) => writeItem(7, 23, state)
+export const booleanItem = (value: boolean, state: EncoderState) => writeItem(7, value ? 21 : 20, state)
+export const binaryItem = (v: BufferSource, state: EncoderState) => {
+    writeItem(2, v.byteLength, state)
+    appendBuffer(state, v)
 }
 export const hasBadSurrogates = (s: string): boolean => {
     let low = false
@@ -188,25 +188,25 @@ export const hasBadSurrogates = (s: string): boolean => {
     }
     return low
 }
-export const stringItemCopy = (s: string, out: EncoderState) => {
+export const stringItemCopy = (s: string, state: EncoderState) => {
     let major: MajorTypes = 3
-    if (out.useWTF8 && hasBadSurrogates(s)) {
-        s = out.useWTF8.encode(s)
-        tagItem(tags.WTF8, out)
+    if (state.useWTF8 && hasBadSurrogates(s)) {
+        s = state.useWTF8.encode(s)
+        tagItem(tags.WTF8, state)
         major = 2
     }
     const v = TE.encode(s)
-    writeItem(major, v.byteLength, out)
-    appendBuffer(out, v)
+    writeItem(major, v.byteLength, state)
+    appendBuffer(state, v)
 }
-export const stringItem = (s: string, out: EncoderState) => {
-    const maybeFitsView = out.length + s.length + 9 <= out.view.byteLength
-    const start = out.length
+export const stringItem = (s: string, state: EncoderState) => {
+    const maybeFitsView = state.length + s.length + 9 <= state.view.byteLength
+    const start = state.length
     let fullEncode
     if (maybeFitsView) {
-        const dv = out.view
-        writeItem(3, s.length, out)
-        const len = out.length
+        const dv = state.view
+        writeItem(3, s.length, state)
+        const len = state.length
         for (let i = 0; i < s.length; i++) {
             const ch = s.charCodeAt(i)
             if (ch < 128) {
@@ -217,51 +217,51 @@ export const stringItem = (s: string, out: EncoderState) => {
                 break
             }
         }
-        out.length += s.length
+        state.length += s.length
     }
     else {
-        stringItemCopy(s, out)
+        stringItemCopy(s, state)
     }
     if (fullEncode) {
-        out.length = start
-        if (!out.useWTF8 && TE.encodeInto && maybeFitsView) {
-            writeItem(3, s.length, out)
-            const r = TE.encodeInto(s, new Uint8Array(out.view.buffer, out.view.byteOffset + out.length, out.view.byteLength - out.length))
+        state.length = start
+        if (!state.useWTF8 && TE.encodeInto && maybeFitsView) {
+            writeItem(3, s.length, state)
+            const r = TE.encodeInto(s, new Uint8Array(state.view.buffer, state.view.byteOffset + state.length, state.view.byteLength - state.length))
             if (r.read == s.length) {
                 if (r.written == s.length) {
-                    out.length += r.written
+                    state.length += r.written
                 }
                 else {
-                    if (out.length - start == writeItemCore(3, r.written, out.view, start)) {
-                        out.length += r.written
+                    if (state.length - start == writeItemCore(3, r.written, state.view, start)) {
+                        state.length += r.written
                     }
                     else {
-                        out.length = start
-                        stringItemCopy(s, out)
+                        state.length = start
+                        stringItemCopy(s, state)
                     }
                 }
             }
             else {
-                out.length = start
-                stringItemCopy(s, out)
+                state.length = start
+                stringItemCopy(s, state)
             }
         }
         else {
-            stringItemCopy(s, out)
+            stringItemCopy(s, state)
         }
     }
 }
-export const arrayItem = (length: number, out: EncoderState) => writeItem(4, length, out)
-export const mapItem = (length: number, out: EncoderState) => writeItem(5, length, out)
-export const tagItem = (id: number, out: EncoderState) => writeItem(6, id, out)
-export const numberItem = (val: number, out: EncoderState) => writeItem(-1, val, out)
-export const indefiniteBinaryBegin = (out: EncoderState) => writeItem(2, -1, out)
-export const indefiniteStringBegin = (out: EncoderState) => writeItem(3, -1, out)
-export const indefiniteArrayBegin = (out: EncoderState) => writeItem(4, -1, out)
-export const indefiniteMapBegin = (out: EncoderState) => writeItem(5, -1, out)
-export const indefiniteEnd = (out: EncoderState) => writeItem(7, -1, out)
-export const bigintItem = (val: bigint, out: EncoderState) => {
-    tagItem(val >= 0 ? tags.positiveBigNum : tags.negativeBigNum, out)
+export const arrayItem = (length: number, state: EncoderState) => writeItem(4, length, state)
+export const mapItem = (length: number, state: EncoderState) => writeItem(5, length, state)
+export const tagItem = (id: number, state: EncoderState) => writeItem(6, id, state)
+export const numberItem = (val: number, state: EncoderState) => writeItem(-1, val, state)
+export const indefiniteBinaryBegin = (state: EncoderState) => writeItem(2, -1, state)
+export const indefiniteStringBegin = (state: EncoderState) => writeItem(3, -1, state)
+export const indefiniteArrayBegin = (state: EncoderState) => writeItem(4, -1, state)
+export const indefiniteMapBegin = (state: EncoderState) => writeItem(5, -1, state)
+export const indefiniteEnd = (state: EncoderState) => writeItem(7, -1, state)
+export const bigintItem = (val: bigint, state: EncoderState) => {
+    tagItem(val >= 0 ? tags.positiveBigNum : tags.negativeBigNum, state)
     let norm = val >= 0 ? val : -(val + BigInt(1))
     let len = 0
     if (norm > 0) {
@@ -274,123 +274,123 @@ export const bigintItem = (val: bigint, out: EncoderState) => {
         v[i] = Number(norm % BigInt(256))
         norm = norm / BigInt(256)
     }
-    binaryItem(v.reverse(), out)
+    binaryItem(v.reverse(), state)
 }
-export const objectItem = (a: Object, out: EncoderState) => {
+export const objectItem = (a: Object, state: EncoderState) => {
     if (a === null) {
-        nullItem(out)
+        nullItem(state)
         return
     }
-    if (out.encodeCycles) {
-        if (encodeCycles(a, out)) {
+    if (!state.disableSharedReferences) {
+        if (encodeShared(a, state)) {
             return
         }
     }
-    const typ = out.typeMap.get(a.constructor || NullConstructor)
+    const typ = state.typeMap.get(a.constructor || NullConstructor)
     if (typ) {
-        typ(a, out)
+        typ(a, state)
     }
     else {
         throw new Error('type mapping not found: ' + a.constructor?.name)
     }
 }
-export const encodeItem = (a, out: EncoderState) => {
+export const encodeItem = (a, state: EncoderState) => {
     if (typeof a == 'string') {
-        stringItem(a, out)
+        stringItem(a, state)
     }
     else if (typeof a == 'number') {
-        numberItem(a, out)
+        numberItem(a, state)
     }
     else if (typeof a == 'object') {
-        objectItem(a, out)
+        objectItem(a, state)
     }
     else if (typeof a == 'boolean') {
-        booleanItem(a, out)
+        booleanItem(a, state)
     }
     else if (typeof a == 'bigint') {
-        bigintItem(a, out)
+        bigintItem(a, state)
     }
     else if (typeof a == 'undefined') {
-        undefinedItem(out)
+        undefinedItem(state)
     }
     else {
         throw new Error('unsupported type: ' + typeof a)
     }
 }
-export const resumeItem = (out: EncoderState) => {
-    if (out.resume) {
-        const resume = out.resume
-        out.resume = undefined
+export const resumeItem = (state: EncoderState) => {
+    if (state.resume) {
+        const resume = state.resume
+        state.resume = undefined
         if (resume.items) {
             for (let r of resume.items) {
-                writeItem(r.major, r.adInfo, out)
+                writeItem(r.major, r.adInfo, state)
             }
         }
         if (resume.buffer) {
-            appendBuffer(out, resume.buffer)
+            appendBuffer(state, resume.buffer)
         }
     }
 }
-export const encodeLoop = (out: EncoderState) => {
-    out.resumeFunc(out)
-    while (out.stack.length > 0 && !out.resume) {
-        const a = out.stack.pop()
-        out.encodeItemFunc(a, out)
+export const encodeLoop = (state: EncoderState) => {
+    state.resumeFunc(state)
+    while (state.stack.length > 0 && !state.resume) {
+        const a = state.stack.pop()
+        state.encodeItemFunc(a, state)
     }
 }
-export const encodeObject = (a: Object, out: EncoderState) => {
+export const encodeObject = (a: Object, state: EncoderState) => {
     const ks = Object.keys(a)
-    mapItem(ks.length, out)
+    mapItem(ks.length, state)
     for (let i = ks.length - 1; i >= 0; i--) {
-        out.stack.push(a[ks[i]])
-        out.stack.push(ks[i])
+        state.stack.push(a[ks[i]])
+        state.stack.push(ks[i])
     }
 }
-export const encodeCycles = (a, out: EncoderState): boolean => {
-    const shareIndex = out.cycleMap.get(a)
+export const encodeShared = (a, state: EncoderState): boolean => {
+    const shareIndex = state.cycleMap.get(a)
     if (shareIndex >= 0) {
-        if (out.cycleSet.has(a)) {
-            tagItem(tags.sharedRef, out)
-            integerItem(shareIndex, out)
+        if (state.cycleSet.has(a)) {
+            tagItem(tags.sharedRef, state)
+            integerItem(shareIndex, state)
             return true
         }
         else {
-            out.cycleSet.add(a)
-            tagItem(tags.shareable, out)
+            state.cycleSet.add(a)
+            tagItem(tags.shareable, state)
         }
     }
 }
-export const encodeSync = (value, out: EncoderState): Uint8Array[] => {
-    resetOutput(out)
+export const encodeSync = (value, state: EncoderState): Uint8Array[] => {
+    resetEncoder(state)
     const buf = []
-    out.buffers = buf
-    detectCycles(value, out)
-    out.stack = [value]
+    state.buffers = buf
+    detectShared(value, state)
+    state.stack = [value]
     do {
-        encodeLoop(out)
-        out.buffers.push(new Uint8Array(out.view.buffer, out.view.byteOffset, out.length))
-        resetOutput(out)
-        if (out.resume?.promise) {
+        encodeLoop(state)
+        state.buffers.push(new Uint8Array(state.view.buffer, state.view.byteOffset, state.length))
+        resetEncoder(state)
+        if (state.resume?.promise) {
             throw new Error('promise based resume not allowed in sync mode')
         }
     }
-    while (out.resume)
-    out.buffers = undefined
+    while (state.resume)
+    state.buffers = undefined
     return buf
 }
-export const resetOutput = (out: EncoderState, view?: ArrayBufferView) => {
-    if (out.view.byteLength - out.length < out.minViewSize) {
-        out.backingView = new Uint8Array(out.newBufferSize)
-        out.offset = 0
+export const resetEncoder = (state: EncoderState, view?: ArrayBufferView) => {
+    if (state.view.byteLength - state.length < state.minViewSize) {
+        state.backingView = new Uint8Array(state.newBufferSize)
+        state.offset = 0
     }
     else {
-        out.offset += out.length
+        state.offset += state.length
     }
-    out.view = view ? new DataView(view.buffer, view.byteOffset, view.byteLength) : new DataView(out.backingView.buffer, out.backingView.byteOffset + out.offset, out.backingView.byteLength - out.offset)
-    out.length = 0
+    state.view = view ? new DataView(view.buffer, view.byteOffset, view.byteLength) : new DataView(state.backingView.buffer, state.backingView.byteOffset + state.offset, state.backingView.byteLength - state.offset)
+    state.length = 0
 }
-export const detectCycles = (value, out: EncoderState) => {
-    if (out.encodeCycles) {
+export const detectShared = (value, state: EncoderState) => {
+    if (!state.disableSharedReferences) {
         const w = new WeakMap()
         let index = 0
         const stack = [value]
@@ -429,8 +429,8 @@ export const detectCycles = (value, out: EncoderState) => {
                 }
             }
         }
-        out.cycleMap = w
-        out.cycleSet = new WeakSet()
+        state.cycleMap = w
+        state.cycleSet = new WeakSet()
     }
 }
 export const concat = (buffers: Uint8Array[]): Uint8Array => {
@@ -447,8 +447,9 @@ export const concat = (buffers: Uint8Array[]): Uint8Array => {
 }
 export type DecodeStackItem = { major: 4 | 5 | 6, length: number, temp: any[], tag?: number | bigint, shareableIndex?: number, container?: any }
 export type DecoderState = {
-    buffer: BufferSource, position: number, stack?: DecodeStackItem[], decodeItemFunc: (major: number, additionalInformation: number, dv: DataView, src: DecoderState) => any,
-    finishItemFunc: (state: DecoderState) => any, stopPosition?: number, tagMap: Map<number | bigint, (v, tag?: number | bigint) => any>, shared?: any[]
+    buffer: BufferSource, position: number, stack: DecodeStackItem[], decodeItemFunc: (major: number, additionalInformation: number, dv: DataView, src: DecoderState) => any, decodeCyclesFunc: (value, state: DecoderState) => void,
+    finishItemFunc: (state: DecoderState) => any, stopPosition?: number, decodeMainFunc: (dv: DataView, state: DecoderState) => any, tagMap: Map<number | bigint, (v, tag?: number | bigint) => any>, shared: any[], queue: BufferSource[],
+    tempBuffer: Uint8Array, nonStringKeysToObject?: boolean, maxBytesPerItem?: number, currentItemByteCount: number
 }
 export const getFloat16 = (dv: DataView, offset: number, littleEndian?: boolean): number => {
     const leadByte = dv.getUint8(offset + (littleEndian ? 1 : 0))
@@ -462,14 +463,15 @@ export const getFloat16 = (dv: DataView, offset: number, littleEndian?: boolean)
     }
     return sign * Math.pow(2, exp - 25) * (1024 + mant)
 }
-export const checkInput = (src: DecoderState, length: number, backtrack: number = 0): boolean => {
-    if (src.position + length > src.buffer.byteLength) {
-        src.stopPosition = src.position - 1 - backtrack
+export const checkInput = (state: DecoderState, length: number, backtrack: number = 0): boolean => {
+    if (state.position + length > state.buffer.byteLength) {
+        state.stopPosition = state.position - 1 - backtrack
+        state.position = state.buffer.byteLength
         return false
     }
     return true
 }
-export const decodeInfo = (major: number, ai: number, dv: DataView, src: DecoderState): number | bigint => {
+export const decodeInfo = (major: number, ai: number, dv: DataView, state: DecoderState): number | bigint => {
     if (ai < 24) {
         return ai
     }
@@ -478,35 +480,35 @@ export const decodeInfo = (major: number, ai: number, dv: DataView, src: Decoder
             if (major == 7) {
                 throw new Error('not implemented simple type 24')
             }
-            if (checkInput(src, 1)) {
-                const v = dv.getUint8(src.position);
-                src.position++
+            if (checkInput(state, 1)) {
+                const v = dv.getUint8(state.position);
+                state.position++
                 return v
             }
             break
         case 25:
-            if (checkInput(src, 2)) {
-                const v = major == 7 ? getFloat16(dv, src.position) : dv.getUint16(src.position);
-                src.position += 2
+            if (checkInput(state, 2)) {
+                const v = major == 7 ? getFloat16(dv, state.position) : dv.getUint16(state.position);
+                state.position += 2
                 return v
             }
             break
         case 26:
-            if (checkInput(src, 4)) {
-                const v = major == 7 ? dv.getFloat32(src.position) : dv.getUint32(src.position);
-                src.position += 4
+            if (checkInput(state, 4)) {
+                const v = major == 7 ? dv.getFloat32(state.position) : dv.getUint32(state.position);
+                state.position += 4
                 return v
             }
             break
         case 27:
-            if (checkInput(src, 8)) {
+            if (checkInput(state, 8)) {
                 if (major == 7) {
-                    const v = dv.getFloat64(src.position)
-                    src.position += 8
+                    const v = dv.getFloat64(state.position)
+                    state.position += 8
                     return v
                 }
-                const hi = dv.getUint32(src.position)
-                const lo = dv.getUint32(src.position + 4)
+                const hi = dv.getUint32(state.position)
+                const lo = dv.getUint32(state.position + 4)
                 let v
                 if (hi > 0x1fffff) {
                     v = (BigInt(hi) * BigInt(0x100000000)) + BigInt(lo)
@@ -514,12 +516,12 @@ export const decodeInfo = (major: number, ai: number, dv: DataView, src: Decoder
                 else {
                     v = hi * 0x100000000 + lo
                 }
-                src.position += 8
+                state.position += 8
                 if (major >= 2 && major <= 5) {
                     if (typeof v != 'number') {
                         throw new Error('value too large for length: ' + v)
                     }
-                    checkInput(src, v, 8)
+                    checkInput(state, v, 8)
                 }
                 return v
             }
@@ -529,52 +531,104 @@ export const decodeInfo = (major: number, ai: number, dv: DataView, src: Decoder
     }
     return 0
 }
-export const slice = (length: number, src: DecoderState) => {
-    const b = src.buffer instanceof ArrayBuffer ? src.buffer.slice(src.position, src.position + length) : src.buffer.buffer.slice(src.position + src.buffer.byteOffset, src.position + src.buffer.byteOffset + length)
-    src.position += length;
+export const slice = (length: number, state: DecoderState) => {
+    const b = state.buffer instanceof ArrayBuffer ? state.buffer.slice(state.position, state.position + length) : state.buffer.buffer.slice(state.position + state.buffer.byteOffset, state.position + state.buffer.byteOffset + length)
+    state.position += length;
     return b
 }
-export const decodeLoop = (src: DecoderState) => {
-    const dv = src.buffer instanceof ArrayBuffer ? new DataView(src.buffer) : new DataView(src.buffer.buffer, src.buffer.byteOffset, src.buffer.byteLength)
-    if (!src.stack) {
-        src.stack = []
-    }
-    const st = src.stack
-    while (src.position < src.buffer.byteLength && src.stopPosition === undefined) {
-        const c = dv.getUint8(src.position)
-        src.position++;
-        const major = c >> 5
-        const ai = c & 31
-        const result = src.decodeItemFunc(major, ai, dv, src)
-        if (src.stopPosition === undefined) {
-            let head = st[st.length - 1]
-            if (major == 7 || major < 4) {
-                if (head) {
-                    head.temp.push(result)
+export const decodeLoop = (state: DecoderState) => {
+    state.stopPosition = undefined
+    if (!state.buffer) {
+        state.position = 0
+        const first = state.queue[0]
+        if (first) {
+            if (first.byteLength < state.tempBuffer.byteLength) {
+                let count = 0
+                let i = 0
+                while (count < state.tempBuffer.byteLength && i < state.queue.length) {
+                    const b = state.queue[i]
+                    const d = b instanceof ArrayBuffer ? new DataView(b) : new DataView(b.buffer, b.byteOffset, b.byteLength)
+                    for (let j = 0; j < b.byteLength; j++) {
+                        if (count < state.tempBuffer.byteLength) {
+                            state.tempBuffer[count] = d.getUint8(j)
+                            count++
+                        }
+                    }
+                    i++
                 }
-                else {
-                    return result
-                }
+                state.buffer = new Uint8Array(state.tempBuffer.buffer, 0, count)
             }
-            let finishedItem
-            while (head && head.length == head.temp.length) {
-                finishedItem = src.finishItemFunc(src)
-                st.pop()
-                head = st[st.length - 1]
-                if (head) {
-                    head.temp.push(finishedItem)
-                }
-            }
-            if (st.length == 0) {
-                if (src.shared.length > 0) {
-                    decodeCycles(finishedItem, src)
-                }
-                return finishedItem
+            else {
+                state.buffer = first
             }
         }
+        else {
+            throw new Error('no data supplied to decodeLoop')
+        }
     }
+    const start = state.position
+    const dv = state.buffer instanceof ArrayBuffer ? new DataView(state.buffer) : new DataView(state.buffer.buffer, state.buffer.byteOffset, state.buffer.byteLength)
+    let result
+    while (state.position < state.buffer.byteLength) {
+        result = state.decodeMainFunc(dv, state)
+        if (state.stack.length == 0) {
+            break
+        }
+    }
+    const consumed = (state.stopPosition === undefined ? state.position : state.stopPosition) - start
+    let count = 0
+    while (count < consumed) {
+        const x = state.queue[0]
+        if (x.byteLength + count <= consumed) {
+            count += x.byteLength
+            state.queue.shift()
+        }
+        else {
+            const newOffset = consumed - count
+            count = consumed
+            state.queue[0] = x instanceof ArrayBuffer ? new Uint8Array(x, newOffset, x.byteLength - newOffset) : new Uint8Array(x.buffer, x.byteOffset + newOffset, x.byteLength - newOffset)
+            state.buffer = undefined
+        }
+    }
+    if (state.position == state.buffer?.byteLength) {
+        state.buffer = undefined
+    }
+    state.currentItemByteCount += consumed
+    if (state.maxBytesPerItem && state.currentItemByteCount > state.maxBytesPerItem) {
+        throw new Error('current item consumed ' + state.currentItemByteCount + ' bytes')
+    }
+    if (state.stack.length == 0 && state.stopPosition === undefined) {
+        state.currentItemByteCount = 0
+    }
+    return result
 }
-export const decodeCycles = (value, state: DecoderState) => {
+export const decodeMain = (dv: DataView, state: DecoderState): any => {
+    const c = dv.getUint8(state.position)
+    state.position++;
+    const major = c >> 5
+    const ai = c & 31
+    let result = state.decodeItemFunc(major, ai, dv, state)
+    let head = state.stack[state.stack.length - 1]
+    if (head && (major < 4 || major == 7)) {
+        head.temp.push(result)
+    }
+    while (head && head.length == head.temp.length) {
+        result = state.finishItemFunc(state)
+        state.stack.pop()
+        head = state.stack[state.stack.length - 1]
+        if (head) {
+            head.temp.push(result)
+        }
+    }
+    if (state.stack.length == 0) {
+        if (state.shared.length > 0) {
+            state.decodeCyclesFunc(result, state)
+            state.shared = []
+        }
+    }
+    return result
+}
+export const decodeShared = (value, state: DecoderState) => {
     const stack = [value]
     while (stack.length > 0) {
         let val = stack.pop()
@@ -652,43 +706,43 @@ export const decodeBigInt = (v: ArrayBuffer, lastTag: number) => {
     }
     return lastTag == tags.negativeBigNum ? BigInt(-1) - norm : norm
 }
-export const decodeItem = (major: number, ai: number, dv: DataView, src: DecoderState) => {
+export const decodeItem = (major: number, ai: number, dv: DataView, state: DecoderState) => {
     let result
     switch (major) {
         case 0:
-            result = decodeInfo(major, ai, dv, src)
+            result = decodeInfo(major, ai, dv, state)
             break
         case 1: {
-            const a = decodeInfo(major, ai, dv, src)
+            const a = decodeInfo(major, ai, dv, state)
             result = typeof a != 'number' ? BigInt(-1) - a : -1 - a
             break
         }
         case 2: {
-            const a = decodeInfo(major, ai, dv, src) as number
-            result = slice(a, src)
+            const a = decodeInfo(major, ai, dv, state) as number
+            result = slice(a, state)
             break
         }
         case 3: {
-            const a = decodeInfo(major, ai, dv, src) as number
-            result = TD.decode(src.buffer instanceof ArrayBuffer ? new DataView(src.buffer, src.position, a) : new DataView(src.buffer.buffer, src.buffer.byteOffset + src.position, a))
-            src.position += a;
+            const a = decodeInfo(major, ai, dv, state) as number
+            result = TD.decode(state.buffer instanceof ArrayBuffer ? new DataView(state.buffer, state.position, a) : new DataView(state.buffer.buffer, state.buffer.byteOffset + state.position, a))
+            state.position += a;
             break
         }
         case 4: {
-            const a = decodeInfo(major, ai, dv, src) as number
-            src.stack.push({ major, length: a, temp: [] })
+            const a = decodeInfo(major, ai, dv, state) as number
+            state.stack.push({ major, length: a, temp: [] })
             break
         }
         case 5: {
-            const a = decodeInfo(major, ai, dv, src) as number
-            src.stack.push({ major, length: a * 2, temp: [] })
+            const a = decodeInfo(major, ai, dv, state) as number
+            state.stack.push({ major, length: a * 2, temp: [] })
             break
         }
         case 6: {
-            const a = decodeInfo(major, ai, dv, src)
-            src.stack.push({ major, length: 1, temp: [], tag: a, shareableIndex: a == tags.shareable ? src.shared.length : undefined })
+            const a = decodeInfo(major, ai, dv, state)
+            state.stack.push({ major, length: 1, temp: [], tag: a, shareableIndex: a == tags.shareable ? state.shared.length : undefined })
             if (a == tags.shareable) {
-                src.shared.push(undefined)
+                state.shared.push(undefined)
             }
             break
         }
@@ -712,7 +766,7 @@ export const decodeItem = (major: number, ai: number, dv: DataView, src: Decoder
                 }
             }
             else {
-                result = decodeInfo(major, ai, dv, src)
+                result = decodeInfo(major, ai, dv, state)
             }
             break
         }
@@ -726,7 +780,7 @@ export const finishItem = (state: DecoderState) => {
         case 4:
             return parent?.tag == tags.Set ? new Set(head.temp) : head.temp
         case 5:
-            if (parent?.tag == tags.Map || head.temp.filter((x, i) => i % 2 == 0).some(x => typeof x != 'string')) {
+            if (parent?.tag == tags.Map || (!state.nonStringKeysToObject && head.temp.filter((x, i) => i % 2 == 0).some(x => typeof x != 'string'))) {
                 const m = new Map()
                 for (let j = 0; j < head.length; j = j + 2) {
                     m.set(head.temp[j], head.temp[j + 1])
@@ -751,18 +805,32 @@ export const finishItem = (state: DecoderState) => {
             return tagFunc ? tagFunc(v, head.tag) : v
     }
 }
-export const finalChecks = (src: DecoderState, op: { allowExcessBuffer?: boolean, endPosition?: number }) => {
-    if (src.stack.length > 0) {
-        throw new Error('unfinished depth: ' + src.stack.length)
+export type DecodeSyncOptions = { all?: boolean }
+export const decodeSync = (buf: BufferSource | BufferSource[], state: DecoderState, op?: DecodeSyncOptions) => {
+    state.queue = Array.isArray(buf) ? buf : [buf]
+    state.buffer = undefined
+    state.currentItemByteCount = 0
+    state.stack = []
+    state.shared = []
+    if (op?.all) {
+
     }
-    if (src.stopPosition !== undefined) {
-        throw new Error('unexpected end of buffer: ' + src.stopPosition)
+    else {
+        
     }
-    if (!op?.allowExcessBuffer && src.position != src.buffer.byteLength) {
-        throw new Error('length mismatch ' + src.position + ' ' + src.buffer.byteLength)
+}
+export const finalChecks = (state: DecoderState, op: { allowExcessBuffer?: boolean, endPosition?: number }) => {
+    if (state.stack.length > 0) {
+        throw new Error('unfinished depth: ' + state.stack.length)
+    }
+    if (state.stopPosition !== undefined) {
+        throw new Error('unexpected end of buffer: ' + state.stopPosition)
+    }
+    if (!op?.allowExcessBuffer && state.position != state.buffer.byteLength) {
+        throw new Error('length mismatch ' + state.position + ' ' + state.buffer.byteLength)
     }
     if (op) {
-        op.endPosition = src.position
+        op.endPosition = state.position
     }
 }
 export const enum tags {
@@ -812,16 +880,24 @@ export const setupEncoder = (op: EncoderOptions = {}): EncoderState => {
     op.stack = op.stack || []
     return op as EncoderState
 }
-export type DecoderOptions = Partial<Omit<DecoderState, ''>>
+export type DecoderOptions = Partial<Omit<DecoderState, 'stack' | 'shared' | 'buffer' | 'position' | 'stopPosition' | 'currentItemByteCount'>>
 export const setupDecoder = (op: DecoderOptions = {}): DecoderState => {
     op.decodeItemFunc = op.decodeItemFunc || decodeItem
     op.finishItemFunc = op.finishItemFunc || finishItem
+    op.decodeCyclesFunc = op.decodeCyclesFunc || decodeShared
+    op.decodeMainFunc = op.decodeMainFunc || decodeMain
     op.tagMap = op.tagMap || new Map(defaultTagMap)
-    return op as DecoderState
+    op.queue = op.queue || []
+    op.tempBuffer = op.tempBuffer || new Uint8Array(16)
+    const o = op as DecoderState
+    o.stack = []
+    o.shared = []
+    o.currentItemByteCount = 0
+    return o
 }
 export class TagHelper { constructor(t) { this.tag = t }; tag: number }
 export class NullConstructor { }
-export const defaultTypeMap = new Map<Function, (a, out: EncoderState) => void>([[Object, encodeObject], [NullConstructor, encodeObject], [ArrayBuffer, binaryItem],
+export const defaultTypeMap = new Map<Function, (a, state: EncoderState) => void>([[Object, encodeObject], [NullConstructor, encodeObject], [ArrayBuffer, binaryItem],
 [Array, (a: any[], out: EncoderState) => {
     arrayItem(a.length, out)
     for (let i = a.length - 1; i >= 0; i--) {

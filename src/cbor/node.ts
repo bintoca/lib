@@ -1,5 +1,7 @@
 import { Duplex } from 'stream'
-import { EncoderState, DecoderState, decodeItem, finishItem, encodeLoop, decodeLoop, finalChecks, encodeSync, concat, resetOutput, EncoderOptions, detectCycles, setupEncoder } from '@bintoca/cbor/core'
+import { EncoderState, DecoderState, encodeLoop, decodeLoop, encodeSync, concat, resetEncoder, EncoderOptions, detectShared, setupEncoder } from '@bintoca/cbor/core'
+
+export const nullSymbol = Symbol.for('https://github.com/bintoca/lib/cbor/node/null')
 
 export class Encoder extends Duplex {
     constructor(options?: EncoderOptions & { superOpts?}) {
@@ -12,7 +14,7 @@ export class Encoder extends Duplex {
     protected doRead: boolean
     protected chunkIndex: number
     _writev(chunks: { chunk }[], callback: (error?: Error | null) => void) {
-        this.chunks = chunks.map(x => x.chunk)
+        this.chunks = chunks.map(x => x.chunk === nullSymbol ? null : x.chunk)
         this.cb = callback
         this.chunkIndex = 0
         if (this.doRead) {
@@ -31,13 +33,13 @@ export class Encoder extends Duplex {
                     out.resume = undefined
                 }
                 else {
-                    resetOutput(out)
+                    resetEncoder(out)
                 }
                 while (true) {
                     if (out.stack.length == 0 && this.chunkIndex < this.chunks.length) {
                         out.stack.push(this.chunks[this.chunkIndex])
                         this.chunkIndex++
-                        detectCycles(out.stack[0], out)
+                        detectShared(out.stack[0], out)
                     }
                     encodeLoop(out)
                     if (out.resume || this.chunkIndex == this.chunks.length) {
