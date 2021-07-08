@@ -1,5 +1,5 @@
 import { Duplex } from 'stream'
-import { EncoderState, DecoderState, encodeLoop, decodeLoop, encodeSync, concat, resetEncoder, EncoderOptions, detectShared, setupEncoder } from '@bintoca/cbor/core'
+import { EncoderState, DecoderState, encodeLoop, decodeLoop, encodeSync, concat, resetEncoder, EncoderOptions, detectShared, setupEncoder, EncodeSyncOptions } from '@bintoca/cbor/core'
 
 export const nullSymbol = Symbol.for('https://github.com/bintoca/lib/cbor/node/null')
 
@@ -71,6 +71,5 @@ export class Encoder extends Duplex {
             this.destroy(e)
         }
     }
-    encode = (value): Uint8Array => concat(encodeSync(value, this.state))
-    get typeMap() { return this.state.typeMap }
+    encode = (value, op?: EncodeSyncOptions) => concat(encodeSync(value, this.state, op))
 }

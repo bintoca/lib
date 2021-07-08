@@ -360,34 +360,60 @@ export const encodeShared = (a, state: EncoderState): boolean => {
         }
     }
 }
-export const encodeSync = (value, state: EncoderState): Uint8Array[] => {
+export type EncodeSyncOptions = { sequence?: boolean }
+export const encodeSync = (value, state: EncoderState, op?: EncodeSyncOptions): Uint8Array[] => {
     resetEncoder(state)
-    const buf = []
+    const buf: Uint8Array[] = []
     state.buffers = buf
     detectShared(value, state)
-    state.stack = [value]
+    const seq = op?.sequence && Array.isArray(value)
+    let seqIndex = 0
+    state.stack = [seq ? value[seqIndex] : value]
     do {
         encodeLoop(state)
-        state.buffers.push(new Uint8Array(state.view.buffer, state.view.byteOffset, state.length))
-        resetEncoder(state)
         if (state.resume?.promise) {
             throw new Error('promise based resume not allowed in sync mode')
         }
+        if (seq) {
+            const r = resetEncoder(state, null, true)
+            if (r.newBackingView) {
+                state.buffers.push(r.chunk)
+                resetEncoder(state)
+            }
+            if (state.stack.length == 0) {
+                seqIndex++
+                if (seqIndex < value.length) {
+                    state.stack.push(value[seqIndex])
+                }
+                else if (!r.newBackingView) {
+                    state.buffers.push(r.chunk)
+                }
+            }
+        }
+        else {
+            state.buffers.push(resetEncoder(state).chunk)
+        }
     }
-    while (state.resume)
+    while (state.resume || state.stack.length > 0)
     state.buffers = undefined
     return buf
 }
-export const resetEncoder = (state: EncoderState, view?: ArrayBufferView) => {
+export const resetEncoder = (state: EncoderState, view?: ArrayBufferView, skipView?: boolean): { newBackingView: boolean, chunk: Uint8Array } => {
+    let newBackingView = false
     if (state.view.byteLength - state.length < state.minViewSize) {
         state.backingView = new Uint8Array(state.newBufferSize)
         state.offset = 0
+        newBackingView = true
     }
     else {
         state.offset += state.length
     }
-    state.view = view ? new DataView(view.buffer, view.byteOffset, view.byteLength) : new DataView(state.backingView.buffer, state.backingView.byteOffset + state.offset, state.backingView.byteLength - state.offset)
-    state.length = 0
+    const chunk = new Uint8Array(state.view.buffer, state.view.byteOffset, state.length)
+    if (!skipView) {
+        state.view = view ? new DataView(view.buffer, view.byteOffset, view.byteLength) : new DataView(state.backingView.buffer, state.backingView.byteOffset + state.offset, state.backingView.byteLength - state.offset)
+        state.length = 0
+    }
+    return { newBackingView, chunk }
 }
 export const detectShared = (value, state: EncoderState) => {
     if (!state.disableSharedReferences) {
@@ -609,7 +635,7 @@ export const decodeMain = (dv: DataView, state: DecoderState): any => {
     const ai = c & 31
     let result = state.decodeItemFunc(major, ai, dv, state)
     let head = state.stack[state.stack.length - 1]
-    if (head && (major < 4 || major == 7)) {
+    if (head && (major < 4 || major == 7) && state.stopPosition === undefined) {
         head.temp.push(result)
     }
     while (head && head.length == head.temp.length) {
@@ -805,33 +831,45 @@ export const finishItem = (state: DecoderState) => {
             return tagFunc ? tagFunc(v, head.tag) : v
     }
 }
-export type DecodeSyncOptions = { all?: boolean }
-export const decodeSync = (buf: BufferSource | BufferSource[], state: DecoderState, op?: DecodeSyncOptions) => {
-    state.queue = Array.isArray(buf) ? buf : [buf]
+export type DecodeSyncOptions = { sequence?: boolean, allowExcessBytes?: boolean }
+export const decodeSync = (buffers: BufferSource | BufferSource[], state: DecoderState, op?: DecodeSyncOptions): any => {
+    state.queue = Array.isArray(buffers) ? buffers : [buffers]
     state.buffer = undefined
     state.currentItemByteCount = 0
     state.stack = []
     state.shared = []
-    if (op?.all) {
-
+    let result = op?.sequence ? [] : undefined
+    if (op?.sequence) {
+        let queueBytes = 0
+        do {
+            const r = decodeLoop(state)
+            if (state.stack.length == 0 && state.stopPosition === undefined) {
+                result.push(r)
+            }
+            const qb = state.queue.reduce((a, b) => a + b.byteLength, 0)
+            if (queueBytes == qb) {
+                break
+            }
+            queueBytes = qb
+        }
+        while (state.queue.length > 0)
     }
     else {
-        
+        do {
+            result = decodeLoop(state)
+        }
+        while (state.stack.length > 0 && state.stopPosition !== undefined && state.queue.length > 0)
     }
-}
-export const finalChecks = (state: DecoderState, op: { allowExcessBuffer?: boolean, endPosition?: number }) => {
     if (state.stack.length > 0) {
-        throw new Error('unfinished depth: ' + state.stack.length)
+        throw new Error('unfinished stack depth: ' + state.stack.length)
     }
     if (state.stopPosition !== undefined) {
         throw new Error('unexpected end of buffer: ' + state.stopPosition)
     }
-    if (!op?.allowExcessBuffer && state.position != state.buffer.byteLength) {
-        throw new Error('length mismatch ' + state.position + ' ' + state.buffer.byteLength)
+    if (!op?.allowExcessBytes && state.queue.length > 0) {
+        throw new Error('excess bytes: ' + state.queue.reduce((a, b) => a + b.byteLength, 0))
     }
-    if (op) {
-        op.endPosition = state.position
-    }
+    return result
 }
 export const enum tags {
     dateString = 0,
