@@ -1,4 +1,4 @@
-import { EncoderState, DecoderState, EncoderOptions, EncodeSyncOptions, encodeLoop, decodeLoop, encodeSync, concat, resetEncoder, detectShared, setupEncoder } from '@bintoca/cbor/core'
+import { EncoderState, DecoderState, EncoderOptions, EncodeSyncOptions, encodeLoop, decodeLoop, encodeSync, concat, resetEncoder, detectShared, setupEncoder, bufferSourceToUint8Array } from '@bintoca/cbor/core'
 declare var ReadableStreamBYOBReader
 
 export class Encoder {
@@ -37,7 +37,7 @@ export class Encoder {
                                     }
                                 }
                                 else {
-                                    controller.enqueue(new Uint8Array(out.view.buffer, out.view.byteOffset, out.length))
+                                    controller.enqueue(bufferSourceToUint8Array(out.view, 0, out.length))
                                 }
                                 if (out.stack.length == 0 && !out.resume) {
                                     that.hasChunk = false

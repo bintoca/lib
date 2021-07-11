@@ -1,5 +1,5 @@
 import { Duplex } from 'stream'
-import { EncoderState, DecoderState, encodeLoop, decodeLoop, encodeSync, concat, resetEncoder, EncoderOptions, detectShared, setupEncoder, EncodeSyncOptions } from '@bintoca/cbor/core'
+import { EncoderState, DecoderState, encodeLoop, decodeLoop, encodeSync, concat, resetEncoder, EncoderOptions, detectShared, setupEncoder, EncodeSyncOptions, bufferSourceToUint8Array } from '@bintoca/cbor/core'
 
 export const nullSymbol = Symbol.for('https://github.com/bintoca/lib/cbor/node/null')
 
@@ -49,7 +49,7 @@ export class Encoder extends Duplex {
                             })
                         }
                         else {
-                            this.push(new Uint8Array(out.view.buffer, out.view.byteOffset, out.length))
+                            this.push(bufferSourceToUint8Array(out.view, 0, out.length))
                             if (!out.resume && this.chunkIndex == this.chunks.length) {
                                 this.chunks = undefined
                                 this.cb()

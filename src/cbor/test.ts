@@ -245,14 +245,14 @@ test('decodeLoop_Chunked', () => {
     expect(state.stopPosition).toBe(undefined)
     expect(state.queue).toEqual([new Uint8Array([25])])
     expect(state.stack).toEqual([])
-    expect(decodeLoop(state)).toEqual(0)
+    expect(decodeLoop(state)).toEqual(undefined)
     expect(state.position).toBe(1)
     expect(state.stopPosition).toBe(0)
     expect(state.queue).toEqual([new Uint8Array([25])])
     expect(state.stack).toEqual([])
     expect(state.buffer).toBe(undefined)
     state.queue.push(new Uint8Array([1]))
-    expect(decodeLoop(state)).toEqual(0)
+    expect(decodeLoop(state)).toEqual(undefined)
     expect(state.position).toBe(2)
     expect(state.stopPosition).toBe(0)
     expect(state.queue).toEqual([new Uint8Array([25]), new Uint8Array([1])])
@@ -271,7 +271,7 @@ test('decodeLoop_Chunked', () => {
     expect(state.stack).toEqual([])
     expect(state.buffer).toBe(undefined)
     state.queue.push(new Uint8Array([129, 24]))
-    expect(decodeLoop(state)).toEqual(0)
+    expect(decodeLoop(state)).toEqual(undefined)
     expect(state.position).toBe(2)
     expect(state.stopPosition).toBe(1)
     expect(state.queue).toEqual([new Uint8Array([24])])
@@ -295,36 +295,52 @@ test('maxBytesPerItem', () => {
     state.queue.push(new Uint8Array([138].concat(Array(10))))
     expect(() => decodeLoop(state)).toThrowError('current item consumed 11 bytes')
 })
-test.each([[new Uint8Array([0]), 0], [[new Uint8Array([24]), new Uint8Array([50, 0])], 50]])('decodeSync(%i,%i)', (a, e) => {
+test.each([[new Uint8Array(), undefined], [new Uint8Array([0]), 0], [[new Uint8Array([24]), new Uint8Array([50, 0])], 50], [[new Uint8Array([66, 0, 0])], new ArrayBuffer(2)], [[new Uint8Array([66]), new Uint8Array([0, 0])], new ArrayBuffer(2)],
+[[new Uint8Array([68, 0, 0]), new Uint8Array([0, 0])], new ArrayBuffer(4)], [[new Uint8Array([88, 40, 0]), new Uint8Array(37), new Uint8Array([0, 0, 1, 3])], new ArrayBuffer(40)],
+[[new Uint8Array([101]), new Uint8Array([104, 101, 108, 108, 111])], 'hello'], [[new Uint8Array([99, 104]), new Uint8Array([101, 121])], 'hey'],
+[[new Uint8Array([120, 40, 104]), new Uint8Array([65, 65, 65, 65, 65, 65, 65, 65, 65, 65, 65, 65, 65, 65, 65, 65, 65, 65, 65, 65, 65, 65, 65, 65, 65, 65, 65, 65, 65, 65, 65, 65, 65, 65, 65, 65, 65]), new Uint8Array([101, 0, 1, 3])], 'hAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAe\0'],
+[[new Uint8Array([216, 64, 95]), new Uint8Array([66, 101, 104, 255])], new Uint8Array([101, 104])], [[new Uint8Array([127]), new Uint8Array([101, 104, 101, 108, 108, 111, 255])], 'hello'],
+[[new Uint8Array([159]), new Uint8Array([1, 2, 3, 255])], [1, 2, 3]], [[new Uint8Array([191]), new Uint8Array([1, 2, 3, 4, 255])], new Map([[1, 2], [3, 4]])]])('decodeSync(%i,%s)', (a, e) => {
     const state = setupDecoder()
-    expect(decodeSync(a, state, { allowExcessBytes: true })).toEqual(e)
+    const r = decodeSync(a, state, { allowExcessBytes: true })
+    expect(e instanceof ArrayBuffer ? new Uint8Array(r) : r).toEqual(e instanceof ArrayBuffer ? new Uint8Array(e) : e)
 })
-test.each([[new Uint8Array([0, 0, 0]), 'excess bytes: 2'], [[new Uint8Array([129])], 'unfinished stack depth: 1'], [[new Uint8Array([25])], 'unexpected end of buffer: 0']])('decodeSync_Error(%i,%s)', (a, e) => {
+test.each([[new Uint8Array([0, 0, 0]), 'excess bytes: 2'], [new Uint8Array([216, 64, 66, 0, 0, 1]), 'excess bytes: 1'], [new Uint8Array([101, 104, 101, 108, 108, 111, 5]), 'excess bytes: 1'],
+[new Uint8Array([216, 64, 66, 0]), 'unfinished stack depth: 2'], [new Uint8Array([101, 104, 101, 108, 108]), 'unfinished stack depth: 1'], [[new Uint8Array([129])], 'unfinished stack depth: 1'],
+[[new Uint8Array([25])], 'unexpected end of buffer: 0'], [[new Uint8Array([216, 64, 95]), new Uint8Array([101, 104, 255])], 'invalid nested string'], [new Uint8Array([255]), 'invalid break of indefinite length item']])('decodeSync_Error(%i,%s)', (a, e) => {
     const state = setupDecoder()
     expect(() => decodeSync(a, state)).toThrowError(e)
 })
-test.each([[new Uint8Array([0, 0, 0]), [0, 0, 0]]])('decodeSync_Sequence(%i,%i)', (a, e) => {
+test.each([[new Uint8Array(), [undefined]], [new Uint8Array([0, 0, 0]), [0, 0, 0]], [[new Uint8Array([216, 64, 88, 40, 0]), new Uint8Array(37), new Uint8Array([0, 0, 1, 3])], [new Uint8Array(40), 1, 3]],
+[[new Uint8Array([120, 40, 104]), new Uint8Array([65, 65, 65, 65, 65, 65, 65, 65, 65, 65, 65, 65, 65, 65, 65, 65, 65, 65, 65, 65, 65, 65, 65, 65, 65, 65, 65, 65, 65, 65, 65, 65, 65, 65, 65, 65, 65]), new Uint8Array([101, 0, 1, 3])], ['hAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAe\0', 1, 3]],
+[[new Uint8Array([216, 64, 95]), new Uint8Array([66, 101, 104, 255, 5])], [new Uint8Array([101, 104]), 5]], [[new Uint8Array([127]), new Uint8Array([101, 104, 101, 108, 108, 111, 255, 5])], ['hello', 5]],
+[[new Uint8Array([159]), new Uint8Array([1, 2, 3, 255, 5])], [[1, 2, 3], 5]], [[new Uint8Array([191]), new Uint8Array([1, 2, 3, 4, 255, 5])], [new Map([[1, 2], [3, 4]]), 5]]])('decodeSync_Sequence(%i,%i)', (a, e) => {
     const state = setupDecoder()
     expect(decodeSync(a, state, { sequence: true })).toEqual(e)
 })
-test.each([[[new Uint8Array([0, 0, 129])], 'unfinished stack depth: 1'], [[new Uint8Array([25])], 'unexpected end of buffer: 0']])('decodeSync_Sequence_Error(%i,%s)', (a, e) => {
+test.each([[[new Uint8Array([0, 0, 129])], 'unfinished stack depth: 1'], [new Uint8Array([216, 64, 66, 0]), 'unfinished stack depth: 2'], [new Uint8Array([101, 104, 101, 108, 108]), 'unfinished stack depth: 1'],
+[[new Uint8Array([25])], 'unexpected end of buffer: 0'], [[new Uint8Array([216, 64, 95]), new Uint8Array([101, 104, 255])], 'invalid nested string'], [new Uint8Array([255]), 'invalid break of indefinite length item']])('decodeSync_Sequence_Error(%i,%s)', (a, e) => {
     const state = setupDecoder()
     expect(() => decodeSync(a, state, { sequence: true })).toThrowError(e)
 })
-// test.each([[1, -2, 123456n, -123456n, null, undefined, true, false, 'q', 1.4, new Date(1234), new Date(2000), new ArrayBuffer(8)], { a: 1, b: [2.5], c: { a: 3 }, d: 'hey', e: null, f: undefined, g: true, h: false }])('lite(%#)', (a) => {
-//     expect(lite.decode(lite.encode(a))).toEqual(a)
-//     expect(lite.decode(lite.encode(a))).not.toBe(a)
-// })
-// test.each([new Uint8Array([1, 2, 3, 4])])('liteView', (a) => {
-//     expect(Buffer.from([1, 2]).equals(Buffer.from(lite.decode(lite.encode(a.slice(0, 2)))))).toBe(true)
-// })
-// test.each([new Map([[1, 2]])])('liteMap', (a) => {
-//     expect(lite.decode(lite.encode(a)).get(1)).toBe(2)
-// })
-// test.each([1, -1, 123456n, -123456n, 1.5, null, undefined, true, false, 'hey'])('litePrimitive(%s)', (a) => {
-//     expect(lite.decode(lite.encode(a))).toBe(a)
-// })
-// test.each([[new Uint8Array([1, 0]), new Error('length mismatch 1 2')], [new Uint8Array([130, 0]), new Error('unfinished depth: 1')]])('liteError(%#)', (a, e) => {
-//     expect(() => lite.decode(a)).toThrow(e)
-// })
-
+test('sharedRef', () => {
+    const o = { o: {}, a: [], m: new Map(), s: new Set() }
+    o.o = o
+    const a = []
+    a.push(a)
+    o.a = a
+    const m = new Map()
+    m.set(1, m)
+    m.set(m, m)
+    o.m = m
+    const s = new Set()
+    s.add(s)
+    o.s = s
+    const data = encodeSync(o, setupEncoder())
+    const r = decodeSync(data, setupDecoder())
+    expect(r == r.o).toBe(true)
+    expect(r.a == r.a[0]).toBe(true)
+    expect(r.m == r.m.get(1)).toBe(true)
+    expect(r.m == r.m.get(r.m)).toBe(true)
+    expect(r.s.has(r.s)).toBe(true)
+})
