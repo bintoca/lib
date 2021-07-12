@@ -1,11 +1,12 @@
 const TE = new TextEncoder()
 export const TD = new TextDecoder('utf-8', { fatal: true })
 export const sharedRefSymbol = Symbol.for('https://github.com/bintoca/lib/cbor/sharedRef')
+export const promiseRefSymbol = Symbol.for('https://github.com/bintoca/lib/cbor/promiseRef')
 export const defaultBufferSize = 4096
 export const defaultMinViewSize = 512
 export type MajorTypes = 0 | 1 | 2 | 3 | 4 | 5 | 6 | 7 | -1
 export type EncoderState = {
-    view: DataView, length: number, stack: any[], buffers?: Uint8Array[], useWTF8?: { encode: (s: string) => string }, cycleMap?: WeakMap<any, number>, cycleSet?: WeakSet<any>, omitMapTag?: boolean,
+    view: DataView, length: number, stack: any[], buffers?: Uint8Array[], useWTF8?: { encode: (s: string) => string }, sharedMap?: WeakMap<any, number>, sharedSet?: WeakSet<any>, omitMapTag?: boolean,
     typeMap: WeakMap<Function, (a, out: EncoderState) => void>, backingView: ArrayBufferView, offset: number, newBufferSize: number, minViewSize: number, disableSharedReferences?: boolean,
     encodeItemFunc: (a, state: EncoderState) => void, resume?: { items?: { major: MajorTypes, adInfo: number, float?: boolean }[], buffer?: BufferSource, promise?: Promise<void> }, resumeFunc: (out: EncoderState) => void
 }
@@ -349,15 +350,15 @@ export const encodeObject = (a: Object, state: EncoderState) => {
     }
 }
 export const encodeShared = (a, state: EncoderState): boolean => {
-    const shareIndex = state.cycleMap.get(a)
+    const shareIndex = state.sharedMap.get(a)
     if (shareIndex >= 0) {
-        if (state.cycleSet.has(a)) {
+        if (state.sharedSet.has(a)) {
             tagItem(tags.sharedRef, state)
             integerItem(shareIndex, state)
             return true
         }
         else {
-            state.cycleSet.add(a)
+            state.sharedSet.add(a)
             tagItem(tags.shareable, state)
         }
     }
@@ -459,8 +460,8 @@ export const detectShared = (value, state: EncoderState) => {
                 }
             }
         }
-        state.cycleMap = w
-        state.cycleSet = new WeakSet()
+        state.sharedMap = w
+        state.sharedSet = new WeakSet()
     }
 }
 export const concat = (buffers: Uint8Array[]): Uint8Array => {
@@ -477,9 +478,9 @@ export const concat = (buffers: Uint8Array[]): Uint8Array => {
 }
 export type DecodeStackItem = { major: 2 | 3 | 4 | 5 | 6, length: number, temp: any[], tag?: number | bigint, shareableIndex?: number, container?: any }
 export type DecoderState = {
-    buffer: BufferSource, position: number, stack: DecodeStackItem[], decodeItemFunc: (major: number, additionalInformation: number, dv: DataView, src: DecoderState) => any, decodeCyclesFunc: (value, state: DecoderState) => void,
-    finishItemFunc: (state: DecoderState) => any, stopPosition?: number, decodeMainFunc: (dv: DataView, state: DecoderState) => any, tagMap: Map<number | bigint, (v, tag?: number | bigint) => any>, shared: any[], queue: BufferSource[],
-    tempBuffer: Uint8Array, nonStringKeysToObject?: boolean, maxBytesPerItem?: number, currentItemByteCount: number
+    position: number, stack: DecodeStackItem[], decodeItemFunc: (major: number, additionalInformation: number, dv: DataView, src: DecoderState) => any, decodeSharedFunc: (value, state: DecoderState) => void,
+    finishItemFunc: (state: DecoderState) => any, stopPosition?: number, decodeMainFunc: (dv: DataView, state: DecoderState) => any, tagMap: Map<number | bigint, (v, state: DecoderState) => any>, shared: any[], queue: BufferSource[],
+    tempBuffer: Uint8Array, nonStringKeysToObject?: boolean, maxBytesPerItem?: number, currentItemByteCount: number, hasSharedRef?: boolean, promises: Promise<any>[], namedConstructorMap: Map<string, (v, state: DecoderState) => any>
 }
 export const getFloat16 = (dv: DataView, offset: number, littleEndian?: boolean): number => {
     const leadByte = dv.getUint8(offset + (littleEndian ? 1 : 0))
@@ -493,10 +494,10 @@ export const getFloat16 = (dv: DataView, offset: number, littleEndian?: boolean)
     }
     return sign * Math.pow(2, exp - 25) * (1024 + mant)
 }
-export const checkInput = (state: DecoderState, length: number, backtrack: number = 0): boolean => {
-    if (state.position + length > state.buffer.byteLength) {
-        state.stopPosition = state.position - 1 - backtrack
-        state.position = state.buffer.byteLength
+export const checkInput = (dv: DataView, state: DecoderState, length: number): boolean => {
+    if (state.position + length > dv.byteLength) {
+        state.stopPosition = state.position - 1
+        state.position = dv.byteLength
         return false
     }
     return true
@@ -510,28 +511,28 @@ export const decodeInfo = (major: number, ai: number, dv: DataView, state: Decod
             if (major == 7) {
                 throw new Error('not implemented simple type 24')
             }
-            if (checkInput(state, 1)) {
+            if (checkInput(dv, state, 1)) {
                 const v = dv.getUint8(state.position);
                 state.position++
                 return v
             }
             break
         case 25:
-            if (checkInput(state, 2)) {
+            if (checkInput(dv, state, 2)) {
                 const v = major == 7 ? getFloat16(dv, state.position) : dv.getUint16(state.position);
                 state.position += 2
                 return v
             }
             break
         case 26:
-            if (checkInput(state, 4)) {
+            if (checkInput(dv, state, 4)) {
                 const v = major == 7 ? dv.getFloat32(state.position) : dv.getUint32(state.position);
                 state.position += 4
                 return v
             }
             break
         case 27:
-            if (checkInput(state, 8)) {
+            if (checkInput(dv, state, 8)) {
                 if (major == 7) {
                     const v = dv.getFloat64(state.position)
                     state.position += 8
@@ -560,45 +561,42 @@ export const decodeInfo = (major: number, ai: number, dv: DataView, state: Decod
     }
     return undefined
 }
-export const slice = (length: number, state: DecoderState) => {
-    const b = state.buffer instanceof ArrayBuffer ? state.buffer.slice(state.position, state.position + length) : state.buffer.buffer.slice(state.position + state.buffer.byteOffset, state.position + state.buffer.byteOffset + length)
+export const slice = (dv: DataView, length: number, state: DecoderState) => {
+    const b = dv.buffer.slice(state.position + dv.byteOffset, state.position + dv.byteOffset + length)
     state.position += length;
     return b
 }
 export const decodeLoop = (state: DecoderState) => {
-    state.stopPosition = undefined
-    if (!state.buffer) {
-        state.position = 0
-        const first = state.queue[0]
-        if (first) {
-            if (first.byteLength < state.tempBuffer.byteLength) {
-                let count = 0
-                let i = 0
-                while (count < state.tempBuffer.byteLength && i < state.queue.length) {
-                    const b = state.queue[i]
-                    const d = bufferSourceToDataView(b)
-                    for (let j = 0; j < b.byteLength; j++) {
-                        if (count < state.tempBuffer.byteLength) {
-                            state.tempBuffer[count] = d.getUint8(j)
-                            count++
-                        }
+    let dv
+    const first = state.queue[0]
+    if (first) {
+        if (first.byteLength < state.tempBuffer.byteLength) {
+            let count = 0
+            let i = 0
+            while (count < state.tempBuffer.byteLength && i < state.queue.length) {
+                const b = state.queue[i]
+                const d = bufferSourceToDataView(b)
+                for (let j = 0; j < b.byteLength; j++) {
+                    if (count < state.tempBuffer.byteLength) {
+                        state.tempBuffer[count] = d.getUint8(j)
+                        count++
                     }
-                    i++
                 }
-                state.buffer = new Uint8Array(state.tempBuffer.buffer, 0, count)
+                i++
             }
-            else {
-                state.buffer = first
-            }
+            dv = bufferSourceToDataView(state.tempBuffer, 0, count)
         }
         else {
-            throw new Error('no data supplied to decodeLoop')
+            dv = bufferSourceToDataView(first)
         }
     }
-    const start = state.position
-    const dv = bufferSourceToDataView(state.buffer)
+    else {
+        throw new Error('no data supplied to decodeLoop')
+    }
+    const start = state.position = 0
+    state.stopPosition = undefined
     let result
-    while (state.position < state.buffer.byteLength) {
+    while (state.position < dv.byteLength) {
         result = state.decodeMainFunc(dv, state)
         if (state.stack.length == 0) {
             break
@@ -616,11 +614,7 @@ export const decodeLoop = (state: DecoderState) => {
             const newOffset = consumed - count
             count = consumed
             state.queue[0] = bufferSourceToUint8Array(x, newOffset)
-            state.buffer = undefined
         }
-    }
-    if (state.position == state.buffer?.byteLength) {
-        state.buffer = undefined
     }
     state.currentItemByteCount += consumed
     if (state.maxBytesPerItem && state.currentItemByteCount > state.maxBytesPerItem) {
@@ -636,8 +630,8 @@ export const decodeMain = (dv: DataView, state: DecoderState): any => {
     let head = state.stack[state.stack.length - 1]
     if ((head?.major == 2 || head?.major == 3) && head.length > 0) {
         const remaining = head.length - head.temp.reduce((a, b: Uint8Array) => a + b.byteLength, 0)
-        const len = Math.min(remaining, state.buffer.byteLength - state.position)
-        head.temp.push(bufferSourceToUint8Array(state.buffer, state.position, len))
+        const len = Math.min(remaining, dv.byteLength - state.position)
+        head.temp.push(bufferSourceToUint8Array(dv, state.position, len))
         state.position += len
         if (len == remaining) {
             head.length = head.temp.length
@@ -660,9 +654,10 @@ export const decodeMain = (dv: DataView, state: DecoderState): any => {
         }
     }
     if (state.stack.length == 0) {
-        if (state.shared.length > 0) {
-            state.decodeCyclesFunc(result, state)
+        if (state.shared.length > 0 || state.hasSharedRef) {
+            state.decodeSharedFunc(result, state)
             state.shared = []
+            state.hasSharedRef = false
         }
     }
     return result
@@ -672,7 +667,12 @@ export const decodeShared = (value, state: DecoderState) => {
     while (stack.length > 0) {
         let val = stack.pop()
         if (typeof val == 'object' && val !== null) {
-            if (val instanceof Map) {
+            if (val[sharedRefSymbol] !== undefined) {
+                if (val[sharedRefSymbol] >= state.shared.length) {
+                    throw new Error('unknown sharedRef')
+                }
+            }
+            else if (val instanceof Map) {
                 const ks = Array.from(val.entries())
                 for (let i = ks.length - 1; i >= 0; i--) {
                     let k = ks[i][0]
@@ -680,10 +680,16 @@ export const decodeShared = (value, state: DecoderState) => {
                     let newK, newV
                     if (k && k[sharedRefSymbol] !== undefined) {
                         newK = true
+                        if (k[sharedRefSymbol] >= state.shared.length) {
+                            throw new Error('unknown sharedRef')
+                        }
                         k = state.shared[k[sharedRefSymbol]]
                     }
                     if (v && v[sharedRefSymbol] !== undefined) {
                         newV = true
+                        if (v[sharedRefSymbol] >= state.shared.length) {
+                            throw new Error('unknown sharedRef')
+                        }
                         v = state.shared[v[sharedRefSymbol]]
                     }
                     if (newK) {
@@ -703,6 +709,9 @@ export const decodeShared = (value, state: DecoderState) => {
                 const ks = Array.from(val.values())
                 for (let i = ks.length - 1; i >= 0; i--) {
                     if (ks[i] && ks[i][sharedRefSymbol] !== undefined) {
+                        if (ks[i][sharedRefSymbol] >= state.shared.length) {
+                            throw new Error('unknown sharedRef')
+                        }
                         val.delete(ks[i])
                         val.add(state.shared[ks[i][sharedRefSymbol]])
                     }
@@ -714,6 +723,9 @@ export const decodeShared = (value, state: DecoderState) => {
             else if (Array.isArray(val)) {
                 for (let i = val.length - 1; i >= 0; i--) {
                     if (val[i] && val[i][sharedRefSymbol] !== undefined) {
+                        if (val[i][sharedRefSymbol] >= state.shared.length) {
+                            throw new Error('unknown sharedRef')
+                        }
                         val[i] = state.shared[val[i][sharedRefSymbol]]
                     }
                     else {
@@ -725,6 +737,9 @@ export const decodeShared = (value, state: DecoderState) => {
                 const ks = Object.keys(val)
                 for (let i = ks.length - 1; i >= 0; i--) {
                     if (val[ks[i]] && val[ks[i]][sharedRefSymbol] !== undefined) {
+                        if (val[ks[i]][sharedRefSymbol] >= state.shared.length) {
+                            throw new Error('unknown sharedRef')
+                        }
                         val[ks[i]] = state.shared[val[ks[i]][sharedRefSymbol]]
                     }
                     else {
@@ -735,7 +750,80 @@ export const decodeShared = (value, state: DecoderState) => {
         }
     }
 }
-export const decodeBigInt = (v: ArrayBuffer, lastTag: number) => {
+export const decodePromises = (value, results: any[]) => {
+    if (value && value[promiseRefSymbol] !== undefined) {
+        return results[value[promiseRefSymbol]]
+    }
+    const stack = [value]
+    while (stack.length > 0) {
+        let val = stack.pop()
+        if (typeof val == 'object' && val !== null) {
+            if (val instanceof Map) {
+                const ks = Array.from(val.entries())
+                for (let i = ks.length - 1; i >= 0; i--) {
+                    let k = ks[i][0]
+                    let v = ks[i][1]
+                    let newK, newV
+                    if (k && k[promiseRefSymbol] !== undefined) {
+                        newK = true
+                        k = results[k[promiseRefSymbol]]
+                    }
+                    if (v && v[promiseRefSymbol] !== undefined) {
+                        newV = true
+                        v = results[v[promiseRefSymbol]]
+                    }
+                    if (newK) {
+                        val.delete(ks[i][0])
+                        val.set(k, v)
+                        if (!newV) {
+                            stack.push(v)
+                        }
+                    }
+                    else if (newV) {
+                        val.set(k, v)
+                        stack.push(k)
+                    }
+                }
+            }
+            else if (val instanceof Set) {
+                const ks = Array.from(val.values())
+                for (let i = ks.length - 1; i >= 0; i--) {
+                    if (ks[i] && ks[i][promiseRefSymbol] !== undefined) {
+                        val.delete(ks[i])
+                        val.add(results[ks[i][promiseRefSymbol]])
+                    }
+                    else {
+                        stack.push(ks[i])
+                    }
+                }
+            }
+            else if (Array.isArray(val)) {
+                for (let i = val.length - 1; i >= 0; i--) {
+                    if (val[i] && val[i][promiseRefSymbol] !== undefined) {
+                        val[i] = results[val[i][promiseRefSymbol]]
+                    }
+                    else {
+                        stack.push(val[i])
+                    }
+                }
+            }
+            else {
+                const ks = Object.keys(val)
+                for (let i = ks.length - 1; i >= 0; i--) {
+                    if (val[ks[i]] && val[ks[i]][promiseRefSymbol] !== undefined) {
+                        val[ks[i]] = results[val[ks[i]][promiseRefSymbol]]
+                    }
+                    else {
+                        stack.push(val[ks[i]])
+                    }
+                }
+            }
+        }
+    }
+    return value
+}
+export const decodeBigInt = (v: ArrayBuffer, state: DecoderState) => {
+    const head = state.stack[state.stack.length - 1]
     let norm = BigInt(0)
     let base = BigInt(1)
     const u = new Uint8Array(v).reverse()
@@ -743,7 +831,7 @@ export const decodeBigInt = (v: ArrayBuffer, lastTag: number) => {
         norm = norm + base * BigInt(u[i])
         base = base * BigInt(256)
     }
-    return lastTag == tags.negativeBigNum ? BigInt(-1) - norm : norm
+    return head.tag == tags.negativeBigNum ? BigInt(-1) - norm : norm
 }
 export const decodeString = (major: 2 | 3, ai: number, dv: DataView, state: DecoderState) => {
     if (ai == 31) {
@@ -756,12 +844,12 @@ export const decodeString = (major: 2 | 3, ai: number, dv: DataView, state: Deco
         throw new Error('invalid nested string')
     }
     const a = decodeInfo(major, ai, dv, state) as number
-    if (state.position + a <= state.buffer.byteLength && state.stopPosition === undefined) {
+    if (state.position + a <= dv.byteLength && state.stopPosition === undefined) {
         if (major == 2 || head?.length == -1) {
-            result = slice(a, state)
+            result = slice(dv, a, state)
         }
         else {
-            result = TD.decode(bufferSourceToUint8Array(state.buffer, state.position, a))
+            result = TD.decode(bufferSourceToUint8Array(dv, state.position, a))
             state.position += a;
         }
         if (head) {
@@ -769,9 +857,9 @@ export const decodeString = (major: 2 | 3, ai: number, dv: DataView, state: Deco
         }
     }
     else {
-        let b = bufferSourceToUint8Array(state.buffer, state.position)
+        let b = bufferSourceToUint8Array(dv, state.position)
         if (b.buffer == state.tempBuffer.buffer) {
-            b = new Uint8Array(slice(b.byteLength, state))
+            b = new Uint8Array(slice(dv, b.byteLength, state))
         }
         else {
             state.position += b.byteLength
@@ -892,16 +980,19 @@ export const finishItem = (state: DecoderState) => {
                 return v
             }
             else if (head.tag == tags.sharedRef) {
+                if (typeof v != 'number' || Math.floor(v) !== v || v < 0) {
+                    throw new Error('invalid sharedRef value')
+                }
+                state.hasSharedRef = true
                 return { [sharedRefSymbol]: v }
             }
             const tagFunc = state.tagMap.get(head.tag)
-            return tagFunc ? tagFunc(v, head.tag) : v
+            return tagFunc ? tagFunc(v, state) : v
     }
 }
 export type DecodeSyncOptions = { sequence?: boolean, allowExcessBytes?: boolean }
 export const decodeSync = (buffers: BufferSource | BufferSource[], state: DecoderState, op?: DecodeSyncOptions): any => {
     state.queue = Array.isArray(buffers) ? buffers : [buffers]
-    state.buffer = undefined
     state.currentItemByteCount = 0
     state.stack = []
     state.shared = []
@@ -925,10 +1016,13 @@ export const decodeSync = (buffers: BufferSource | BufferSource[], state: Decode
         while (state.queue.length > 0)
     }
     else {
+        let queueBytesBefore, queueBytesAfter
         do {
+            queueBytesBefore = state.queue.reduce((a, b) => a + b.byteLength, 0)
             result = decodeLoop(state)
+            queueBytesAfter = state.queue.reduce((a, b) => a + b.byteLength, 0)
         }
-        while (state.stack.length > 0 && state.queue.length > 0)
+        while (state.stack.length > 0 && state.queue.length > 0 && queueBytesBefore != queueBytesAfter)
     }
     if (state.stack.length > 0) {
         throw new Error('unfinished stack depth: ' + state.stack.length)
@@ -974,7 +1068,7 @@ export const enum tags {
 
     extendedTime = 1001,
 }
-export type EncoderOptions = Partial<Omit<EncoderState, 'cycleMap' | 'cycleSet' | 'buffers'>>
+export type EncoderOptions = Partial<Omit<EncoderState, 'sharedMap' | 'sharedSet' | 'buffers'>>
 export const setupEncoder = (op: EncoderOptions = {}): EncoderState => {
     op.backingView = op.backingView || new Uint8Array(op.newBufferSize || defaultBufferSize)
     op.offset = op.offset || 0
@@ -988,80 +1082,84 @@ export const setupEncoder = (op: EncoderOptions = {}): EncoderState => {
     op.stack = op.stack || []
     return op as EncoderState
 }
-export type DecoderOptions = Partial<Omit<DecoderState, 'stack' | 'shared' | 'buffer' | 'position' | 'stopPosition' | 'currentItemByteCount'>>
+export type DecoderOptions = Partial<Omit<DecoderState, 'stack' | 'shared' | 'promises' | 'hasSharedRef' | 'position' | 'stopPosition' | 'currentItemByteCount'>>
 export const setupDecoder = (op: DecoderOptions = {}): DecoderState => {
     op.decodeItemFunc = op.decodeItemFunc || decodeItem
     op.finishItemFunc = op.finishItemFunc || finishItem
-    op.decodeCyclesFunc = op.decodeCyclesFunc || decodeShared
+    op.decodeSharedFunc = op.decodeSharedFunc || decodeShared
     op.decodeMainFunc = op.decodeMainFunc || decodeMain
     op.tagMap = op.tagMap || new Map(defaultTagMap)
+    op.namedConstructorMap = op.namedConstructorMap || new Map(defaultNamedConstructorMap)
     op.queue = op.queue || []
     op.tempBuffer = op.tempBuffer || new Uint8Array(16)
     const o = op as DecoderState
     o.stack = []
     o.shared = []
+    o.promises = []
     o.currentItemByteCount = 0
     return o
 }
 export class TagHelper { constructor(t) { this.tag = t }; tag: number }
 export class NullConstructor { }
 export const defaultTypeMap = new Map<Function, (a, state: EncoderState) => void>([[Object, encodeObject], [NullConstructor, encodeObject], [ArrayBuffer, binaryItem],
-[Array, (a: any[], out: EncoderState) => {
-    arrayItem(a.length, out)
+[Array, (a: any[], state: EncoderState) => {
+    arrayItem(a.length, state)
     for (let i = a.length - 1; i >= 0; i--) {
-        out.stack.push(a[i])
+        state.stack.push(a[i])
     }
 }],
-[Map, (a: Map<any, any>, out: EncoderState) => {
-    if (!out.omitMapTag) {
-        tagItem(tags.Map, out)
+[Map, (a: Map<any, any>, state: EncoderState) => {
+    if (!state.omitMapTag) {
+        tagItem(tags.Map, state)
     }
-    mapItem(a.size, out)
+    mapItem(a.size, state)
     const ks = Array.from(a.entries())
     for (let i = ks.length - 1; i >= 0; i--) {
-        out.stack.push(ks[i][1])
-        out.stack.push(ks[i][0])
+        state.stack.push(ks[i][1])
+        state.stack.push(ks[i][0])
     }
 }],
-[Set, (a: Set<any>, out: EncoderState) => {
-    tagItem(tags.Set, out)
-    arrayItem(a.size, out)
+[Set, (a: Set<any>, state: EncoderState) => {
+    tagItem(tags.Set, state)
+    arrayItem(a.size, state)
     const ks = Array.from(a.values())
     for (let i = ks.length - 1; i >= 0; i--) {
-        out.stack.push(ks[i])
+        state.stack.push(ks[i])
     }
 }],
-[Date, (a: Date, out: EncoderState) => {
+[Date, (a: Date, state: EncoderState) => {
     if (a.getTime() % 1000 == 0) {
-        tagItem(tags.datePOSIX, out)
-        integerItem(a.getTime() / 1000, out)
+        tagItem(tags.datePOSIX, state)
+        integerItem(a.getTime() / 1000, state)
     }
     else {
-        tagItem(tags.extendedTime, out)
-        mapItem(2, out)
-        integerItem(1, out)
-        integerItem(Math.floor(a.getTime() / 1000), out)
-        integerItem(-3, out)
-        integerItem(a.getTime() % 1000, out)
+        tagItem(tags.extendedTime, state)
+        mapItem(2, state)
+        integerItem(1, state)
+        integerItem(Math.floor(a.getTime() / 1000), state)
+        integerItem(-3, state)
+        integerItem(a.getTime() % 1000, state)
     }
 }],
-[Uint8Array, (a: Uint8Array, out: EncoderState) => {
-    tagItem(tags.uint8, out)
-    binaryItem(a, out)
+[Uint8Array, (a: Uint8Array, state: EncoderState) => {
+    tagItem(tags.uint8, state)
+    binaryItem(a, state)
 }],
-[TagHelper, (a: TagHelper, out: EncoderState) => {
-    tagItem(a.tag, out)
-}],
-[typeof Blob == 'function' ? Blob : () => { }, (a: Blob, out: EncoderState) => {
-    out.resume = {
-        promise: a.arrayBuffer().then(x => {
-            out.stack.push(['Blob', [x], { type: a.type }])
-            out.stack.push(new TagHelper(tags.typeConstructor))
-        })
-    }
+[TagHelper, (a: TagHelper, state: EncoderState) => {
+    tagItem(a.tag, state)
 }]
 ])
-export const defaultTagMap = new Map<number | bigint, (v, tag?: number | bigint) => any>([[tags.dateString, (v) => new Date(v)], [tags.datePOSIX, (v) => new Date(v * 1000)], [tags.extendedTime, (v) => new Date((v.get(1) || 0) * 1000 + (v.get(-3) || 0))],
+if (typeof Blob == 'function') {
+    defaultTypeMap.set(Blob, (a: Blob, state: EncoderState) => {
+        state.resume = {
+            promise: a.arrayBuffer().then(x => {
+                state.stack.push(['Blob', [x], { type: a.type }])
+                state.stack.push(new TagHelper(tags.typeConstructor))
+            })
+        }
+    })
+}
+export const defaultTagMap = new Map<number | bigint, (v, state: DecoderState) => any>([[tags.dateString, (v) => new Date(v)], [tags.datePOSIX, (v) => new Date(v * 1000)], [tags.extendedTime, (v) => new Date((v.get(1) || 0) * 1000 + (v.get(-3) || 0))],
 [tags.positiveBigNum, decodeBigInt], [tags.negativeBigNum, decodeBigInt],
 [tags.Map, (v) => {
     if (v instanceof Map) {
@@ -1075,5 +1173,15 @@ export const defaultTagMap = new Map<number | bigint, (v, tag?: number | bigint)
     }
     throw new Error('invalid Set tag')
 }],
-[tags.uint8, (v) => new Uint8Array(v)]
+[tags.uint8, (v) => new Uint8Array(v)],
+[tags.typeConstructor, (v: any[], state) => {
+    const c = state.namedConstructorMap.get(v[0])
+    if (c) {
+        return c(v.slice(1), state)
+    }
+    throw new Error('named constructor not found: ' + v[0])
+}]
+])
+export const defaultNamedConstructorMap = new Map<string, (v, state: DecoderState) => any>([
+
 ])

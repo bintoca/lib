@@ -1,18 +1,33 @@
 import {
-    integerItem, binaryItem, stringItem, numberItem, bigintItem, arrayItem, mapItem, tagItem, decodeInfo, encodeSync, hasBadSurrogates, encodeItem, EncoderState,
-    defaultTypeMap, setupEncoder, setupDecoder, indefiniteBinaryBegin, indefiniteStringBegin, indefiniteArrayBegin, indefiniteMapBegin, indefiniteEnd, decodeLoop, decodeSync
+    integerItem, binaryItem, stringItem, numberItem, bigintItem, arrayItem, mapItem, tagItem, encodeSync, hasBadSurrogates, encodeItem, EncoderState, DecoderState, TagHelper, tags,
+    defaultTypeMap, defaultNamedConstructorMap, setupEncoder, setupDecoder, indefiniteBinaryBegin, indefiniteStringBegin, indefiniteArrayBegin, indefiniteMapBegin, indefiniteEnd, decodeLoop, decodeSync, promiseRefSymbol
 } from '@bintoca/cbor/core'
 import * as node from '@bintoca/cbor/node'
 import wtf8 from 'wtf-8'
 
-class TestAsync { }
-defaultTypeMap.set(TestAsync, (a, out: EncoderState) => {
-    out.resume = {
+class TestAsync { constructor(s) { this.s = s }; s; }
+class TestNamedConstructor { constructor(s) { this.s = s }; s; }
+defaultTypeMap.set(TestAsync, (a: TestAsync, state: EncoderState) => {
+    state.resume = {
         promise: new Promise((resolve, reject) => {
-            out.stack.push('asy')
+            state.stack.push(a.s)
             resolve()
         })
     }
+})
+defaultTypeMap.set(TestNamedConstructor, (a: TestNamedConstructor, state: EncoderState) => {
+    state.resume = {
+        promise: new Promise((resolve, reject) => {
+            state.stack.push(['TestNamedConstructor', a.s])
+            state.stack.push(new TagHelper(tags.typeConstructor))
+            resolve()
+        })
+    }
+})
+defaultNamedConstructorMap.set('TestNamedConstructor', (v, state: DecoderState) => {
+    const i = state.promises.length
+    state.promises.push(Promise.resolve(new TestNamedConstructor(v[0])))
+    return { [promiseRefSymbol]: i }
 })
 
 test.each([[0, '0,0,0,0,0,0,0,0,0', 1], [23, '23,0,0,0,0,0,0,0,0', 1], [24, '24,24,0,0,0,0,0,0,0', 2], [256, '25,1,0,0,0,0,0,0,0', 3], [2 ** 16, '26,0,1,0,0,0,0,0,0', 5], [2 ** 32, '27,0,0,0,1,0,0,0,0', 9],
@@ -128,7 +143,7 @@ test.each([[{ a: 1, b: [2, 3] }, [new Uint8Array([162, 97, 97, 1, 97, 98, 130, 2
     expect(r.length).toBe(e.length)
     expect(r).toEqual(e)
 })
-test.each([['hello', new TestAsync(), '101,104,101,108,108,111', '99,97,115,121'], ['hello', cycle1, '101,104,101,108,108,111', '216,28,162,97,97,216,29,0,97,98,130,216,28,160,216,29,1']])('nodeStream(%s,%s)', async (a, b, a1, b1) => {
+test.each([['hello', new TestAsync('asy'), '101,104,101,108,108,111', '99,97,115,121'], ['hello', cycle1, '101,104,101,108,108,111', '216,28,162,97,97,216,29,0,97,98,130,216,28,160,216,29,1']])('nodeEncode(%s,%s)', async (a, b, a1, b1) => {
     const r: Uint8Array[] = await new Promise((resolve, reject) => {
         const bufs = []
         const enc = new node.Encoder({ superOpts: { readableHighWaterMark: 6 } })
@@ -144,7 +159,7 @@ test.each([['hello', new TestAsync(), '101,104,101,108,108,111', '99,97,115,121'
     expect(new Uint8Array(r[0]).toString()).toBe(a1)
     expect(new Uint8Array(r[1]).toString()).toBe(b1)
 })
-test.each([[node.nullSymbol, new TestAsync(), '246,99,97,115,121']])('nodeStreamCombine(%s,%s)', async (a, b, e) => {
+test.each([[node.nullSymbol, new TestAsync('asy'), '246,99,97,115,121']])('nodeEncodeCombine(%s,%s)', async (a, b, e) => {
     const r: Uint8Array[] = await new Promise((resolve, reject) => {
         const bufs = []
         const enc = new node.Encoder()
@@ -160,7 +175,7 @@ test.each([[node.nullSymbol, new TestAsync(), '246,99,97,115,121']])('nodeStream
     expect(r.length).toBe(1)
     expect(new Uint8Array(r[0]).toString()).toBe(e)
 })
-test.each([['hello', new TestAsync(), '101,104,101,108,108,111', '99,97,115,121']])('nodeStreamNextTick(%s,%s)', async (a, b, a1, b1) => {
+test.each([['hello', new TestAsync('asy'), '101,104,101,108,108,111', '99,97,115,121']])('nodeEncodeNextTick(%s,%s)', async (a, b, a1, b1) => {
     const r: Uint8Array[] = await new Promise((resolve, reject) => {
         const bufs = []
         const enc = new node.Encoder()
@@ -177,7 +192,7 @@ test.each([['hello', new TestAsync(), '101,104,101,108,108,111', '99,97,115,121'
     expect(new Uint8Array(r[0]).toString()).toBe(a1)
     expect(new Uint8Array(r[1]).toString()).toBe(b1)
 })
-test.each([['hello', new TestAsync(), '101,104,101,108,108,111', '99,97,115,121']])('nodeStreamNextTick2(%s,%s)', async (a, b, a1, b1) => {
+test.each([['hello', new TestAsync('asy'), '101,104,101,108,108,111', '99,97,115,121']])('nodeEncodeNextTick2(%s,%s)', async (a, b, a1, b1) => {
     const r: Uint8Array[] = await new Promise((resolve, reject) => {
         const bufs = []
         const enc = new node.Encoder()
@@ -194,7 +209,7 @@ test.each([['hello', new TestAsync(), '101,104,101,108,108,111', '99,97,115,121'
     expect(new Uint8Array(r[0]).toString()).toBe(a1)
     expect(new Uint8Array(r[1]).toString()).toBe(b1)
 })
-test.each([[{ f: () => { } }, 'function']])('nodeStreamError(%s)', async (a, b) => {
+test.each([[{ f: () => { } }, 'function']])('nodeEncodeError(%s)', async (a, b) => {
     const p = new Promise((resolve, reject) => {
         const bufs = []
         const enc = new node.Encoder()
@@ -250,7 +265,6 @@ test('decodeLoop_Chunked', () => {
     expect(state.stopPosition).toBe(0)
     expect(state.queue).toEqual([new Uint8Array([25])])
     expect(state.stack).toEqual([])
-    expect(state.buffer).toBe(undefined)
     state.queue.push(new Uint8Array([1]))
     expect(decodeLoop(state)).toEqual(undefined)
     expect(state.position).toBe(2)
@@ -263,20 +277,17 @@ test('decodeLoop_Chunked', () => {
     expect(state.stopPosition).toBe(undefined)
     expect(state.queue).toEqual([new Uint8Array([148].concat(Array(20)))])
     expect(state.stack).toEqual([])
-    expect(state.buffer).toBe(undefined)
     expect(decodeLoop(state)).toEqual([0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0])
     expect(state.position).toBe(21)
     expect(state.stopPosition).toBe(undefined)
     expect(state.queue).toEqual([])
     expect(state.stack).toEqual([])
-    expect(state.buffer).toBe(undefined)
     state.queue.push(new Uint8Array([129, 24]))
     expect(decodeLoop(state)).toEqual(undefined)
     expect(state.position).toBe(2)
     expect(state.stopPosition).toBe(1)
     expect(state.queue).toEqual([new Uint8Array([24])])
     expect(state.stack).toEqual([{ major: 4, length: 1, temp: [] }])
-    expect(state.buffer).toBe(undefined)
 })
 test('nonStringKeysToObject', () => {
     const state = setupDecoder()
@@ -295,7 +306,7 @@ test('maxBytesPerItem', () => {
     state.queue.push(new Uint8Array([138].concat(Array(10))))
     expect(() => decodeLoop(state)).toThrowError('current item consumed 11 bytes')
 })
-test.each([[new Uint8Array(), undefined], [new Uint8Array([0]), 0], [[new Uint8Array([24]), new Uint8Array([50, 0])], 50], [[new Uint8Array([66, 0, 0])], new ArrayBuffer(2)], [[new Uint8Array([66]), new Uint8Array([0, 0])], new ArrayBuffer(2)],
+test.each([[new Uint8Array(), undefined], [[new Uint8Array(), new Uint8Array([2])], 2], [new Uint8Array([0]), 0], [[new Uint8Array([24]), new Uint8Array([50, 0])], 50], [[new Uint8Array([66, 0, 0])], new ArrayBuffer(2)], [[new Uint8Array([66]), new Uint8Array([0, 0])], new ArrayBuffer(2)],
 [[new Uint8Array([68, 0, 0]), new Uint8Array([0, 0])], new ArrayBuffer(4)], [[new Uint8Array([88, 40, 0]), new Uint8Array(37), new Uint8Array([0, 0, 1, 3])], new ArrayBuffer(40)],
 [[new Uint8Array([101]), new Uint8Array([104, 101, 108, 108, 111])], 'hello'], [[new Uint8Array([99, 104]), new Uint8Array([101, 121])], 'hey'],
 [[new Uint8Array([120, 40, 104]), new Uint8Array([65, 65, 65, 65, 65, 65, 65, 65, 65, 65, 65, 65, 65, 65, 65, 65, 65, 65, 65, 65, 65, 65, 65, 65, 65, 65, 65, 65, 65, 65, 65, 65, 65, 65, 65, 65, 65]), new Uint8Array([101, 0, 1, 3])], 'hAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAe\0'],
@@ -306,19 +317,19 @@ test.each([[new Uint8Array(), undefined], [new Uint8Array([0]), 0], [[new Uint8A
     expect(e instanceof ArrayBuffer ? new Uint8Array(r) : r).toEqual(e instanceof ArrayBuffer ? new Uint8Array(e) : e)
 })
 test.each([[new Uint8Array([0, 0, 0]), 'excess bytes: 2'], [new Uint8Array([216, 64, 66, 0, 0, 1]), 'excess bytes: 1'], [new Uint8Array([101, 104, 101, 108, 108, 111, 5]), 'excess bytes: 1'],
-[new Uint8Array([216, 64, 66, 0]), 'unfinished stack depth: 2'], [new Uint8Array([101, 104, 101, 108, 108]), 'unfinished stack depth: 1'], [[new Uint8Array([129])], 'unfinished stack depth: 1'],
+[new Uint8Array([216, 64, 66, 0]), 'unfinished stack depth: 2'], [new Uint8Array([101, 104, 101, 108, 108]), 'unfinished stack depth: 1'], [[new Uint8Array([129])], 'unfinished stack depth: 1'], [[new Uint8Array([129, 24])], 'unfinished stack depth: 1'],
 [[new Uint8Array([25])], 'unexpected end of buffer: 0'], [[new Uint8Array([216, 64, 95]), new Uint8Array([101, 104, 255])], 'invalid nested string'], [new Uint8Array([255]), 'invalid break of indefinite length item']])('decodeSync_Error(%i,%s)', (a, e) => {
     const state = setupDecoder()
     expect(() => decodeSync(a, state)).toThrowError(e)
 })
-test.each([[new Uint8Array(), [undefined]], [new Uint8Array([0, 0, 0]), [0, 0, 0]], [[new Uint8Array([216, 64, 88, 40, 0]), new Uint8Array(37), new Uint8Array([0, 0, 1, 3])], [new Uint8Array(40), 1, 3]],
+test.each([[new Uint8Array(), [undefined]], [[new Uint8Array(), new Uint8Array([2])], [2]], [new Uint8Array([0, 0, 0]), [0, 0, 0]], [[new Uint8Array([216, 64, 88, 40, 0]), new Uint8Array(37), new Uint8Array([0, 0, 1, 3])], [new Uint8Array(40), 1, 3]],
 [[new Uint8Array([120, 40, 104]), new Uint8Array([65, 65, 65, 65, 65, 65, 65, 65, 65, 65, 65, 65, 65, 65, 65, 65, 65, 65, 65, 65, 65, 65, 65, 65, 65, 65, 65, 65, 65, 65, 65, 65, 65, 65, 65, 65, 65]), new Uint8Array([101, 0, 1, 3])], ['hAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAe\0', 1, 3]],
 [[new Uint8Array([216, 64, 95]), new Uint8Array([66, 101, 104, 255, 5])], [new Uint8Array([101, 104]), 5]], [[new Uint8Array([127]), new Uint8Array([101, 104, 101, 108, 108, 111, 255, 5])], ['hello', 5]],
 [[new Uint8Array([159]), new Uint8Array([1, 2, 3, 255, 5])], [[1, 2, 3], 5]], [[new Uint8Array([191]), new Uint8Array([1, 2, 3, 4, 255, 5])], [new Map([[1, 2], [3, 4]]), 5]]])('decodeSync_Sequence(%i,%i)', (a, e) => {
     const state = setupDecoder()
     expect(decodeSync(a, state, { sequence: true })).toEqual(e)
 })
-test.each([[[new Uint8Array([0, 0, 129])], 'unfinished stack depth: 1'], [new Uint8Array([216, 64, 66, 0]), 'unfinished stack depth: 2'], [new Uint8Array([101, 104, 101, 108, 108]), 'unfinished stack depth: 1'],
+test.each([[[new Uint8Array([0, 0, 129])], 'unfinished stack depth: 1'], [new Uint8Array([216, 64, 66, 0]), 'unfinished stack depth: 2'], [new Uint8Array([101, 104, 101, 108, 108]), 'unfinished stack depth: 1'], [[new Uint8Array([129, 24])], 'unfinished stack depth: 1'],
 [[new Uint8Array([25])], 'unexpected end of buffer: 0'], [[new Uint8Array([216, 64, 95]), new Uint8Array([101, 104, 255])], 'invalid nested string'], [new Uint8Array([255]), 'invalid break of indefinite length item']])('decodeSync_Sequence_Error(%i,%s)', (a, e) => {
     const state = setupDecoder()
     expect(() => decodeSync(a, state, { sequence: true })).toThrowError(e)
@@ -343,4 +354,115 @@ test('sharedRef', () => {
     expect(r.m == r.m.get(1)).toBe(true)
     expect(r.m == r.m.get(r.m)).toBe(true)
     expect(r.s.has(r.s)).toBe(true)
+    expect(() => decodeSync(new Uint8Array([130, 216, 28, 0, 216, 29, 1]), setupDecoder())).toThrowError('unknown sharedRef')
+    expect(() => decodeSync(new Uint8Array([216, 29, 1]), setupDecoder())).toThrowError('unknown sharedRef')
+    expect(() => decodeSync(new Uint8Array([216, 29, 160]), setupDecoder())).toThrowError('invalid sharedRef value')
+    expect(() => decodeSync(new Uint8Array([216, 28, 0, 216, 29, 1]), setupDecoder(), { sequence: true })).toThrowError('unknown sharedRef')
+    expect(() => decodeSync(new Uint8Array([216, 29, 1]), setupDecoder(), { sequence: true })).toThrowError('unknown sharedRef')
+})
+test.each([[[new Uint8Array([101, 104, 101, 108, 108, 111]), new Uint8Array([99, 97, 115, 121])], ['hello', 'asy']], [[new Uint8Array()], []],
+[[new Uint8Array(), new Uint8Array([2])], [2]], [[new Uint8Array([2]), new Uint8Array()], [2]], [[new Uint8Array(), new Uint8Array()], []]
+])('nodeDecode(%s,%s)', async (a, e) => {
+    const r: Uint8Array[] = await new Promise((resolve, reject) => {
+        const bufs = []
+        const enc = new node.Decoder({ superOpts: { readableHighWaterMark: 6 } })
+        enc.on('data', buf => { bufs.push(buf) })
+        enc.on('error', reject)
+        enc.on('end', () => resolve(bufs))
+        for (let i of a) {
+            enc.write(i)
+        }
+        enc.end()
+        expect(enc.readableHighWaterMark).toBe(6)
+    })
+    expect(r).toEqual(e)
+})
+test.each([[new Uint8Array([101, 104, 101, 108, 108, 111, 246]), 'hello', node.nullSymbol]])('nodeDecodeCombine(%s,%s,%s)', async (a, a1, b1) => {
+    const r: Uint8Array[] = await new Promise((resolve, reject) => {
+        const bufs = []
+        const enc = new node.Decoder()
+        enc.on('data', buf => { bufs.push(buf) })
+        enc.on('error', reject)
+        enc.on('end', () => resolve(bufs))
+        enc.cork()
+        enc.write(a)
+        enc.uncork()
+        enc.end()
+    })
+    expect(r.length).toBe(2)
+    expect(r[0]).toBe(a1)
+    expect(r[1]).toBe(b1)
+})
+test.each([[new Uint8Array([101, 104, 101, 108, 108, 111]), new Uint8Array([99, 97, 115, 121]), 'hello', 'asy']])('nodeDecodeNextTick(%s,%s)', async (a, b, a1, b1) => {
+    const r: Uint8Array[] = await new Promise((resolve, reject) => {
+        const bufs = []
+        const enc = new node.Decoder()
+        enc.on('data', buf => { bufs.push(buf) })
+        enc.on('error', reject)
+        enc.on('end', () => resolve(bufs))
+        process.nextTick(() => {
+            enc.write(a)
+            enc.write(b)
+            enc.end()
+        })
+    })
+    expect(r.length).toBe(2)
+    expect(r[0]).toBe(a1)
+    expect(r[1]).toBe(b1)
+})
+test.each([[new Uint8Array([101, 104, 101, 108, 108, 111]), new Uint8Array([99, 97, 115, 121]), 'hello', 'asy']])('nodeDecodeNextTick2(%s,%s)', async (a, b, a1, b1) => {
+    const r: Uint8Array[] = await new Promise((resolve, reject) => {
+        const bufs = []
+        const enc = new node.Decoder()
+        enc.write(a)
+        enc.write(b)
+        enc.end()
+        process.nextTick(() => {
+            enc.on('data', buf => { bufs.push(buf) })
+            enc.on('error', reject)
+            enc.on('end', () => resolve(bufs))
+        })
+    })
+    expect(r.length).toBe(2)
+    expect(r[0]).toBe(a1)
+    expect(r[1]).toBe(b1)
+})
+test.each([[new Uint8Array([129]), 'unfinished stack depth: 1'], [new Uint8Array([129, 24]), 'unfinished stack depth: 1'], [new Uint8Array([24]), 'unexpected end of buffer: 0'], ['s', 'invalid chunk encoding']])('nodeDecodeError(%s)', async (a, b) => {
+    const p = new Promise((resolve, reject) => {
+        const bufs = []
+        const enc = new node.Decoder({ superOpts: { decodeStrings: false } })
+        enc.on('data', buf => { bufs.push(buf) })
+        enc.on('error', reject)
+        enc.on('end', () => resolve(bufs))
+        enc.write(a)
+        enc.end()
+    })
+    return expect(p).rejects.toMatchObject(new Error(b))
+})
+const tnc = new TestNamedConstructor('hey')
+const roundTrip = (a) => {
+    return new Promise((resolve, reject) => {
+        const enc = new node.Encoder()
+        const objs = []
+        const dec = new node.Decoder()
+        dec.on('data', ob => { objs.push(ob) })
+        dec.on('error', reject)
+        dec.on('end', () => resolve(objs))
+        enc.pipe(dec)
+        for (let i of a) {
+            enc.write(i)
+        }
+        enc.end()
+    })
+}
+test.each([[[tnc]], [[tnc, tnc]], [[2, 3, { a: [tnc, tnc, new TestNamedConstructor('yo')] }, 4, 5]]
+])('nodeRoundTrip(%s)', async (a) => {
+    const r = await roundTrip(a)
+    expect(r).toEqual(a)
+})
+test('nodeRoundTripShared', async () => {
+    const a = [{ a: [tnc, tnc] }]
+    const r = await roundTrip(a)
+    expect(r).toEqual(a)
+    expect(r[0]['a'][0] == r[0]['a'][1]).toBe(true)
 })
