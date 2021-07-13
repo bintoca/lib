@@ -567,7 +567,7 @@ export const slice = (dv: DataView, length: number, state: DecoderState) => {
     return b
 }
 export const decodeLoop = (state: DecoderState) => {
-    let dv
+    let dv: DataView
     const first = state.queue[0]
     if (first) {
         if (first.byteLength < state.tempBuffer.byteLength) {
@@ -596,9 +596,11 @@ export const decodeLoop = (state: DecoderState) => {
     const start = state.position = 0
     state.stopPosition = undefined
     let result
+    const st = state.stack
+    const dm = state.decodeMainFunc
     while (state.position < dv.byteLength) {
-        result = state.decodeMainFunc(dv, state)
-        if (state.stack.length == 0) {
+        result = dm(dv, state)
+        if (st.length == 0) {
             break
         }
     }
@@ -849,7 +851,25 @@ export const decodeString = (major: 2 | 3, ai: number, dv: DataView, state: Deco
             result = slice(dv, a, state)
         }
         else {
-            result = TD.decode(bufferSourceToUint8Array(dv, state.position, a))
+            let ascii = true
+            const sd = new Array(a)
+            const stp = state.position
+            for (let i = 0; i < a; i++) {
+                const c = dv.getUint8(stp + i)
+                if (c > 127) {
+                    ascii = false
+                    break
+                }
+                else {
+                    sd[i] = c
+                }
+            }
+            if (ascii) {
+                result = String.fromCharCode.apply(String, sd)
+            }
+            else {
+                result = TD.decode(bufferSourceToUint8Array(dv, state.position, a))
+            }
             state.position += a;
         }
         if (head) {
