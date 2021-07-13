@@ -8,7 +8,8 @@ export type MajorTypes = 0 | 1 | 2 | 3 | 4 | 5 | 6 | 7 | -1
 export type EncoderState = {
     view: DataView, length: number, stack: any[], buffers?: Uint8Array[], useWTF8?: { encode: (s: string) => string }, sharedMap?: WeakMap<any, number>, sharedSet?: WeakSet<any>, omitMapTag?: boolean,
     typeMap: WeakMap<Function, (a, out: EncoderState) => void>, backingView: ArrayBufferView, offset: number, newBufferSize: number, minViewSize: number, disableSharedReferences?: boolean,
-    encodeItemFunc: (a, state: EncoderState) => void, resume?: { items?: { major: MajorTypes, adInfo: number, float?: boolean }[], buffer?: BufferSource, promise?: Promise<void> }, resumeFunc: (out: EncoderState) => void
+    encodeItemFunc: (a, state: EncoderState) => void, resume?: { items?: { major: MajorTypes, adInfo: number, float?: boolean }[], buffer?: BufferSource, promise?: Promise<void> }, resumeFunc: (out: EncoderState) => void,
+    stringItemFunc: (s: string, state: EncoderState) => void
 }
 export const bufferSourceToUint8Array = (b: BufferSource, offset: number = 0, length?: number): Uint8Array => b instanceof ArrayBuffer ? new Uint8Array(b, offset, length !== undefined ? length : b.byteLength - offset) : new Uint8Array(b.buffer, b.byteOffset + offset, length !== undefined ? length : b.byteLength - offset)
 export const bufferSourceToDataView = (b: BufferSource, offset: number = 0, length?: number): DataView => b instanceof ArrayBuffer ? new DataView(b, offset, length !== undefined ? length : b.byteLength - offset) : new DataView(b.buffer, b.byteOffset + offset, length !== undefined ? length : b.byteLength - offset)
@@ -299,7 +300,7 @@ export const objectItem = (a: Object, state: EncoderState) => {
 }
 export const encodeItem = (a, state: EncoderState) => {
     if (typeof a == 'string') {
-        stringItem(a, state)
+        state.stringItemFunc(a, state)
     }
     else if (typeof a == 'number') {
         numberItem(a, state)
@@ -480,7 +481,8 @@ export type DecodeStackItem = { major: 2 | 3 | 4 | 5 | 6, length: number, temp: 
 export type DecoderState = {
     position: number, stack: DecodeStackItem[], decodeItemFunc: (major: number, additionalInformation: number, dv: DataView, src: DecoderState) => any, decodeSharedFunc: (value, state: DecoderState) => void,
     finishItemFunc: (state: DecoderState) => any, stopPosition?: number, decodeMainFunc: (dv: DataView, state: DecoderState) => any, tagMap: Map<number | bigint, (v, state: DecoderState) => any>, shared: any[], queue: BufferSource[],
-    tempBuffer: Uint8Array, nonStringKeysToObject?: boolean, maxBytesPerItem?: number, currentItemByteCount: number, hasSharedRef?: boolean, promises: Promise<any>[], namedConstructorMap: Map<string, (v, state: DecoderState) => any>
+    tempBuffer: Uint8Array, nonStringKeysToObject?: boolean, maxBytesPerItem?: number, currentItemByteCount: number, hasSharedRef?: boolean, promises: Promise<any>[], namedConstructorMap: Map<string, (v, state: DecoderState) => any>,
+    decodeUTF8Func: (dv: DataView, length: number, state: DecoderState) => string
 }
 export const getFloat16 = (dv: DataView, offset: number, littleEndian?: boolean): number => {
     const leadByte = dv.getUint8(offset + (littleEndian ? 1 : 0))
@@ -835,6 +837,30 @@ export const decodeBigInt = (v: ArrayBuffer, state: DecoderState) => {
     }
     return head.tag == tags.negativeBigNum ? BigInt(-1) - norm : norm
 }
+export const decodeUTF8 = (dv: DataView, length: number, state: DecoderState) => {
+    let result
+    let ascii = length < 256
+    const units = new Array(length)
+    const stp = state.position
+    for (let i = 0; i < length; i++) {
+        const c = dv.getUint8(stp + i)
+        if (c > 127) {
+            ascii = false
+            break
+        }
+        else {
+            units[i] = c
+        }
+    }
+    if (ascii) {
+        result = String.fromCharCode.apply(String, units)
+    }
+    else {
+        result = TD.decode(bufferSourceToUint8Array(dv, state.position, length))
+    }
+    state.position += length;
+    return result
+}
 export const decodeString = (major: 2 | 3, ai: number, dv: DataView, state: DecoderState) => {
     if (ai == 31) {
         state.stack.push({ major, length: -1, temp: [] })
@@ -851,26 +877,7 @@ export const decodeString = (major: 2 | 3, ai: number, dv: DataView, state: Deco
             result = slice(dv, a, state)
         }
         else {
-            let ascii = true
-            const sd = new Array(a)
-            const stp = state.position
-            for (let i = 0; i < a; i++) {
-                const c = dv.getUint8(stp + i)
-                if (c > 127) {
-                    ascii = false
-                    break
-                }
-                else {
-                    sd[i] = c
-                }
-            }
-            if (ascii) {
-                result = String.fromCharCode.apply(String, sd)
-            }
-            else {
-                result = TD.decode(bufferSourceToUint8Array(dv, state.position, a))
-            }
-            state.position += a;
+            result = state.decodeUTF8Func(dv, a, state)
         }
         if (head) {
             head.temp.push(result)
@@ -1099,6 +1106,7 @@ export const setupEncoder = (op: EncoderOptions = {}): EncoderState => {
     op.minViewSize = op.minViewSize || defaultMinViewSize
     op.encodeItemFunc = op.encodeItemFunc || encodeItem
     op.resumeFunc = op.resumeFunc || resumeItem
+    op.stringItemFunc = op.stringItemFunc || stringItem
     op.typeMap = op.typeMap || new WeakMap(defaultTypeMap)
     op.view = op.view || new DataView(op.backingView.buffer, op.backingView.byteOffset, op.backingView.byteLength)
     op.length = op.length || 0
@@ -1111,6 +1119,7 @@ export const setupDecoder = (op: DecoderOptions = {}): DecoderState => {
     op.finishItemFunc = op.finishItemFunc || finishItem
     op.decodeSharedFunc = op.decodeSharedFunc || decodeShared
     op.decodeMainFunc = op.decodeMainFunc || decodeMain
+    op.decodeUTF8Func = op.decodeUTF8Func || decodeUTF8
     op.tagMap = op.tagMap || new Map(defaultTagMap)
     op.namedConstructorMap = op.namedConstructorMap || new Map(defaultNamedConstructorMap)
     op.queue = op.queue || []
