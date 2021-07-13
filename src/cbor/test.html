@@ -20,14 +20,15 @@
         }
     </script>
     <script type="module">
-        import { Encoder } from '@bintoca/cbor'
-        import { print, checkArray, pushScope, popScope, eq } from 'tester'
+        import { Encoder, Decoder } from '@bintoca/cbor'
+        import { defaultTypeMap } from '@bintoca/cbor/core'
+        import { print, checkArray, pushScope, popScope, eq, memberEq } from 'tester'
         //import * as idb from 'idb/with-async-ittr.js'
 
         async function test() {
             {//Encoder
                 pushScope('Encoder')
-                {
+                {//byob
                     const enc = new Encoder()
                     const wr = enc.writable.getWriter()
                     await wr.ready
@@ -52,7 +53,7 @@
                     }
                     checkArray('byob', [v.toString()], ['101,104,101,108,108,111,99,100,111,111'])
                 }
-                {
+                {//byob error
                     const enc = new Encoder()
                     const wr = enc.writable.getWriter()
                     await wr.ready
@@ -81,7 +82,7 @@
                         eq('byob error', e.message, 'byob view is too small to write into')
                     }
                 }
-                {
+                {//write then read
                     const enc = new Encoder()
                     const wr = enc.writable.getWriter()
                     await wr.ready
@@ -101,12 +102,12 @@
                     while (!v.done)
                     checkArray('write then read', r.map(x => x.toString()), ['101,104,101,108,108,111', '216,27,131,100,66,108,111,98,129,67,100,111,111,161,100,116,121,112,101,97,116', '99,100,111,111'])
                 }
-                {
+                {//cycles
                     const cycle1 = {}
                     const cycle2 = {}
                     cycle1['a'] = cycle1
                     cycle1['b'] = [cycle2, cycle2]
-                    const enc = new Encoder({ encodeCycles: true })
+                    const enc = new Encoder()
                     const wr = enc.writable.getWriter()
                     await wr.ready
                     wr.write('hello')
@@ -124,7 +125,7 @@
                     while (!v.done)
                     checkArray('cycles', r.map(x => x.toString()), ['101,104,101,108,108,111', '216,28,162,97,97,216,29,0,97,98,130,216,28,160,216,29,1'])
                 }
-                {
+                {//read then write
                     const enc = new Encoder()
                     const wr = enc.writable.getWriter()
                     setTimeout(async () => {
@@ -146,7 +147,7 @@
                     while (!v.done)
                     checkArray('read then write', r.map(x => x.toString()), ['101,104,101,108,108,111', '99,100,111,111'])
                 }
-                {
+                {//split chunk
                     const enc = new Encoder()
                     const wr = enc.writable.getWriter()
                     await wr.ready
@@ -164,13 +165,13 @@
                     while (!v.done)
                     checkArray('split chunk', r.map(x => x.toString()), [new Uint8Array([89, 16, 4].concat(Array(4093))).toString(), new Uint8Array(7).toString()])
                 }
-                {
+                {//error
                     try {
                         const enc = new Encoder()
                         const wr = enc.writable.getWriter()
                         await wr.ready
-                        wr.write({ f: () => { } })
-                        wr.close()
+                        wr.write({ f: () => { } }).catch(x => { })
+                        wr.close().catch(x => { })
                         const rr = enc.readable.getReader()
                         let v
                         const r = []
@@ -186,12 +187,12 @@
                         eq('error', e.message, 'unsupported type: function')
                     }
                 }
-                {
+                {//abort
                     const enc = new Encoder()
                     const wr = enc.writable.getWriter()
                     await wr.ready
                     wr.write('hello')
-                    wr.write('doo')
+                    wr.write('doo').catch(x => { })
                     wr.abort()
                     const rr = enc.readable.getReader()
                     let v
@@ -205,12 +206,12 @@
                     while (!v.done)
                     checkArray('abort', r.map(x => x.toString()), ['101,104,101,108,108,111'])
                 }
-                {
+                {//cancel
                     const enc = new Encoder()
                     const wr = enc.writable.getWriter()
                     await wr.ready
-                    wr.write('hello')
-                    wr.write('doo')
+                    wr.write('hello').catch(x => { })
+                    wr.write('doo').catch(x => { })
                     enc.readable.cancel()
                     const rr = enc.readable.getReader()
                     let v
@@ -224,7 +225,7 @@
                     while (!v.done)
                     checkArray('cancel', r.map(x => x.toString()), [])
                 }
-                {
+                {//pipeTo
                     const data = ['hello', 'doo']
                     let ind = 0
                     const rs = new ReadableStream({
@@ -252,7 +253,7 @@
                     while (!v.done)
                     checkArray('pipeTo', r.map(x => x.toString()), ['101,104,101,108,108,111', '99,100,111,111'])
                 }
-                {
+                {//pipeThrough
                     const data = ['hello', 'doo']
                     let ind = 0
                     const rs = new ReadableStream({
@@ -280,10 +281,152 @@
                     while (!v.done)
                     checkArray('pipeThrough', r.map(x => x.toString()), ['101,104,101,108,108,111', '99,100,111,111'])
                 }
-                print(['write then read', 'read then write', 'split chunk', 'error', 'abort', 'byob', 'byob error', 'cancel', 'pipeTo', 'pipeThrough', 'cycles'].map(x => 'Encoder/' + x))
                 popScope()
             }
-
+            {//Decoder
+                pushScope('Decoder')
+                {//write then read
+                    const dec = new Decoder()
+                    const wr = dec.writable.getWriter()
+                    await wr.ready
+                    wr.write(new Uint8Array([101, 104, 101, 108, 108, 111]))
+                    wr.write(new Uint8Array([99, 100, 111, 111]))
+                    wr.close()
+                    const rr = dec.readable.getReader()
+                    let v
+                    const r = []
+                    do {
+                        v = await rr.read()
+                        if (v.value) {
+                            r.push(v.value)
+                        }
+                    }
+                    while (!v.done)
+                    checkArray('write then read', r, ['hello', 'doo'])
+                }
+                {//read then write
+                    const dec = new Decoder()
+                    const wr = dec.writable.getWriter()
+                    setTimeout(async () => {
+                        await wr.ready
+                        wr.write(new Uint8Array([101, 104, 101, 108, 108, 111]))
+                        wr.write(new Uint8Array([99, 100, 111, 111]))
+                        wr.close()
+                    }, 100);
+                    const rr = dec.readable.getReader()
+                    let v
+                    const r = []
+                    do {
+                        v = await rr.read()
+                        if (v.value) {
+                            r.push(v.value)
+                        }
+                    }
+                    while (!v.done)
+                    checkArray('read then write', r, ['hello', 'doo'])
+                }
+                {//error
+                    const f = async (u) => {
+                        try {
+                            const dec = new Decoder()
+                            const wr = dec.writable.getWriter()
+                            await wr.ready
+                            await wr.write(u)
+                            await wr.close()
+                            const rr = dec.readable.getReader()
+                            let v
+                            const r = []
+                            do {
+                                v = await rr.read()
+                                if (v.value) {
+                                    r.push(v.value)
+                                }
+                            }
+                            while (!v.done)
+                        }
+                        catch (e) {
+                            return e.message
+                        }
+                    }
+                    checkArray('error', [await f(1), await f(new Uint8Array([129])), await f(new Uint8Array([129, 24])), await f(new Uint8Array([24]))],
+                        ['chunk is not a BufferSource', 'unfinished stack depth: 1', 'unfinished stack depth: 1', 'unexpected end of buffer: 0'])
+                }
+                {//abort
+                    const enc = new Decoder()
+                    const wr = enc.writable.getWriter()
+                    await wr.ready
+                    wr.write(new Uint8Array([101, 104, 101, 108, 108, 111]))
+                    wr.write(new Uint8Array([99, 100, 111, 111])).catch(x => { })
+                    wr.abort()
+                    const rr = enc.readable.getReader()
+                    let v
+                    const r = []
+                    do {
+                        v = await rr.read()
+                        if (v.value) {
+                            r.push(v.value)
+                        }
+                    }
+                    while (!v.done)
+                    checkArray('abort', r, ['hello'])
+                }
+                {//cancel
+                    const enc = new Decoder()
+                    const wr = enc.writable.getWriter()
+                    await wr.ready
+                    wr.write(new Uint8Array([101, 104, 101, 108, 108, 111]))
+                    wr.write(new Uint8Array([99, 100, 111, 111])).catch(x => { })
+                    enc.readable.cancel()
+                    const rr = enc.readable.getReader()
+                    let v
+                    const r = []
+                    do {
+                        v = await rr.read()
+                        if (v.value) {
+                            r.push(v.value)
+                        }
+                    }
+                    while (!v.done)
+                    checkArray('cancel', r, [])
+                }
+                {//round trip
+                    const k1 = await crypto.subtle.generateKey({ name: 'HMAC', hash: 'SHA-256' }, true, ['verify'])
+                    const k2 = await crypto.subtle.generateKey({ name: 'HMAC', hash: 'SHA-256' }, false, ['verify'])
+                    const f = async (a) => {
+                        const enc = new Encoder()
+                        const wr = enc.writable.getWriter()
+                        await wr.ready
+                        for (let i of a) {
+                            wr.write(i)
+                        }
+                        wr.close()
+                        const dec = new Decoder()
+                        enc.readable.pipeThrough(dec)
+                        const rr = dec.readable.getReader()
+                        let v
+                        const r = []
+                        do {
+                            v = await rr.read()
+                            if (v.value) {
+                                r.push(v.value)
+                            }
+                        }
+                        while (!v.done)
+                        return r
+                    }
+                    const r1 = await f([2, 3, k1, 4, 5])
+                    const r2 = await f([[k1, k1]])
+                    memberEq('roundTrip1', (await f([k1]))[0], k1)
+                    memberEq('roundTrip2', (await f([k1, k2]))[1], k2)
+                    memberEq('roundTrip3', [r1[0], r1[1], r1[3], r1[4]], [2, 3, 4, 5])
+                    if (r2[0][0] == r2[0][1]) {
+                        memberEq('roundTripShared', r2[0][0], k1)
+                    }
+                }
+                popScope()
+            }
+            print(['write then read', 'read then write', 'split chunk', 'error', 'abort', 'byob', 'byob error', 'cancel', 'pipeTo', 'pipeThrough', 'cycles'].map(x => 'Encoder/' + x)
+                .concat(['write then read', 'read then write', 'error', 'abort', 'cancel', 'roundTrip1', 'roundTrip2', 'roundTrip3', 'roundTripShared'].map(x => 'Decoder/' + x)))
         }
         test()
     </script>

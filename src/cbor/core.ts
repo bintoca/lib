@@ -378,7 +378,7 @@ export const encodeSync = (value, state: EncoderState, op?: EncodeSyncOptions): 
             throw new Error('promise based resume not allowed in sync mode')
         }
         if (seq) {
-            const r = resetEncoder(state, null, true)
+            const r = resetEncoder(state, null, true, true)
             if (r.newBackingView) {
                 state.buffers.push(r.chunk)
                 resetEncoder(state)
@@ -394,14 +394,14 @@ export const encodeSync = (value, state: EncoderState, op?: EncodeSyncOptions): 
             }
         }
         else {
-            state.buffers.push(resetEncoder(state).chunk)
+            state.buffers.push(resetEncoder(state, null, false, true).chunk)
         }
     }
     while (state.resume || state.stack.length > 0)
     state.buffers = undefined
     return buf
 }
-export const resetEncoder = (state: EncoderState, view?: ArrayBufferView, skipView?: boolean): { newBackingView: boolean, chunk: Uint8Array } => {
+export const resetEncoder = (state: EncoderState, view?: ArrayBufferView, skipView?: boolean, createChunk?: boolean): { newBackingView: boolean, chunk: Uint8Array } => {
     let newBackingView = false
     if (state.view.byteLength - state.length < state.minViewSize) {
         state.backingView = new Uint8Array(state.newBufferSize)
@@ -411,7 +411,7 @@ export const resetEncoder = (state: EncoderState, view?: ArrayBufferView, skipVi
     else {
         state.offset += state.length
     }
-    const chunk = bufferSourceToUint8Array(state.view, 0, state.length)
+    const chunk = createChunk ? bufferSourceToUint8Array(state.view, 0, state.length) : undefined
     if (!skipView) {
         state.view = view ? bufferSourceToDataView(view) : bufferSourceToDataView(state.backingView, state.offset)
         state.length = 0
@@ -1024,6 +1024,9 @@ export const decodeSync = (buffers: BufferSource | BufferSource[], state: Decode
         }
         while (state.stack.length > 0 && state.queue.length > 0 && queueBytesBefore != queueBytesAfter)
     }
+    if (state.promises.length > 0) {
+        throw new Error('promise based decoding not allowed in sync mode')
+    }
     if (state.stack.length > 0) {
         throw new Error('unfinished stack depth: ' + state.stack.length)
     }
@@ -1159,6 +1162,16 @@ if (typeof Blob == 'function') {
         }
     })
 }
+if (typeof CryptoKey == 'function') {
+    defaultTypeMap.set(CryptoKey, (a: CryptoKey, state: EncoderState) => {
+        state.resume = {
+            promise: (a.extractable ? crypto.subtle.exportKey('jwk', a) : Promise.resolve(undefined)).then(x => {
+                state.stack.push(['CryptoKey', a.algorithm, a.extractable, a.usages, x])
+                state.stack.push(new TagHelper(tags.typeConstructor))
+            })
+        }
+    })
+}
 export const defaultTagMap = new Map<number | bigint, (v, state: DecoderState) => any>([[tags.dateString, (v) => new Date(v)], [tags.datePOSIX, (v) => new Date(v * 1000)], [tags.extendedTime, (v) => new Date((v.get(1) || 0) * 1000 + (v.get(-3) || 0))],
 [tags.positiveBigNum, decodeBigInt], [tags.negativeBigNum, decodeBigInt],
 [tags.Map, (v) => {
@@ -1183,5 +1196,12 @@ export const defaultTagMap = new Map<number | bigint, (v, state: DecoderState) =
 }]
 ])
 export const defaultNamedConstructorMap = new Map<string, (v, state: DecoderState) => any>([
-
+    ['CryptoKey', (v: any[], state: DecoderState) => {
+        if (v.length != 4) {
+            throw new Error('CryptoKey invalid parameters')
+        }
+        const i = state.promises.length
+        state.promises.push(v[3] ? crypto.subtle.importKey('jwk', v[3], v[0], v[1], v[2]) : crypto.subtle.generateKey(v[0], v[1], v[2]))
+        return { [promiseRefSymbol]: i }
+    }]
 ])

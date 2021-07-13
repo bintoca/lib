@@ -45,6 +45,35 @@ export function eq(test: string, actual: primitive, expected: primitive) {
         bad.push({ test, actual, expected })
     }
 }
+export function memberEq(test: string, actual: any, expected: any) {
+    test = normalizeScope(test)
+    let ok
+    if (typeof actual == typeof expected) {
+        if (typeof actual == 'object' && actual) {
+            if (actual.constructor == expected.constructor) {
+                if (Array.isArray(actual)) {
+                    if (actual.length == expected.length) {
+                        ok = actual.every((v,i) => v === expected[i])
+                    }
+                }
+                else {
+                    if (Object.keys(actual).join() == Object.keys(expected).join()) {
+                        ok = Object.keys(actual).every(x => actual[x] === expected[x])
+                    }
+                }
+            }
+        }
+        else {
+            ok = actual === expected
+        }
+    }
+    if (ok) {
+        good.push(test)
+    }
+    else {
+        bad.push({ test, actual, expected })
+    }
+}
 export function bufEq(test: string, actual: ArrayBuffer, expected: ArrayBuffer) {
     test = normalizeScope(test)
     if (bufEqual(actual, expected)) {
@@ -73,13 +102,13 @@ export function print(goodExpected) {
             const missing = goodExpected.filter(x => !good.some(g => g == x))
             const extra = good.filter(x => !goodExpected.some(g => g == x))
             console.error('bad - good did not match expected', missing, extra)
-            
+
         }
     }
     else {
         for (let b of bad) {
             console.error('bad', b)
         }
-        
+
     }
 }

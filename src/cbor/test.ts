@@ -1,6 +1,6 @@
 import {
     integerItem, binaryItem, stringItem, numberItem, bigintItem, arrayItem, mapItem, tagItem, encodeSync, hasBadSurrogates, encodeItem, EncoderState, DecoderState, TagHelper, tags,
-    defaultTypeMap, defaultNamedConstructorMap, setupEncoder, setupDecoder, indefiniteBinaryBegin, indefiniteStringBegin, indefiniteArrayBegin, indefiniteMapBegin, indefiniteEnd, decodeLoop, decodeSync, promiseRefSymbol
+    defaultTypeMap, defaultNamedConstructorMap, setupEncoder, setupDecoder, indefiniteBinaryBegin, indefiniteStringBegin, indefiniteArrayBegin, indefiniteMapBegin, indefiniteEnd, decodeLoop, decodeSync, promiseRefSymbol, defaultTagMap
 } from '@bintoca/cbor/core'
 import * as node from '@bintoca/cbor/node'
 import wtf8 from 'wtf-8'
@@ -27,6 +27,11 @@ defaultTypeMap.set(TestNamedConstructor, (a: TestNamedConstructor, state: Encode
 defaultNamedConstructorMap.set('TestNamedConstructor', (v, state: DecoderState) => {
     const i = state.promises.length
     state.promises.push(Promise.resolve(new TestNamedConstructor(v[0])))
+    return { [promiseRefSymbol]: i }
+})
+defaultTagMap.set(15, (v, state) => {
+    const i = state.promises.length
+    state.promises.push(Promise.resolve(v))
     return { [promiseRefSymbol]: i }
 })
 
@@ -316,7 +321,7 @@ test.each([[new Uint8Array(), undefined], [[new Uint8Array(), new Uint8Array([2]
     const r = decodeSync(a, state, { allowExcessBytes: true })
     expect(e instanceof ArrayBuffer ? new Uint8Array(r) : r).toEqual(e instanceof ArrayBuffer ? new Uint8Array(e) : e)
 })
-test.each([[new Uint8Array([0, 0, 0]), 'excess bytes: 2'], [new Uint8Array([216, 64, 66, 0, 0, 1]), 'excess bytes: 1'], [new Uint8Array([101, 104, 101, 108, 108, 111, 5]), 'excess bytes: 1'],
+test.each([[new Uint8Array([0, 0, 0]), 'excess bytes: 2'], [new Uint8Array([216, 64, 66, 0, 0, 1]), 'excess bytes: 1'], [new Uint8Array([101, 104, 101, 108, 108, 111, 5]), 'excess bytes: 1'], [[new Uint8Array([216, 15, 1])], 'promise based decoding not allowed in sync mode'],
 [new Uint8Array([216, 64, 66, 0]), 'unfinished stack depth: 2'], [new Uint8Array([101, 104, 101, 108, 108]), 'unfinished stack depth: 1'], [[new Uint8Array([129])], 'unfinished stack depth: 1'], [[new Uint8Array([129, 24])], 'unfinished stack depth: 1'],
 [[new Uint8Array([25])], 'unexpected end of buffer: 0'], [[new Uint8Array([216, 64, 95]), new Uint8Array([101, 104, 255])], 'invalid nested string'], [new Uint8Array([255]), 'invalid break of indefinite length item']])('decodeSync_Error(%i,%s)', (a, e) => {
     const state = setupDecoder()
@@ -330,7 +335,8 @@ test.each([[new Uint8Array(), [undefined]], [[new Uint8Array(), new Uint8Array([
     expect(decodeSync(a, state, { sequence: true })).toEqual(e)
 })
 test.each([[[new Uint8Array([0, 0, 129])], 'unfinished stack depth: 1'], [new Uint8Array([216, 64, 66, 0]), 'unfinished stack depth: 2'], [new Uint8Array([101, 104, 101, 108, 108]), 'unfinished stack depth: 1'], [[new Uint8Array([129, 24])], 'unfinished stack depth: 1'],
-[[new Uint8Array([25])], 'unexpected end of buffer: 0'], [[new Uint8Array([216, 64, 95]), new Uint8Array([101, 104, 255])], 'invalid nested string'], [new Uint8Array([255]), 'invalid break of indefinite length item']])('decodeSync_Sequence_Error(%i,%s)', (a, e) => {
+[[new Uint8Array([25])], 'unexpected end of buffer: 0'], [[new Uint8Array([216, 64, 95]), new Uint8Array([101, 104, 255])], 'invalid nested string'], [new Uint8Array([255]), 'invalid break of indefinite length item'],
+[[new Uint8Array([216, 15, 1])], 'promise based decoding not allowed in sync mode']])('decodeSync_Sequence_Error(%i,%s)', (a, e) => {
     const state = setupDecoder()
     expect(() => decodeSync(a, state, { sequence: true })).toThrowError(e)
 })
