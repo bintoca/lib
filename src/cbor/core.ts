@@ -840,16 +840,19 @@ export const decodeBigInt = (v: ArrayBuffer, state: DecoderState) => {
 export const decodeUTF8 = (dv: DataView, length: number, state: DecoderState) => {
     let result
     let ascii = length < 256
-    const units = new Array(length)
-    const stp = state.position
-    for (let i = 0; i < length; i++) {
-        const c = dv.getUint8(stp + i)
-        if (c > 127) {
-            ascii = false
-            break
-        }
-        else {
-            units[i] = c
+    let units
+    if (ascii) {
+        units = new Array(length)
+        const stp = state.position
+        for (let i = 0; i < length; i++) {
+            const c = dv.getUint8(stp + i)
+            if (c > 127) {
+                ascii = false
+                break
+            }
+            else {
+                units[i] = c
+            }
         }
     }
     if (ascii) {
