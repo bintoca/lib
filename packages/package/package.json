@@ -1,7 +1,7 @@
 {
-  "name": "@bintoca/cbor-core",
+  "name": "@bintoca/package",
   "version": "0.0.1-beta",
-  "description": "cbor components",
+  "description": "",
   "type": "module",
   "publishConfig": {
     "access": "public"
@@ -12,10 +12,9 @@
   "repository": {
     "type": "git",
     "url": "git+https://github.com/bintoca/lib.git",
-    "directory": "packages/cbor-core"
+    "directory": "packages/package"
   },
   "keywords": [
-    "cbor"
   ],
   "files": [
     "index.js",

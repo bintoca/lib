@@ -1204,6 +1204,12 @@ if (typeof CryptoKey == 'function') {
         }
     })
 }
+if (typeof Buffer == 'function') {
+    defaultTypeMap.set(Buffer, (a: Uint8Array, state: EncoderState) => {
+        tagItem(tags.uint8, state)
+        binaryItem(a, state)
+    })
+}
 export const defaultTagMap = new Map<number | bigint, (v, state: DecoderState) => any>([[tags.dateString, (v) => new Date(v)], [tags.datePOSIX, (v) => new Date(v * 1000)], [tags.extendedTime, (v) => new Date((v.get(1) || 0) * 1000 + (v.get(-3) || 0))],
 [tags.positiveBigNum, decodeBigInt], [tags.negativeBigNum, decodeBigInt],
 [tags.Map, (v) => {
