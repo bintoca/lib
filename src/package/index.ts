@@ -1,5 +1,7 @@
 import tar from 'tar'
 import acorn from 'acorn'
+import glo from 'acorn-globals'
+import walk from 'acorn-walk'
 const TD = new TextDecoder()
 
 export async function parseTar(t: NodeJS.ReadableStream): Promise<{ [k: string]: Buffer }> {
@@ -28,27 +30,271 @@ export async function parseTar(t: NodeJS.ReadableStream): Promise<{ [k: string]:
         t.pipe(p)
     })
 }
-export function bb(files: { [k: string]: Buffer }) {
+export function getSubstituteIdCore(count: number, length: number, prefix: string) {
+    const b64alpha = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789_$"
+    let id = prefix
+    for (let i = 0; i < length; i++) {
+        id += b64alpha[(count >> 6 * i) & 63]
+    }
+    return id
+}
+export function getSubstituteId(suspects, length: number, prefix: string) {
+    let count = 0
+    while (count < length * 64) {
+        const sub = getSubstituteIdCore(count, length, prefix)
+        if (!suspects[sub]) {
+            return sub
+        }
+        count++
+    }
+}
+export const thisScopes = ['FunctionDeclaration', 'FunctionExpression', 'ClassDeclaration', 'ClassExpression']
+export function parseFiles(files: { [k: string]: Buffer }) {
     let packageJSON
     try {
         packageJSON = JSON.parse(TD.decode(files['package.json']))
     }
     catch { }
     if (!packageJSON) {
-        return { error: 'package.json not pressent or invalid' }
+        return { error: 'package.json not present or invalid' }
     }
 
+    const r = {}
     for (let k in files) {
         if (k.endsWith('.js') || k.endsWith('.cjs') || k.endsWith('.mjs')) {
-            let ast: acorn.Node
+            let ast//: acorn.Node
+            let text: string
             try {
-                ast = acorn.parse(TD.decode(files[k]), { ecmaVersion: "latest", sourceType: 'module' })
-                console.log(JSON.stringify(ast))
+                text = TD.decode(files[k])
+                ast = acorn.parse(text, { ecmaVersion: "latest", sourceType: 'module' })
+                //console.log(JSON.stringify(ast))
             }
             catch (e) {
                 return { error: 'syntax error in "' + k + '" ' + e.message }
             }
+            const removeNodes = []
+            const importSuspectIds = {}
+            const thisSuspectIds = {}
+            function isSuspectId(s: string) {
+                if (s.length == 6 && s.startsWith('$')) {
+                    importSuspectIds[s] = 1
+                }
+                else if (s.length == 4 && s.startsWith('$')) {
+                    thisSuspectIds[s] = 1
+                }
+            }
+            walk.ancestor(ast, {
+                ImportExpression(n) {
+                    removeNodes.push(n)
+                },
+                ImportDeclaration(n) {
+                    removeNodes.push(n)
+                },
+                Identifier(n) {
+                    isSuspectId(n['name'])
+                },
+                VariablePattern(n) {
+                    isSuspectId(n['name'])
+                },
+                ImportSpecifier(n) {
+                    isSuspectId(n['local']['name'])
+                },
+                ImportDefaultSpecifier(n) {
+                    isSuspectId(n['local']['name'])
+                },
+                ImportNamespaceSpecifier(n) {
+                    isSuspectId(n['local']['name'])
+                },
+                PrivateIdentifier(n) {
+                    isSuspectId(n['name'])
+                },
+                PropertyDefinition(n) {
+                    if (n['key']?.type == 'PrivateIdentifier') {
+                        isSuspectId(n['key']['name'])
+                    }
+                },
+                ThisExpression(n, a: any[]) {
+                    if (!a.some(x => thisScopes.some(t => t == x.type))) {
+                        removeNodes.push(n)
+                    }
+                }
+            })
+            let position = 0
+            const chunks = []
+            for (let n of removeNodes) {
+                if (n.type == 'ImportDeclaration') {
+                    chunks.push(text.substring(position, n.source.start + 1))
+                    position = n.source.end - 1
+                    chunks.push({ type: 'ImportSpecifier', name: n.source.value })
+                }
+                else if (n.type == 'ImportExpression') {
+                    chunks.push(text.substring(position, n.start))
+                    position = n.start + 6
+                    chunks.push({ type: 'Import' })
+                }
+                else if (n.type == 'ThisExpression') {
+                    chunks.push(text.substring(position, n.start))
+                    position = n.end
+                    chunks.push({ type: 'This' })
+                }
+            }
+            chunks.push(text.substring(position))
+            let glob
+            //const g = glo(ast)
+            {//fork of acorn-globals with PRs #52 #58 #60
+                var globals = [];
+                function isScope(node) {
+                    return node.type === 'FunctionExpression' || node.type === 'FunctionDeclaration' || node.type === 'ArrowFunctionExpression' || node.type === 'Program';
+                }
+                function isBlockScope(node) {
+                    return node.type === 'BlockStatement' || isScope(node);
+                }
 
+                function declaresArguments(node) {
+                    return node.type === 'FunctionExpression' || node.type === 'FunctionDeclaration';
+                }
+
+                function declaresThis(node) {
+                    return node.type === 'FunctionExpression' || node.type === 'FunctionDeclaration';
+                }
+                var declareFunction = function (node) {
+                    var fn = node;
+                    fn.locals = fn.locals || Object.create(null);
+                    node.params.forEach(function (node) {
+                        declarePattern(node, fn);
+                    });
+                    if (node.id) {
+                        fn.locals[node.id.name] = true;
+                    }
+                };
+                var declareClass = function (node) {
+                    node.locals = node.locals || Object.create(null);
+                    if (node.id) {
+                        node.locals[node.id.name] = true;
+                    }
+                };
+                var declarePattern = function (node, parent) {
+                    switch (node.type) {
+                        case 'Identifier':
+                            parent.locals[node.name] = true;
+                            break;
+                        case 'ObjectPattern':
+                            node.properties.forEach(function (node) {
+                                declarePattern(node.value || node.argument, parent);
+                            });
+                            break;
+                        case 'ArrayPattern':
+                            node.elements.forEach(function (node) {
+                                if (node) declarePattern(node, parent);
+                            });
+                            break;
+                        case 'RestElement':
+                            declarePattern(node.argument, parent);
+                            break;
+                        case 'AssignmentPattern':
+                            declarePattern(node.left, parent);
+                            break;
+                        // istanbul ignore next
+                        default:
+                            throw new Error('Unrecognized pattern type: ' + node.type);
+                    }
+                };
+                var declareModuleSpecifier = function (node, parents) {
+                    ast.locals = ast.locals || Object.create(null);
+                    ast.locals[node.local.name] = true;
+                };
+                walk.ancestor(ast, {
+                    'VariableDeclaration': function (node: any, parents) {
+                        var parent = null;
+                        for (var i = parents.length - 1; i >= 0 && parent === null; i--) {
+                            if (node.kind === 'var' ? isScope(parents[i]) : isBlockScope(parents[i])) {
+                                parent = parents[i];
+                            }
+                        }
+                        parent.locals = parent.locals || Object.create(null);
+                        node.declarations.forEach(function (declaration) {
+                            declarePattern(declaration.id, parent);
+                        });
+                    },
+                    'FunctionDeclaration': function (node: any, parents) {
+                        var parent = null;
+                        for (var i = parents.length - 2; i >= 0 && parent === null; i--) {
+                            if (isScope(parents[i])) {
+                                parent = parents[i];
+                            }
+                        }
+                        parent.locals = parent.locals || Object.create(null);
+                        if (node.id) {
+                            parent.locals[node.id.name] = true;
+                        }
+                        declareFunction(node);
+                    },
+                    'Function': declareFunction,
+                    'ClassDeclaration': function (node: any, parents) {
+                        var parent = null;
+                        for (var i = parents.length - 2; i >= 0 && parent === null; i--) {
+                            if (isBlockScope(parents[i])) {
+                                parent = parents[i];
+                            }
+                        }
+                        parent.locals = parent.locals || Object.create(null);
+                        if (node.id) {
+                            parent.locals[node.id.name] = true;
+                        }
+                        declareClass(node);
+                    },
+                    'Class': declareClass,
+                    'TryStatement': function (node: any) {
+                        if (node.handler === null || node.handler.param === null) return;
+                        node.handler.locals = node.handler.locals || Object.create(null);
+                        declarePattern(node.handler.param, node.handler);
+                    },
+                    'ImportDefaultSpecifier': declareModuleSpecifier,
+                    'ImportSpecifier': declareModuleSpecifier,
+                    'ImportNamespaceSpecifier': declareModuleSpecifier
+                });
+                function identifier(node, parents) {
+                    var name = node.name;
+                    if (name === 'undefined') return;
+                    for (var i = 0; i < parents.length; i++) {
+                        if (name === 'arguments' && declaresArguments(parents[i])) {
+                            return;
+                        }
+                        if (parents[i].locals && name in parents[i].locals) {
+                            return;
+                        }
+                    }
+                    node.parents = parents.slice();
+                    globals.push(node);
+                }
+                walk.ancestor(ast, {
+                    'VariablePattern': identifier,
+                    'Identifier': identifier,
+                    'ThisExpression': function (node: any, parents) {
+                        for (var i = 0; i < parents.length; i++) {
+                            var parent = parents[i];
+                            if (parent.type === 'FunctionExpression' || parent.type === 'FunctionDeclaration') { return; }
+                            if (parent.type === 'PropertyDefinition' && parents[i + 1] === parent.value) { return; }
+                        }
+                        node.parents = parents.slice();
+                        globals.push(node);
+                    }
+                });
+                var groupedGlobals = Object.create(null);
+                globals.forEach(function (node) {
+                    var name = node.type === 'ThisExpression' ? 'this' : node.name;
+                    groupedGlobals[name] = (groupedGlobals[name] || []);
+                    groupedGlobals[name].push(node);
+                });
+                glob = Object.keys(groupedGlobals).sort().map(function (name) {
+                    return { name: name, nodes: groupedGlobals[name] };
+                });
+            }
+            r[k] = { type: 'js', importSubstitute: getSubstituteId(importSuspectIds, 5, '$'), thisSubstitute: getSubstituteId(thisSuspectIds, 3, '$') || getSubstituteId(thisSuspectIds, 4, '$'), chunks, globals: glob.filter(x => x.name != 'this').map(x => x.name), }
+        }
+        else {
+            r[k] = { type: 'buffer', value: files[k] }
         }
     }
+    return r
 }
