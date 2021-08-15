@@ -291,5 +291,5 @@ export class Decoder {
     protected hasClose: boolean
     protected pullResolve: () => void
     protected hasPull: boolean
-    decode = (value, op?: DecodeSyncOptions) => decodeSync(value, this.state, op)
+    decode = (value: BufferSource | BufferSource[], op?: DecodeSyncOptions) => decodeSync(value, this.state, op)
 }

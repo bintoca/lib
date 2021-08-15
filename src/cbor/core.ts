@@ -1073,6 +1073,7 @@ export const enum tags {
     datePOSIX = 1,
     positiveBigNum = 2,
     negativeBigNum = 3,
+    encodedCBORItem = 24,
     typeConstructor = 27,
     shareable = 28,
     sharedRef = 29,

@@ -2,6 +2,7 @@ import tar from 'tar'
 import acorn from 'acorn'
 import glo from 'acorn-globals'
 import walk from 'acorn-walk'
+import { ChunkType, FileType } from '@bintoca/loader'
 const TD = new TextDecoder()
 
 export async function parseTar(t: NodeJS.ReadableStream): Promise<{ [k: string]: Buffer }> {
@@ -48,18 +49,25 @@ export function getSubstituteId(suspects, length: number, prefix: string) {
         count++
     }
 }
+export const enum ParseFilesError {
+    syntax = 1,
+    importSubstitute = 2,
+    thisSubstitute = 3,
+    packageJSON = 4
+}
+
 export const thisScopes = ['FunctionDeclaration', 'FunctionExpression', 'ClassDeclaration', 'ClassExpression']
-export function parseFiles(files: { [k: string]: Buffer }) {
+export function parseFiles(files: { [k: string]: Buffer }): { files?: {}, error?: ParseFilesError, message?: string } {
     let packageJSON
     try {
         packageJSON = JSON.parse(TD.decode(files['package.json']))
     }
     catch { }
     if (!packageJSON) {
-        return { error: 'package.json not present or invalid' }
+        return { error: ParseFilesError.packageJSON, message: 'package.json not present or invalid' }
     }
 
-    const r = {}
+    const r = { files: {} }
     for (let k in files) {
         if (k.endsWith('.js') || k.endsWith('.cjs') || k.endsWith('.mjs')) {
             let ast//: acorn.Node
@@ -70,7 +78,7 @@ export function parseFiles(files: { [k: string]: Buffer }) {
                 //console.log(JSON.stringify(ast))
             }
             catch (e) {
-                return { error: 'syntax error in "' + k + '" ' + e.message }
+                return { error: ParseFilesError.syntax, message: 'syntax error in "' + k + '" ' + e.message }
             }
             const removeNodes = []
             const importSuspectIds = {}
@@ -120,22 +128,34 @@ export function parseFiles(files: { [k: string]: Buffer }) {
                 }
             })
             let position = 0
-            const chunks = []
+            const chunks: (Map<number, any> | string)[] = []
+            const imports: Map<number, any>[] = []
+            let hasDynamicImport = false
+            let hasGlobalThis = false
             for (let n of removeNodes) {
                 if (n.type == 'ImportDeclaration') {
-                    chunks.push(text.substring(position, n.source.start + 1))
-                    position = n.source.end - 1
-                    chunks.push({ type: 'ImportSpecifier', name: n.source.value })
+                    if (position != n.start) {
+                        chunks.push(text.substring(position, n.start))
+                    }
+                    position = n.end
+                    chunks.push(new Map([[1, ChunkType.Placeholder], [2, n.end - n.start]]))
+                    imports.push(new Map([[1, text.substring(n.start, n.source.start)], [2, text.substring(n.source.start + 1, n.source.end - 1)]]))
                 }
                 else if (n.type == 'ImportExpression') {
-                    chunks.push(text.substring(position, n.start))
+                    if (position != n.start) {
+                        chunks.push(text.substring(position, n.start))
+                    }
                     position = n.start + 6
-                    chunks.push({ type: 'Import' })
+                    chunks.push(new Map([[1, ChunkType.Import]]))
+                    hasDynamicImport = true
                 }
                 else if (n.type == 'ThisExpression') {
-                    chunks.push(text.substring(position, n.start))
+                    if (position != n.start) {
+                        chunks.push(text.substring(position, n.start))
+                    }
                     position = n.end
-                    chunks.push({ type: 'This' })
+                    chunks.push(new Map([[1, ChunkType.This]]))
+                    hasGlobalThis = true
                 }
             }
             chunks.push(text.substring(position))
@@ -290,10 +310,27 @@ export function parseFiles(files: { [k: string]: Buffer }) {
                     return { name: name, nodes: groupedGlobals[name] };
                 });
             }
-            r[k] = { type: 'js', importSubstitute: getSubstituteId(importSuspectIds, 5, '$'), thisSubstitute: getSubstituteId(thisSuspectIds, 3, '$') || getSubstituteId(thisSuspectIds, 4, '$'), chunks, globals: glob.filter(x => x.name != 'this').map(x => x.name), }
+            glob = glob.filter(x => x.name != 'this').map(x => x.name)
+            const sizeEstimate = chunks.map(x => typeof x == 'string' ? new TextEncoder().encode(x).length : x.get(1) == ChunkType.Placeholder ? x.get(2) : x.get(1) == ChunkType.Import ? 6 : x.get(1) == ChunkType.This ? 4 : 0)
+                .concat(imports.map(x => new TextEncoder().encode(x.get(1)).length + 100)).concat(glob.map(x => new TextEncoder().encode(x).length + 50)).reduce((a, b) => a + b, 0)
+            const importSubstitute = hasDynamicImport ? getSubstituteId(importSuspectIds, 5, '$') : undefined
+            const thisSubstitute = hasGlobalThis ? getSubstituteId(thisSuspectIds, 3, '$') : undefined
+            if (hasDynamicImport && !importSubstitute) {
+                return { error: ParseFilesError.importSubstitute, message: k }
+            }
+            if (hasGlobalThis && !thisSubstitute) {
+                return { error: ParseFilesError.thisSubstitute, message: k }
+            }
+            r.files[k] = new Map<number, any>([[1, FileType.js], [2, sizeEstimate], [6, importSubstitute], [7, thisSubstitute], [3, chunks], [4, glob], [5, imports]])
+            if (!importSubstitute) {
+                r.files[k].delete(6)
+            }
+            if (!thisSubstitute) {
+                r.files[k].delete(7)
+            }
         }
         else {
-            r[k] = { type: 'buffer', value: files[k] }
+            r.files[k] = new Map<number, any>([[1, FileType.buffer], [2, files[k]]])
         }
     }
     return r

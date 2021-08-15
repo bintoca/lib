@@ -159,5 +159,5 @@ export class Decoder extends Duplex {
             this.finalcb()
         }
     }
-    decode = (value, op?: DecodeSyncOptions) => decodeSync(value, this.state, op)
+    decode = (value: BufferSource | BufferSource[], op?: DecodeSyncOptions) => decodeSync(value, this.state, op)
 }
