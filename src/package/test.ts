@@ -18,7 +18,7 @@ test.each([[{}, '$AAAAA'], [{ '$AAAAA': 1, '$BAAAA': 1, }, '$CAAAA']])('getSubst
 test('parseFiles', async () => {
     const files = await pack.parseTar(tarCreate('pack1'))
     const r = pack.parseFiles(files)
-    expect(r.files['dist/index.js']).toEqual(new Map<number, any>([[1, FileType.js], [2, 920],
+    expect(r.files['dist/index.js']).toEqual(new Map<number, any>([[1, FileType.js], [2, 791],
     [4, ['Math', 'Number']], [6, "$BAAAA"], [7, "$BAA"],
     [5, [new Map<number, any>([[1, "import * as $eeeee from "], [2, 'es😀d' ]]), new Map<number, any>([[1, "import { $AAAAA } from "], [2, 'a1' ]]), new Map<number, any>([[1, "import $bbbbb from "], [2, 'b1' ]])]],
     [3, [new Map<number, any>([[1, ChunkType.Placeholder], [2, 31]]), "\r\n", new Map<number, any>([[1, ChunkType.Placeholder], [2, 27]]), "\r\n", new Map<number, any>([[1, ChunkType.Placeholder], [2, 23]]),

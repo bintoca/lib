@@ -482,7 +482,7 @@ export type DecoderState = {
     position: number, stack: DecodeStackItem[], decodeItemFunc: (major: number, additionalInformation: number, dv: DataView, src: DecoderState) => any, decodeSharedFunc: (value, state: DecoderState) => void,
     finishItemFunc: (state: DecoderState) => any, stopPosition?: number, decodeMainFunc: (dv: DataView, state: DecoderState) => any, tagMap: Map<number | bigint, (v, state: DecoderState) => any>, shared: any[], queue: BufferSource[],
     tempBuffer: Uint8Array, nonStringKeysToObject?: boolean, maxBytesPerItem?: number, currentItemByteCount: number, hasSharedRef?: boolean, promises: Promise<any>[], namedConstructorMap: Map<string, (v, state: DecoderState) => any>,
-    decodeUTF8Func: (dv: DataView, length: number, state: DecoderState) => string
+    decodeUTF8Func: (dv: DataView, length: number, state: DecoderState) => string, byteStringNoCopy?: boolean
 }
 export const getFloat16 = (dv: DataView, offset: number, littleEndian?: boolean): number => {
     const leadByte = dv.getUint8(offset + (littleEndian ? 1 : 0))
@@ -564,7 +564,7 @@ export const decodeInfo = (major: number, ai: number, dv: DataView, state: Decod
     return undefined
 }
 export const slice = (dv: DataView, length: number, state: DecoderState) => {
-    const b = dv.buffer.slice(state.position + dv.byteOffset, state.position + dv.byteOffset + length)
+    const b = state.byteStringNoCopy ? new Uint8Array(dv.buffer, state.position + dv.byteOffset, length) : dv.buffer.slice(state.position + dv.byteOffset, state.position + dv.byteOffset + length)
     state.position += length;
     return b
 }

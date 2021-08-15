@@ -1,5 +1,5 @@
 import { Encoder, Decoder } from '@bintoca/cbor'
-import { defaultTypeMap, EncoderState, binaryItem, tagItem, tags, bufferSourceToDataView, DecoderState, decodeInfo } from '@bintoca/cbor/core'
+import { defaultTypeMap, EncoderState, binaryItem, tagItem, tags, bufferSourceToDataView, DecoderState, decodeInfo, bufferSourceToUint8Array } from '@bintoca/cbor/core'
 
 export const enum FileType {
     buffer = 1,
@@ -24,7 +24,7 @@ export const encode = (p: { files: {} }): Uint8Array => {
     return enc.encode(new Map([[1, p.files]]))
 }
 export const decodePackage = (b: BufferSource): Map<number, any> => {
-    const dec = new Decoder()
+    const dec = new Decoder({ byteStringNoCopy: true })
     return dec.decode(b)
 }
 export const decodeCount = (dv: DataView, state: DecoderState): number => {
@@ -34,7 +34,7 @@ export const decodeCount = (dv: DataView, state: DecoderState): number => {
     const ai = c & 31
     return decodeInfo(major, ai, dv, state) as number
 }
-export const decodeFile = (b: BufferSource, globalResolve: (u: Uint8Array, len: number, dv: DataView, state: DecoderState, size: number) => number, importResolve: (u: Uint8Array, len: number, dv: DataView, state: DecoderState, size: number) => number): Uint8Array => {
+export const decodeFile = (b: BufferSource, freeGlobals: DataView, controlledGlobals: DataView, importResolve: (u: Uint8Array, len: number, dv: DataView, state: DecoderState, size: number) => number): Uint8Array => {
     const state = { position: 0 } as DecoderState
     const dv = bufferSourceToDataView(b)
     if (dv.getUint8(0) >> 5 != 5) {
@@ -80,9 +80,7 @@ export const decodeFile = (b: BufferSource, globalResolve: (u: Uint8Array, len: 
             const maj = dv.getUint8(state.position) >> 5
             if (maj == 3) {
                 const size = decodeCount(dv, state)
-                for (let j = 0; j < size; j++) {
-                    u[len + j] = dv.getUint8(state.position + j)
-                }
+                u.set(new Uint8Array(dv.buffer, dv.byteOffset + state.position, size), len)
                 state.position += size
                 len += size
             }
@@ -129,31 +127,41 @@ export const decodeFile = (b: BufferSource, globalResolve: (u: Uint8Array, len: 
             const globalCount = decodeCount(dv, state)
             for (let i = 0; i < globalCount; i++) {
                 const size = decodeCount(dv, state)
-                u[len++] = 10
-                u[len++] = 105
-                u[len++] = 109
-                u[len++] = 112
-                u[len++] = 111
-                u[len++] = 114
-                u[len++] = 116
-                u[len++] = 123
-                u[len++] = 118
-                u[len++] = 32
-                u[len++] = 97
-                u[len++] = 115
-                u[len++] = 32
-                for (let j = 0; j < size; j++) {
-                    u[len + j] = dv.getUint8(state.position + j)
+                if (!exists(freeGlobals, dv, state.position, size)) {
+                    u[len++] = 10
+                    u[len++] = 105
+                    u[len++] = 109
+                    u[len++] = 112
+                    u[len++] = 111
+                    u[len++] = 114
+                    u[len++] = 116
+                    u[len++] = 32
+                    for (let j = 0; j < size; j++) {
+                        u[len + j] = dv.getUint8(state.position + j)
+                    }
+                    len += size
+                    u[len++] = 32
+                    u[len++] = 102
+                    u[len++] = 114
+                    u[len++] = 111
+                    u[len++] = 109
+                    u[len++] = 34
+                    u[len++] = 47
+                    u[len++] = 120
+                    u[len++] = 47
+                    if (exists(controlledGlobals, dv, state.position, size)) {
+                        u[len++] = 103
+                        u[len++] = 47
+                        for (let j = 0; j < size; j++) {
+                            u[len + j] = dv.getUint8(state.position + j)
+                        }
+                        len += size
+                    }
+                    else {
+                        u[len++] = 117
+                    }
+                    u[len++] = 34
                 }
-                len += size
-                u[len++] = 125
-                u[len++] = 102
-                u[len++] = 114
-                u[len++] = 111
-                u[len++] = 109
-                u[len++] = 34
-                len += globalResolve(u, len, dv, state, size)
-                u[len++] = 34
                 state.position += size
             }
         }
@@ -179,9 +187,124 @@ export const decodeFile = (b: BufferSource, globalResolve: (u: Uint8Array, len: 
                 state.position += specifierSize
             }
         }
+        if (importSubIndex) {
+            u[len++] = 10
+            u[len++] = 105
+            u[len++] = 109
+            u[len++] = 112
+            u[len++] = 111
+            u[len++] = 114
+            u[len++] = 116
+            u[len++] = 32
+            for (let j = 0; j < 6; j++) {
+                u[len + j] = dv.getUint8(importSubIndex + j)
+            }
+            len += 6
+            u[len++] = 32
+            u[len++] = 102
+            u[len++] = 114
+            u[len++] = 111
+            u[len++] = 109
+            u[len++] = 34
+            u[len++] = 47
+            u[len++] = 120
+            u[len++] = 47
+            u[len++] = 105
+            u[len++] = 34
+        }
+        if (thisSubIndex) {
+            u[len++] = 10
+            u[len++] = 105
+            u[len++] = 109
+            u[len++] = 112
+            u[len++] = 111
+            u[len++] = 114
+            u[len++] = 116
+            u[len++] = 32
+            for (let j = 0; j < 4; j++) {
+                u[len + j] = dv.getUint8(thisSubIndex + j)
+            }
+            len += 4
+            u[len++] = 32
+            u[len++] = 102
+            u[len++] = 114
+            u[len++] = 111
+            u[len++] = 109
+            u[len++] = 34
+            u[len++] = 47
+            u[len++] = 120
+            u[len++] = 47
+            u[len++] = 116
+            u[len++] = 34
+        }
         return new Uint8Array(u.buffer, 0, len)
     }
     else {
         throw new Error('FileType not implemented ' + type)
     }
+}
+export const createLookup = (s: string[]): DataView => {
+    const TE = new TextEncoder()
+    const b = s.sort().map(x => TE.encode(x))
+    const m = new Map()
+    for (let x of b) {
+        if (!m.get(x[0])) {
+            m.set(x[0], [])
+        }
+        m.get(x[0]).push(x)
+    }
+    const headeSize = 4 + m.size * 4
+    const u = new Uint8Array(headeSize + b.map(x => x.byteLength + 1).reduce((a, b) => a + b, 0))
+    let pos = 0, pos2 = headeSize
+    const dv = new DataView(u.buffer)
+    dv.setUint32(pos, m.size)
+    pos += 4
+    for (let x of m) {
+        dv.setUint8(pos, x[0])
+        dv.setUint16(pos + 2, pos2)
+        pos += 4
+        for (let y of x[1]) {
+            u[pos2] = y.byteLength
+            pos2++
+            for (let i = 0; i < y.byteLength; i++) {
+                u[pos2 + i] = y[i]
+            }
+            pos2 += y.byteLength
+        }
+    }
+    return dv
+}
+export const exists = (lookup: DataView, dv: DataView, position: number, length: number): boolean => {
+    const headerSize = lookup.getUint32(0)
+    for (let i = 0; i < headerSize; i++) {
+        const key = lookup.getUint8(i * 4 + 4)
+        const f1 = dv.getUint8(position)
+        if (key == f1) {
+            let pos = lookup.getUint16(i * 4 + 6)
+            while (true) {
+                const len = lookup.getUint8(pos)
+                pos++
+                const first = lookup.getUint8(pos)
+                if (first != f1) {
+                    return false
+                }
+                if (len == length) {
+                    let match = true
+                    for (let i = 0; i < len; i++) {
+                        if (lookup.getUint8(pos + i) != dv.getUint8(position + i)) {
+                            match = false
+                        }
+                    }
+                    if (match) {
+                        return true
+                    }
+                }
+                pos += len
+                if (pos == lookup.byteLength) {
+                    return false
+                }
+            }
+        }
+    }
+    return false
 }

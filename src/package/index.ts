@@ -312,7 +312,7 @@ export function parseFiles(files: { [k: string]: Buffer }): { files?: {}, error?
             }
             glob = glob.filter(x => x.name != 'this').map(x => x.name)
             const sizeEstimate = chunks.map(x => typeof x == 'string' ? new TextEncoder().encode(x).length : x.get(1) == ChunkType.Placeholder ? x.get(2) : x.get(1) == ChunkType.Import ? 6 : x.get(1) == ChunkType.This ? 4 : 0)
-                .concat(imports.map(x => new TextEncoder().encode(x.get(1)).length + 100)).concat(glob.map(x => new TextEncoder().encode(x).length + 50)).reduce((a, b) => a + b, 0)
+                .concat(imports.map(x => new TextEncoder().encode(x.get(1)).length + new TextEncoder().encode(x.get(2)).length + 50)).concat(glob.map(x => new TextEncoder().encode(x).length * 2 + 50)).reduce((a, b) => a + b, 0)
             const importSubstitute = hasDynamicImport ? getSubstituteId(importSuspectIds, 5, '$') : undefined
             const thisSubstitute = hasGlobalThis ? getSubstituteId(thisSuspectIds, 3, '$') : undefined
             if (hasDynamicImport && !importSubstitute) {
