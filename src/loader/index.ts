@@ -80,7 +80,14 @@ export const decodeFile = (b: BufferSource, freeGlobals: DataView, controlledGlo
             const maj = dv.getUint8(state.position) >> 5
             if (maj == 3) {
                 const size = decodeCount(dv, state)
-                u.set(new Uint8Array(dv.buffer, dv.byteOffset + state.position, size), len)
+                if (size > 100) {
+                    u.set(new Uint8Array(dv.buffer, dv.byteOffset + state.position, size), len)
+                }
+                else {
+                    for (let j = 0; j < size; j++) {
+                        u[len + j] = dv.getUint8(state.position + j)
+                    }
+                }
                 state.position += size
                 len += size
             }
