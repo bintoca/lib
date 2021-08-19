@@ -1,0 +1,23 @@
+{
+  "name": "@bintoca/dev",
+  "version": "0.0.1-beta",
+  "description": "",
+  "type": "module",
+  "publishConfig": {
+    "access": "public"
+  },
+  "exports": "./index.js",
+  "types": "./index.d.ts",
+  "license": "Apache-2.0 WITH LLVM-exception",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/bintoca/lib.git",
+    "directory": "packages/dev"
+  },
+  "keywords": [
+  ],
+  "files": [
+    "index.js",
+    "index.d.ts"
+  ]
+}

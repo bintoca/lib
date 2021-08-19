@@ -7,7 +7,9 @@
     "access": "public"
   },
   "exports": {
-    "./core": "./core.js"
+    ".": "./index.js",
+    "./core": "./core.js",
+    "./node": "./node.js"
   },
   "license": "Apache-2.0 WITH LLVM-exception",
   "repository": {

@@ -1,7 +1,7 @@
 import tar from 'tar'
-import acorn from 'acorn'
+import * as acorn from 'acorn'
 import glo from 'acorn-globals'
-import walk from 'acorn-walk'
+import * as walk from 'acorn-walk'
 import { ChunkType, FileType } from '@bintoca/loader'
 const TD = new TextDecoder()
 
@@ -57,15 +57,15 @@ export const enum ParseFilesError {
 }
 
 export const thisScopes = ['FunctionDeclaration', 'FunctionExpression', 'ClassDeclaration', 'ClassExpression']
-export function parseFiles(files: { [k: string]: Buffer }): { files?: {}, error?: ParseFilesError, message?: string } {
-    let packageJSON
-    try {
-        packageJSON = JSON.parse(TD.decode(files['package.json']))
-    }
-    catch { }
-    if (!packageJSON) {
-        return { error: ParseFilesError.packageJSON, message: 'package.json not present or invalid' }
-    }
+export function parseFiles(files: { [k: string]: Buffer }): { files: {}, error?: ParseFilesError, message?: string } {
+    // let packageJSON
+    // try {
+    //     packageJSON = JSON.parse(TD.decode(files['package.json']))
+    // }
+    // catch { }
+    // if (!packageJSON) {
+    //     return { error: ParseFilesError.packageJSON, message: 'package.json not present or invalid' }
+    // }
 
     const r = { files: {} }
     for (let k in files) {
@@ -78,7 +78,7 @@ export function parseFiles(files: { [k: string]: Buffer }): { files?: {}, error?
                 //console.log(JSON.stringify(ast))
             }
             catch (e) {
-                return { error: ParseFilesError.syntax, message: 'syntax error in "' + k + '" ' + e.message }
+                return { error: ParseFilesError.syntax, message: 'syntax error in "' + k + '" ' + e.message, files: {} }
             }
             const removeNodes = []
             const importSuspectIds = {}
@@ -311,15 +311,16 @@ export function parseFiles(files: { [k: string]: Buffer }): { files?: {}, error?
                 });
             }
             glob = glob.filter(x => x.name != 'this').map(x => x.name)
-            const sizeEstimate = chunks.map(x => typeof x == 'string' ? new TextEncoder().encode(x).length : x.get(1) == ChunkType.Placeholder ? x.get(2) : x.get(1) == ChunkType.Import ? 6 : x.get(1) == ChunkType.This ? 4 : 0)
-                .concat(imports.map(x => new TextEncoder().encode(x.get(1)).length + new TextEncoder().encode(x.get(2)).length + 50)).concat(glob.map(x => new TextEncoder().encode(x).length * 2 + 50)).reduce((a, b) => a + b, 0)
             const importSubstitute = hasDynamicImport ? getSubstituteId(importSuspectIds, 5, '$') : undefined
             const thisSubstitute = hasGlobalThis ? getSubstituteId(thisSuspectIds, 3, '$') : undefined
+            const sizeEstimate = chunks.map(x => typeof x == 'string' ? new TextEncoder().encode(x).length : x.get(1) == ChunkType.Placeholder ? x.get(2) : x.get(1) == ChunkType.Import ? 6 : x.get(1) == ChunkType.This ? 4 : 0)
+                .concat(imports.map(x => new TextEncoder().encode(x.get(1)).length + new TextEncoder().encode(x.get(2)).length + 50)).concat(glob.map(x => new TextEncoder().encode(x).length * 2 + 50)).reduce((a, b) => a + b, 0)
+                + (importSubstitute ? 50 : 0) + (thisSubstitute ? 50 : 0)
             if (hasDynamicImport && !importSubstitute) {
-                return { error: ParseFilesError.importSubstitute, message: k }
+                return { error: ParseFilesError.importSubstitute, message: k, files: {} }
             }
             if (hasGlobalThis && !thisSubstitute) {
-                return { error: ParseFilesError.thisSubstitute, message: k }
+                return { error: ParseFilesError.thisSubstitute, message: k, files: {} }
             }
             r.files[k] = new Map<number, any>([[1, FileType.js], [2, sizeEstimate], [6, importSubstitute], [7, thisSubstitute], [3, chunks], [4, glob], [5, imports]])
             if (!importSubstitute) {
