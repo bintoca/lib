@@ -1,5 +1,6 @@
 import * as tar from 'tar'
 import * as pack from '@bintoca/package'
+import { ParseFilesError } from '@bintoca/package'
 import { ChunkType, FileType } from '@bintoca/loader'
 
 function tarCreate(folder: string) {
@@ -20,7 +21,7 @@ test('parseFiles', async () => {
     const r = pack.parseFiles(files)
     expect(r.files['dist/index.js']).toEqual(new Map<number, any>([[1, FileType.js], [2, 891],
     [4, ['Math', 'Number']], [6, "$BAAAA"], [7, "$BAA"],
-    [5, [new Map<number, any>([[1, "import * as $eeeee from "], [2, 'es😀d' ]]), new Map<number, any>([[1, "import { $AAAAA } from "], [2, 'a1' ]]), new Map<number, any>([[1, "import $bbbbb from "], [2, 'b1' ]])]],
+    [5, [new Map<number, any>([[1, "import * as $eeeee from "], [2, 'es😀d']]), new Map<number, any>([[1, "import { $AAAAA } from "], [2, 'a1']]), new Map<number, any>([[1, "import $bbbbb from "], [2, 'b1']])]],
     [3, [new Map<number, any>([[1, ChunkType.Placeholder], [2, 31]]), "\r\n", new Map<number, any>([[1, ChunkType.Placeholder], [2, 27]]), "\r\n", new Map<number, any>([[1, ChunkType.Placeholder], [2, 23]]),
         "\r\nconst $AAA = ", new Map<number, any>([[1, ChunkType.This]]), "\r\nconst ar = () => ", new Map<number, any>([[1, ChunkType.This]]), "\r\nconst $ddddd = Number.EPSILON + Number.MAX_SAFE_INTEGER\r\n",
     new Map<number, any>([[1, ChunkType.Import]]),
@@ -37,4 +38,22 @@ test('parseFiles', async () => {
     "}\r\n" +
     "const cc = class { #v = this }\r\n" +
     "const fe = function () { return this }"]]]))
+})
+test.each([['import a from "/x"', new Map<number, any>([[1, FileType.error], [2, ParseFilesError.invalidSpecifier], [3, '/x']])],
+['import a from "/x/a"', new Map<number, any>([[1, FileType.error], [2, ParseFilesError.invalidSpecifier], [3, '/x/a']])],
+['import a from ".b"', new Map<number, any>([[1, FileType.error], [2, ParseFilesError.invalidSpecifier], [3, '.b']])],
+['import a from "..b"', new Map<number, any>([[1, FileType.error], [2, ParseFilesError.invalidSpecifier], [3, '..b']])],
+['import a from "b"', new Map<number, any>([[1, FileType.js]])],
+['import a from "./b"', new Map<number, any>([[1, FileType.js]])],
+['import a from "../b"', new Map<number, any>([[1, FileType.js]])],
+['import a from "../../b"', new Map<number, any>([[1, FileType.js]])],
+['import a from "../../../b"', new Map<number, any>([[1, FileType.error], [2, ParseFilesError.invalidSpecifier], [3, '../../../b']])],
+])('parseFile', (a, e) => {
+    const m = pack.parseFile('lib/lib/a.js', Buffer.from(a))
+    if (m.get(1) == FileType.error) {
+        expect(m).toEqual(e)
+    }
+    else {
+        expect(m.get(1)).toBe(e.get(1))
+    }
 })

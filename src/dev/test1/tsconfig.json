@@ -11,16 +11,6 @@
         "esModuleInterop": true,
         "skipLibCheck": true,
         "moduleResolution": "node",
-        "declaration": true,
-        "preserveConstEnums": true,
-        "paths": {
-            "@bintoca/*": [
-                "./*"
-            ]
-        },
-        "outDir": "../packages"
-    },
-    "exclude": [
-        "./dev/test1/*"
-    ]
+        "preserveConstEnums": true
+    }
 }

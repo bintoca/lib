@@ -4,6 +4,7 @@ import { defaultTypeMap, EncoderState, binaryItem, tagItem, tags, bufferSourceTo
 export const enum FileType {
     buffer = 1,
     js = 2,
+    error = 3,
 }
 export const enum ChunkType {
     Placeholder = 1,
@@ -245,6 +246,11 @@ export const decodeFile = (b: BufferSource, freeGlobals: DataView, controlledGlo
             u[len++] = 34
         }
         return new Uint8Array(u.buffer, 0, len)
+    }
+    else if (type == FileType.error) {
+        const m = new Decoder().decode(b)
+        const s = 'Error type: ' + m.get(2) + ' Message: ' + m.get(3)
+        return new TextEncoder().encode(s)
     }
     else {
         throw new Error('FileType not implemented ' + type)

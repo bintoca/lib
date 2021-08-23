@@ -4,24 +4,45 @@ import * as path from 'path'
 import open from 'open'
 import { cwd } from 'process';
 import { parseFiles } from '@bintoca/package'
-import { encode, decodePackage, decodeFile, createLookup } from '@bintoca/loader'
-import { DecoderState } from '@bintoca/cbor/core'
+import { encode, decodePackage, decodeFile, createLookup, FileType } from '@bintoca/loader'
+import { DecoderState, bufferSourceToUint8Array } from '@bintoca/cbor/core'
 import * as chokidar from 'chokidar'
 import { server as wss } from 'websocket'
 import anymatch from 'anymatch'
+import * as readline from 'readline'
 
 const TD = new TextDecoder()
 const port = 3001
 const base = '/x/p/'
 let loadedFiles = {}
-const ignore = [/(^|[\/\\])\../, 'node_modules'] // ignore dotfiles
+const config = {
+    ignore: [/(^|[\/\\])\../, 'node_modules'], // ignore dotfiles
+    awaitWriteFinish: { stabilityThreshold: 100, pollInterval: 50 }
+}
 const freeGlobals = createLookup(['window', 'document'])
 const controlledGlobals = createLookup([])
 const importResolve = (u: Uint8Array, len: number, dv: DataView, state: DecoderState, size: number): number => {
-    u[len++] = 98
-    u[len++] = 120
-    u[len++] = 120
-    return 3
+    const s = TD.decode(bufferSourceToUint8Array(dv, state.position, size))
+    let isPassThrough = false
+    if (s[0] == '.') {
+        if (s[1] == '/') {
+            isPassThrough = true
+        }
+        else if (s[1] == '.' && s[2] == '/') {
+            isPassThrough = true
+        }
+    }
+    let sp
+    if (isPassThrough) {
+        sp = s
+    }
+    else {
+        sp = s
+    }
+
+    const spb = new TextEncoder().encode(sp)
+    u.set(spb, len)
+    return spb.byteLength
 }
 
 const server1 = http.createServer({}, async (req: http.IncomingMessage, res: http.ServerResponse) => {
@@ -67,7 +88,13 @@ const server1 = http.createServer({}, async (req: http.IncomingMessage, res: htt
                 if (req.url.endsWith('.js') || req.url.endsWith('.mjs') || req.url.endsWith('.cjs')) {
                     res.setHeader('Content-Type', 'text/javascript')
                 }
-                res.end(Buffer.from(decodeFile(f, freeGlobals, controlledGlobals, importResolve)))
+                try {
+                    res.end(Buffer.from(decodeFile(f, freeGlobals, controlledGlobals, importResolve)))
+                }
+                catch (e) {
+                    res.statusCode = 500
+                    res.end(e)
+                }
             }
             else {
                 res.statusCode = 404
@@ -99,7 +126,7 @@ export const readDir = (p, wd, files) => {
     const dr = path.join(wd, p)
     const d = fs.readdirSync(dr)
     for (let x of d) {
-        if (!anymatch(ignore, x)) {
+        if (!anymatch(config.ignore, x)) {
             const fn = path.join(wd, p, x)
             if (fs.lstatSync(fn).isDirectory()) {
                 readDir(path.join(p, x), wd, files)
@@ -111,21 +138,31 @@ export const readDir = (p, wd, files) => {
     }
     return files
 }
-let encodedFiles
+let encodedFiles = {}
 let notifyTimeout
+let notifyEnabled = false
 const notify = () => {
-    if (notifyTimeout) {
-        clearTimeout(notifyTimeout)
-    }
-    notifyTimeout = setTimeout(() => {
-        notifyTimeout = undefined;
-        for (let x of wsConnections) {
-            x.sendUTF('reload')
+    if (notifyEnabled) {
+        if (notifyTimeout) {
+            clearTimeout(notifyTimeout)
         }
-    }, 100)
+        notifyTimeout = setTimeout(() => {
+            notifyTimeout = undefined;
+            for (let x of wsConnections) {
+                x.sendUTF('reload')
+            }
+        }, 100)
+    }
 }
 export const update = (f) => {
-    const enc = decodePackage(encode(parseFiles(f))).get(1)
+    const parsed = parseFiles(f)
+    for (let x in parsed.files) {
+        const m = parsed.files[x]
+        if (m.get(1) == FileType.error) {
+            log('File: ' + x, 'Error type: ' + m.get(2), 'Message: ' + m.get(3))
+        }
+    }
+    const enc = decodePackage(encode(parsed)).get(1)
     for (let x in enc) {
         const path = alignPath(x)
         encodedFiles[path] = enc[x]
@@ -135,14 +172,24 @@ export const update = (f) => {
     }
 }
 export const alignPath = (s) => s.replace(/\\/g, '/')
-export const init = () => {
+const rl = readline.createInterface({ input: process.stdin, output: process.stdout, prompt: 'DEV> ' })
+const log = (...x) => {
+    console.log(...x)
+    rl.prompt()
+}
+export const init = async () => {
+    const configFile = './bintoca.dev.js'
+    if (fs.existsSync(configFile)) {
+        const dev = await import(path.join('file://' + cwd(), configFile))
+        Object.assign(config, dev.default)
+    }
     const w = chokidar.watch('.', {
-        ignored: ignore, // ignore dotfiles
+        ignored: config.ignore,
         ignoreInitial: true,
-        awaitWriteFinish: { stabilityThreshold: 100, pollInterval: 50 }
+        awaitWriteFinish: config.awaitWriteFinish
     })
-    //w.on('ready', () => console.log(w.getWatched()))
-    w.on('error', er => console.log('Watcher error', er))
+    //w.on('ready', () => log(w.getWatched(), config))
+    w.on('error', er => log('Watcher error', er))
     w.on('add', path => { update({ [path]: fs.readFileSync(path) }) })
     w.on('addDir', path => { update(readDir(path, cwd(), {})) })
     w.on('change', path => { update({ [path]: fs.readFileSync(path) }) })
@@ -154,15 +201,16 @@ export const init = () => {
             }
         }
     })
-
-    const files = parseFiles(readDir('', cwd(), {}))
-    if (files.error) {
-        console.log(files.error, files.message)
-    }
-    else {
-        const pkg = decodePackage(encode(files))
-        encodedFiles = pkg.get(1)
-    }
+    update(readDir('', cwd(), {}))
+    notifyEnabled = true
     open('http://localhost:' + port)
+    log('Auto-refresh is on. Enter "a" to toggle.')
+    rl.on('line', line => {
+        if (line.trim() == 'a') {
+            notifyEnabled = !notifyEnabled
+            console.log('Auto-refresh is ' + (notifyEnabled ? 'on' : 'off'))
+        }
+        rl.prompt()
+    })
 }
 init()

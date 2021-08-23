@@ -1,1 +1,1 @@
-aa
+export const s = 'dse'
