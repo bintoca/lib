@@ -1,4 +1,7 @@
-import { s } from './lib/t1.js'
+import { s } from './lib/m1.js'
+import * as w from './lib/m1.js'
+
 window.onload = () => {
-    document.body.textContent = 'hey1233' + s
+    //console.log(w)
+    document.body.textContent = 'hey1233' + w.t.st 
 }

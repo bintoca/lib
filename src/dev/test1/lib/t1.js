@@ -1,1 +1,1 @@
-export const s = 'tt3';
+export const st = 'tt3';

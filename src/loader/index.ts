@@ -245,6 +245,77 @@ export const decodeFile = (b: BufferSource, freeGlobals: DataView, controlledGlo
             u[len++] = 116
             u[len++] = 34
         }
+        if (dv.byteLength > state.position) {
+            if (dv.getUint8(state.position) != 8) {
+                throw new Error('invalid cbor at index ' + state.position)
+            }
+            state.position++
+            const exportCount = decodeCount(dv, state)
+            for (let i = 0; i < exportCount; i++) {
+                const mapCount = dv.getUint8(state.position) & 31
+                state.position++
+                const type = dv.getUint8(state.position)
+                state.position++
+                if (type == 1) {
+                    const size = decodeCount(dv, state)
+                    u[len++] = 10
+                    u[len++] = 101
+                    u[len++] = 120
+                    u[len++] = 112
+                    u[len++] = 111
+                    u[len++] = 114
+                    u[len++] = 116
+                    u[len++] = 123
+                    for (let j = 0; j < size; j++) {
+                        u[len + j] = dv.getUint8(state.position + j)
+                    }
+                    len += size
+                    state.position += size
+                    u[len++] = 125
+                }
+                else if (type == 4) {
+                    const size = decodeCount(dv, state)
+                    u[len++] = 10
+                    u[len++] = 101
+                    u[len++] = 120
+                    u[len++] = 112
+                    u[len++] = 111
+                    u[len++] = 114
+                    u[len++] = 116
+                    u[len++] = 32
+                    u[len++] = 100
+                    u[len++] = 101
+                    u[len++] = 102
+                    u[len++] = 97
+                    u[len++] = 117
+                    u[len++] = 108
+                    u[len++] = 116
+                    u[len++] = 32
+                    for (let j = 0; j < size; j++) {
+                        u[len + j] = dv.getUint8(state.position + j)
+                    }
+                    len += size
+                    state.position += size
+                }
+                else {
+                    const size = decodeCount(dv, state)
+                    u[len++] = 10
+                    for (let j = 0; j < size; j++) {
+                        u[len + j] = dv.getUint8(state.position + j)
+                    }
+                    len += size
+                    state.position += size
+                    if (mapCount == 2) {
+                        state.position++
+                        u[len++] = 34
+                        const specifierSize = decodeCount(dv, state)
+                        len += importResolve(u, len, dv, state, specifierSize)
+                        u[len++] = 34
+                        state.position += specifierSize
+                    }
+                }
+            }
+        }
         return new Uint8Array(u.buffer, 0, len)
     }
     else if (type == FileType.error) {

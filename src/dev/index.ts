@@ -3,7 +3,7 @@ import * as fs from 'fs'
 import * as path from 'path'
 import open from 'open'
 import { cwd } from 'process';
-import { parseFiles } from '@bintoca/package'
+import { parseFiles, ParseFilesError } from '@bintoca/package'
 import { encode, decodePackage, decodeFile, createLookup, FileType } from '@bintoca/loader'
 import { DecoderState, bufferSourceToUint8Array } from '@bintoca/cbor/core'
 import * as chokidar from 'chokidar'
@@ -12,14 +12,14 @@ import anymatch from 'anymatch'
 import * as readline from 'readline'
 
 const TD = new TextDecoder()
-const port = 3001
 const base = '/x/p/'
 let loadedFiles = {}
 const config = {
+    port: 3001,
     ignore: [/(^|[\/\\])\../, 'node_modules'], // ignore dotfiles
     awaitWriteFinish: { stabilityThreshold: 100, pollInterval: 50 }
 }
-const freeGlobals = createLookup(['window', 'document'])
+const freeGlobals = createLookup(['window', 'document', 'console'])
 const controlledGlobals = createLookup([])
 const importResolve = (u: Uint8Array, len: number, dv: DataView, state: DecoderState, size: number): number => {
     const s = TD.decode(bufferSourceToUint8Array(dv, state.position, size))
@@ -44,7 +44,6 @@ const importResolve = (u: Uint8Array, len: number, dv: DataView, state: DecoderS
     u.set(spb, len)
     return spb.byteLength
 }
-
 const server1 = http.createServer({}, async (req: http.IncomingMessage, res: http.ServerResponse) => {
     let chunks: Buffer[] = []
     req.on('data', (c: Buffer) => {
@@ -77,7 +76,7 @@ const server1 = http.createServer({}, async (req: http.IncomingMessage, res: htt
             }
             else {
                 res.setHeader('Content-Type', 'text/html')
-                res.end('<html><head><script>const ws = new WebSocket("ws://localhost:' + port + '");ws.onmessage = (ev)=>{window.location.reload()}</script><script type="module" src="' + base + mod + '"></script></head><body></body></html>')
+                res.end('<html><head><meta charset="utf-8"/><meta name="viewport" content="width=device-width, initial-scale=1" /><script>const ws = new WebSocket("ws://localhost:' + config.port + '");ws.onmessage = (ev)=>{window.location.reload()}</script><script type="module" src="' + base + mod + '"></script></head><body></body></html>')
             }
         }
         else if (req.url.startsWith(base)) {
@@ -108,7 +107,6 @@ const server1 = http.createServer({}, async (req: http.IncomingMessage, res: htt
     })
 
 })
-server1.listen(port)
 const wsServer = new wss({ httpServer: server1 })
 const wsConnections = []
 wsServer.on('request', function (request) {
@@ -121,7 +119,6 @@ wsServer.on('request', function (request) {
     });
     wsConnections.push(connection)
 });
-
 export const readDir = (p, wd, files) => {
     const dr = path.join(wd, p)
     const d = fs.readdirSync(dr)
@@ -159,7 +156,16 @@ export const update = (f) => {
     for (let x in parsed.files) {
         const m = parsed.files[x]
         if (m.get(1) == FileType.error) {
-            log('File: ' + x, 'Error type: ' + m.get(2), 'Message: ' + m.get(3))
+            const type = m.get(2)
+            if (type == ParseFilesError.syntax) {
+                log('File: ' + x, 'Syntax error: ' + m.get(3))
+            }
+            else if (type == ParseFilesError.invalidSpecifier) {
+                log('File: ' + x, 'Invalid import specifier: ' + m.get(3))
+            }
+            else {
+                log('File: ' + x, 'Error type: ' + m.get(2), 'Message: ' + m.get(3))
+            }
         }
     }
     const enc = decodePackage(encode(parsed)).get(1)
@@ -203,7 +209,8 @@ export const init = async () => {
     })
     update(readDir('', cwd(), {}))
     notifyEnabled = true
-    open('http://localhost:' + port)
+    server1.listen(config.port)
+    open('http://localhost:' + config.port)
     log('Auto-refresh is on. Enter "a" to toggle.')
     rl.on('line', line => {
         if (line.trim() == 'a') {
