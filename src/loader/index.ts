@@ -392,3 +392,187 @@ export const exists = (lookup: DataView, dv: DataView, position: number, length:
     }
     return false
 }
+export const enum ValidateExportKeyResult {
+    relative = 1,
+    condition = 2,
+    mix = 3
+}
+export const validateExportKeys = (keys: string[]): ValidateExportKeyResult => {
+    const relative = keys.some(x => x.startsWith('.'))
+    const condition = keys.some(x => !x.startsWith('.'))
+    return relative && condition ? ValidateExportKeyResult.mix : relative ? ValidateExportKeyResult.relative : ValidateExportKeyResult.condition
+}
+export const isExportPathValid = (s: string) => s.startsWith('./')
+export const getExportsEntryPoint = (exports: any, specifier: string, conditions: string[]): string => {
+    specifier = specifier || '.'
+    let path = ''
+    if (typeof exports == 'string') {
+        return isExportPathValid(exports) ? exports : ''
+    }
+    else if (typeof exports == 'object') {
+        const keys = Object.keys(exports)
+        if (keys.length == 0) {
+            return ''
+        }
+        if (Array.isArray(exports)) {
+
+        }
+        else {
+            const kind = validateExportKeys(keys)
+            if (kind == ValidateExportKeyResult.mix) {
+                return ''
+            }
+            if (kind == ValidateExportKeyResult.relative) {
+
+            }
+            else {
+                for (let k in exports) {
+                    if (conditions.some(x => x == k)) {
+
+                    }
+                }
+            }
+        }
+    }
+    return ''
+}
+export const pathJoin = (...v: string[]) => {
+    let r = ''
+    for (let s of v) {
+        r += s
+        if (!r.endsWith('/')) {
+            r += '/'
+        }
+    }
+    v.join('/')
+}
+export type FileSystem = { exists: (path: string) => Promise<boolean>, read: (path: string) => Promise<Uint8Array> }
+//https://github.com/nodejs/node/blob/master/doc/api/esm.md
+export const READ_PACKAGE_JSON = async (packageURL: string, fs: FileSystem) => {
+    const pjsonURL = packageURL + (packageURL.endsWith('/') ? '' : '/') + 'package.json'
+    if (!await fs.exists(pjsonURL)) {
+        return null
+    }
+    const p = await fs.read(pjsonURL)
+    try {
+        return JSON.parse(new TextDecoder().decode(p))
+    }
+    catch (e) {
+        throw new Error('Invalid Package Configuration')
+    }
+}
+export const READ_PACKAGE_SCOPE = async (url: string, fs: FileSystem) => {
+    let scopeURL = url
+    while (scopeURL != 'file:///') {
+        scopeURL = scopeURL.substring(0, scopeURL.lastIndexOf('/'))
+        if (scopeURL.endsWith('node_modules')) {
+            return null
+        }
+        const pjson = await READ_PACKAGE_JSON(scopeURL, fs)
+        if (pjson) {
+            return pjson
+        }
+    }
+    return null
+}
+export const invalidSegmentRegEx = /(^|\\|\/)(\.\.?|node_modules)(\\|\/|$)/;
+export const patternRegEx = /\*/g;
+export const isArrayIndex = (key) => {
+    const keyNum = +key;
+    if (`${keyNum}` !== key) return false;
+    return keyNum >= 0 && keyNum < 0xFFFF_FFFF;
+}
+export const PACKAGE_TARGET_RESOLVE = async (packageURL: string, target, subpath: string, pattern: boolean, internal: boolean, conditions, fs: FileSystem) => {
+    if (typeof target == 'string') {
+        if (!pattern && subpath && !target.endsWith('/')) {
+            throw new Error('Invalid Module Specifier')
+        }
+        if (!target.startsWith('./')) {
+            if (internal && !target.startsWith('../') && !target.startsWith('/')) {
+                let validURL = false
+                try {
+                    new URL(target)
+                    validURL = true
+                } catch { }
+                if (validURL) {
+                    throw new Error('Invalid Package Target')
+                }
+                if (pattern) {
+                    return PACKAGE_RESOLVE(target.replace(patternRegEx, subpath), packageURL + '/', fs)
+                }
+                return PACKAGE_RESOLVE(target + subpath, packageURL + '/', fs)
+            }
+            else {
+                throw new Error('Invalid Package Target')
+            }
+        }
+        if (invalidSegmentRegEx.test(target.slice(2))) {
+            throw new Error('Invalid Package Target')
+        }
+        const resolvedTarget = new URL(target, packageURL)
+        if (!resolvedTarget.pathname.startsWith(new URL('.', packageURL).pathname)) {
+            throw new Error('Invalid Package Target')
+        }
+        if (subpath === '') {
+            return resolvedTarget
+        }
+        if (invalidSegmentRegEx.test(subpath)) {
+            throw new Error('Invalid Module Specifier')
+        }
+        if (pattern) {
+            return new URL(resolvedTarget.href.replace(patternRegEx, subpath))
+        }
+        return new URL(subpath, resolvedTarget)
+    }
+    else if (Array.isArray(target)) {
+        if (target.length == 0) {
+            return null
+        }
+        let lastException;
+        for (let i = 0; i < target.length; i++) {
+            const targetValue = target[i];
+            let resolved;
+            try {
+                resolved = PACKAGE_TARGET_RESOLVE(packageURL, targetValue, subpath, pattern, internal, conditions, fs);
+            } catch (e) {
+                lastException = e;
+                if (e.message === 'Invalid Package Target')
+                    continue;
+                throw e;
+            }
+            if (resolved === undefined)
+                continue;
+            if (resolved === null) {
+                lastException = null;
+                continue;
+            }
+            return resolved;
+        }
+        if (lastException === undefined || lastException === null)
+            return lastException;
+        throw lastException;
+    }
+    else if (typeof target === 'object' && target !== null) {
+        const keys = Object.getOwnPropertyNames(target)
+        if (keys.some(x => isArrayIndex(x))) {
+            throw new Error('Invalid Package Configuration')
+        }
+        for (let key of keys) {
+            if (key === 'default' || conditions.has(key)) {
+                const targetValue = target[key];
+                const resolved = PACKAGE_TARGET_RESOLVE(packageURL, targetValue, subpath, pattern, internal, conditions, fs)
+                if (resolved === undefined)
+                    continue;
+                return resolved;
+            }
+        }
+        return undefined
+    }
+    else if (target === null) {
+        return null;
+    }
+    throw new Error('Invalid Package Target')
+}
+export const PACKAGE_RESOLVE = async (packageSpecifier, parentURL, fs: FileSystem) => {
+
+}

@@ -15,7 +15,7 @@ const TD = new TextDecoder()
 const base = '/x/p/'
 let loadedFiles = {}
 const config = {
-    port: 3001,
+    port: 3000,
     ignore: [/(^|[\/\\])\../, 'node_modules'], // ignore dotfiles
     awaitWriteFinish: { stabilityThreshold: 100, pollInterval: 50 }
 }
@@ -63,6 +63,9 @@ const server1 = http.createServer({}, async (req: http.IncomingMessage, res: htt
                 err = 'package.json not found or invalid'
             }
             else {
+                if (packageJSON.type != 'module') {
+                    err = 'package type must be module'
+                }
                 if (!packageJSON.exports || !packageJSON.exports['.']) {
                     err = 'package.json root export not found'
                 }
@@ -210,7 +213,7 @@ export const init = async () => {
     update(readDir('', cwd(), {}))
     notifyEnabled = true
     server1.listen(config.port)
-    open('http://localhost:' + config.port)
+    //open('http://localhost:' + config.port)
     log('Auto-refresh is on. Enter "a" to toggle.')
     rl.on('line', line => {
         if (line.trim() == 'a') {

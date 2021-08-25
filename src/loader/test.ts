@@ -1,4 +1,4 @@
-import { ChunkType, FileType, encode, decodePackage, decodeFile, createLookup, exists } from '@bintoca/loader'
+import { ChunkType, FileType, encode, decodePackage, decodeFile, createLookup, exists, getExportsEntryPoint } from '@bintoca/loader'
 import { DecoderState } from '@bintoca/cbor/core'
 
 const importResolve = (u: Uint8Array, len: number, dv: DataView, state: DecoderState, size: number): number => {
@@ -63,3 +63,6 @@ const doBench = () => {
     bench('f', f, testFile([shortString, longString], [new Map<number, any>([[1, "import $bbbbb from "], [2, 'b1']]), new Map<number, any>([[1, "import $bbbbb from "], [2, 'b1']])], ['Math', 'Number']))
 }
 //doBench()
+test.each([['', '', ''], ['a', '', ''], ['./a', '', './a'], [1, '', ''], [[], '', ''], [{}, '', ''], [['./a'], '', './a']])('getExportsEntryPoint(%s)', (e, s, a) => {
+    expect(getExportsEntryPoint(e, s, ['import', 'default'])).toBe(a)
+})
