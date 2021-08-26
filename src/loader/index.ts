@@ -392,88 +392,76 @@ export const exists = (lookup: DataView, dv: DataView, position: number, length:
     }
     return false
 }
-export const enum ValidateExportKeyResult {
-    relative = 1,
-    condition = 2,
-    mix = 3
-}
-export const validateExportKeys = (keys: string[]): ValidateExportKeyResult => {
-    const relative = keys.some(x => x.startsWith('.'))
-    const condition = keys.some(x => !x.startsWith('.'))
-    return relative && condition ? ValidateExportKeyResult.mix : relative ? ValidateExportKeyResult.relative : ValidateExportKeyResult.condition
-}
-export const isExportPathValid = (s: string) => s.startsWith('./')
-export const getExportsEntryPoint = (exports: any, specifier: string, conditions: string[]): string => {
-    specifier = specifier || '.'
-    let path = ''
-    if (typeof exports == 'string') {
-        return isExportPathValid(exports) ? exports : ''
-    }
-    else if (typeof exports == 'object') {
-        const keys = Object.keys(exports)
-        if (keys.length == 0) {
-            return ''
-        }
-        if (Array.isArray(exports)) {
 
-        }
-        else {
-            const kind = validateExportKeys(keys)
-            if (kind == ValidateExportKeyResult.mix) {
-                return ''
-            }
-            if (kind == ValidateExportKeyResult.relative) {
-
-            }
-            else {
-                for (let k in exports) {
-                    if (conditions.some(x => x == k)) {
-
-                    }
-                }
-            }
-        }
-    }
-    return ''
-}
-export const pathJoin = (...v: string[]) => {
-    let r = ''
-    for (let s of v) {
-        r += s
-        if (!r.endsWith('/')) {
-            r += '/'
-        }
-    }
-    v.join('/')
-}
-export type FileSystem = { exists: (path: string) => Promise<boolean>, read: (path: string) => Promise<Uint8Array> }
+export type FileURLSystem = { exists: (path: URL) => Promise<boolean>, read: (path: URL) => Promise<Uint8Array> }
+export type PackageJSON = { pjsonURL: URL, exists: boolean, main: string, name: string, type: string, exports, imports }
 //https://github.com/nodejs/node/blob/master/doc/api/esm.md
-export const READ_PACKAGE_JSON = async (packageURL: string, fs: FileSystem) => {
-    const pjsonURL = packageURL + (packageURL.endsWith('/') ? '' : '/') + 'package.json'
+export const READ_PACKAGE_JSON = async (pjsonURL: URL, fs: FileURLSystem): Promise<PackageJSON> => {
     if (!await fs.exists(pjsonURL)) {
-        return null
+        return {
+            pjsonURL,
+            exists: false,
+            main: undefined,
+            name: undefined,
+            type: 'none',
+            exports: undefined,
+            imports: undefined,
+        }
     }
     const p = await fs.read(pjsonURL)
     try {
-        return JSON.parse(new TextDecoder().decode(p))
+        const obj = JSON.parse(new TextDecoder().decode(p))
+        if (typeof obj.imports !== 'object' || obj.imports == null) {
+            obj.imports = undefined
+        }
+        if (typeof obj.main !== 'string') {
+            obj.main = undefined
+        }
+        if (typeof obj.name !== 'string') {
+            obj.name = undefined
+        }
+        if (obj.type !== 'module' && obj.type !== 'commonjs') {
+            obj.type = 'none'
+        }
+        return {
+            pjsonURL,
+            exists: true,
+            main: obj.main,
+            name: obj.name,
+            type: obj.type,
+            exports: obj.exports,
+            imports: obj.imports,
+        }
     }
     catch (e) {
         throw new Error('Invalid Package Configuration')
     }
 }
-export const READ_PACKAGE_SCOPE = async (url: string, fs: FileSystem) => {
-    let scopeURL = url
-    while (scopeURL != 'file:///') {
-        scopeURL = scopeURL.substring(0, scopeURL.lastIndexOf('/'))
-        if (scopeURL.endsWith('node_modules')) {
-            return null
+export const READ_PACKAGE_SCOPE = async (url: URL, fs: FileURLSystem): Promise<PackageJSON> => {
+    let scopeURL = new URL('./package.json', url)
+    while (true) {
+        if (scopeURL.pathname.endsWith('node_modules/package.json')) {
+            break
         }
         const pjson = await READ_PACKAGE_JSON(scopeURL, fs)
-        if (pjson) {
+        if (pjson.exists) {
             return pjson
         }
+        const last = scopeURL;
+        scopeURL = new URL('../package.json', scopeURL)
+        if (scopeURL.pathname === last.pathname) {
+            break
+        }
     }
-    return null
+    return {
+        pjsonURL: scopeURL,
+        exists: false,
+        main: undefined,
+        name: undefined,
+        type: 'none',
+        exports: undefined,
+        imports: undefined,
+    }
 }
 export const invalidSegmentRegEx = /(^|\\|\/)(\.\.?|node_modules)(\\|\/|$)/;
 export const patternRegEx = /\*/g;
@@ -482,7 +470,7 @@ export const isArrayIndex = (key) => {
     if (`${keyNum}` !== key) return false;
     return keyNum >= 0 && keyNum < 0xFFFF_FFFF;
 }
-export const PACKAGE_TARGET_RESOLVE = async (packageURL: string, target, subpath: string, pattern: boolean, internal: boolean, conditions, fs: FileSystem) => {
+export const PACKAGE_TARGET_RESOLVE = async (pjsonURL: URL, target, subpath: string, pattern: boolean, internal: boolean, conditions: Set<string>, fs: FileURLSystem): Promise<URL> => {
     if (typeof target == 'string') {
         if (!pattern && subpath && !target.endsWith('/')) {
             throw new Error('Invalid Module Specifier')
@@ -498,9 +486,9 @@ export const PACKAGE_TARGET_RESOLVE = async (packageURL: string, target, subpath
                     throw new Error('Invalid Package Target')
                 }
                 if (pattern) {
-                    return PACKAGE_RESOLVE(target.replace(patternRegEx, subpath), packageURL + '/', fs)
+                    return await PACKAGE_RESOLVE(target.replace(patternRegEx, subpath), pjsonURL, conditions, fs)
                 }
-                return PACKAGE_RESOLVE(target + subpath, packageURL + '/', fs)
+                return await PACKAGE_RESOLVE(target + subpath, pjsonURL, conditions, fs)
             }
             else {
                 throw new Error('Invalid Package Target')
@@ -509,8 +497,8 @@ export const PACKAGE_TARGET_RESOLVE = async (packageURL: string, target, subpath
         if (invalidSegmentRegEx.test(target.slice(2))) {
             throw new Error('Invalid Package Target')
         }
-        const resolvedTarget = new URL(target, packageURL)
-        if (!resolvedTarget.pathname.startsWith(new URL('.', packageURL).pathname)) {
+        const resolvedTarget = new URL(target, pjsonURL)
+        if (!resolvedTarget.pathname.startsWith(new URL('.', pjsonURL).pathname)) {
             throw new Error('Invalid Package Target')
         }
         if (subpath === '') {
@@ -533,7 +521,7 @@ export const PACKAGE_TARGET_RESOLVE = async (packageURL: string, target, subpath
             const targetValue = target[i];
             let resolved;
             try {
-                resolved = PACKAGE_TARGET_RESOLVE(packageURL, targetValue, subpath, pattern, internal, conditions, fs);
+                resolved = await PACKAGE_TARGET_RESOLVE(pjsonURL, targetValue, subpath, pattern, internal, conditions, fs);
             } catch (e) {
                 lastException = e;
                 if (e.message === 'Invalid Package Target')
@@ -560,7 +548,7 @@ export const PACKAGE_TARGET_RESOLVE = async (packageURL: string, target, subpath
         for (let key of keys) {
             if (key === 'default' || conditions.has(key)) {
                 const targetValue = target[key];
-                const resolved = PACKAGE_TARGET_RESOLVE(packageURL, targetValue, subpath, pattern, internal, conditions, fs)
+                const resolved = await PACKAGE_TARGET_RESOLVE(pjsonURL, targetValue, subpath, pattern, internal, conditions, fs)
                 if (resolved === undefined)
                     continue;
                 return resolved;
@@ -573,6 +561,260 @@ export const PACKAGE_TARGET_RESOLVE = async (packageURL: string, target, subpath
     }
     throw new Error('Invalid Package Target')
 }
-export const PACKAGE_RESOLVE = async (packageSpecifier, parentURL, fs: FileSystem) => {
+function patternKeyCompare(a: string, b: string) {
+    const aPatternIndex = a.indexOf('*')
+    const bPatternIndex = b.indexOf('*')
+    const baseLenA = aPatternIndex === -1 ? a.length : aPatternIndex + 1;
+    const baseLenB = bPatternIndex === -1 ? b.length : bPatternIndex + 1;
+    if (baseLenA > baseLenB) return -1;
+    if (baseLenB > baseLenA) return 1;
+    if (aPatternIndex === -1) return 1;
+    if (bPatternIndex === -1) return -1;
+    if (a.length > b.length) return -1;
+    if (b.length > a.length) return 1;
+    return 0;
+}
+export const PACKAGE_IMPORTS_EXPORTS_RESOLVE = async (matchKey: string, matchObj: Object, pjsonURL: URL, isImports, conditions: Set<string>, fs: FileURLSystem): Promise<{ resolved: URL, exact: boolean }> => {
+    if (matchObj.hasOwnProperty(matchKey) && !matchKey.endsWith('/') && !matchKey.includes('*')) {
+        const target = matchObj[matchKey]
+        const resolved = await PACKAGE_TARGET_RESOLVE(pjsonURL, target, '', false, isImports, conditions, fs)
+        return { resolved, exact: true }
+    }
+    const expansionKeys = Object.keys(matchObj).filter(x => x.endsWith('/') || (x.indexOf('*') !== -1 && x.indexOf('*') === x.lastIndexOf('*'))).sort(patternKeyCompare)
+    for (let expansionKey of expansionKeys) {
+        let patternBase: string
+        const patternIndex = expansionKey.indexOf('*')
+        if (patternIndex >= 0) {
+            patternBase = expansionKey.slice(0, patternIndex)
+        }
+        if (patternBase && matchKey.startsWith(patternBase) && matchKey !== patternBase) {
+            const patternTrailer = expansionKey.slice(patternIndex + 1)
+            if (!patternTrailer || (matchKey.endsWith(patternTrailer) && matchKey.length >= expansionKey.length)) {
+                const target = matchObj[expansionKey]
+                const subpath = matchKey.slice(patternBase.length, -patternTrailer.length)
+                const resolved = await PACKAGE_TARGET_RESOLVE(pjsonURL, target, subpath, true, isImports, conditions, fs)
+                return { resolved, exact: true }
+            }
+        }
+        if (!patternBase && matchKey.startsWith(expansionKey)) {
+            const target = matchObj[expansionKey]
+            const subpath = matchKey.slice(expansionKey.length)
+            const resolved = await PACKAGE_TARGET_RESOLVE(pjsonURL, target, subpath, false, isImports, conditions, fs)
+            return { resolved, exact: false }
+        }
+    }
+    return { resolved: null, exact: true }
+}
+export const PACKAGE_IMPORTS_RESOLVE = async (specifier: string, parentURL: URL, conditions: Set<string>, fs: FileURLSystem) => {
+    if (!specifier.startsWith('#')) {
+        throw new Error('Assert starts with #')
+    }
+    if (specifier === '#' || specifier.startsWith('#/')) {
+        throw new Error('Invalid Module Specifier')
+    }
+    const pjson = await READ_PACKAGE_SCOPE(parentURL, fs)
+    if (pjson.exists) {
+        if (pjson.imports) {
+            const resolvedMatch = await PACKAGE_IMPORTS_EXPORTS_RESOLVE(specifier, pjson.imports, pjson.pjsonURL, true, conditions, fs)
+            if (resolvedMatch.resolved) {
+                return resolvedMatch
+            }
+        }
+    }
+    throw new Error('Package Import Not Defined')
+}
+function isConditionalSugar(exports) {
+    if (typeof exports === 'string' || Array.isArray(exports)) return true;
+    if (typeof exports !== 'object' || exports === null) return false;
 
+    const keys = Object.getOwnPropertyNames(exports);
+    let isConditionalSugar = false;
+    let i = 0;
+    for (let j = 0; j < keys.length; j++) {
+        const key = keys[j];
+        const curIsConditionalSugar = key === '' || key[0] !== '.';
+        if (i++ === 0) {
+            isConditionalSugar = curIsConditionalSugar;
+        } else if (isConditionalSugar !== curIsConditionalSugar) {
+            throw new Error('Invalid Package Configuration')
+        }
+    }
+    return isConditionalSugar
+}
+export const PACKAGE_EXPORTS_RESOLVE = async (pjsonURL: URL, subpath: string, exports, conditions: Set<string>, fs: FileURLSystem) => {
+    if (isConditionalSugar(exports)) {
+        exports = { '.': exports }
+    }
+    if (subpath === '.' && exports[subpath]) {
+        const resolved = await PACKAGE_TARGET_RESOLVE(pjsonURL, exports[subpath], '', false, false, conditions, fs)
+        if (resolved) {
+            return { resolved, exact: true }
+        }
+    }
+    else {
+        const matchKey = './' + subpath
+        const resolvedMatch = await PACKAGE_IMPORTS_EXPORTS_RESOLVE(matchKey, exports, pjsonURL, false, conditions, fs)
+        if (resolvedMatch.resolved) {
+            return resolvedMatch
+        }
+    }
+    throw new Error('Package Path Not Exported')
+}
+export const PACKAGE_SELF_RESOLVE = async (packageName: string, packageSubpath: string, parentURL: URL, conditions: Set<string>, fs: FileURLSystem) => {
+    const pjson = await READ_PACKAGE_SCOPE(parentURL, fs)
+    if (!pjson.exists || !pjson.exports) {
+        return undefined
+    }
+    if (pjson.name === packageName) {
+        const { resolved } = await PACKAGE_EXPORTS_RESOLVE(pjson.pjsonURL, packageSubpath, pjson.exports, conditions, fs)
+        return resolved
+    }
+    return undefined
+}
+function parsePackageName(specifier: string) {
+    let separatorIndex = specifier.indexOf('/')
+    let validPackageName = true;
+    let isScoped = false;
+    if (specifier[0] === '@') {
+        isScoped = true;
+        if (separatorIndex === -1 || specifier.length === 0) {
+            validPackageName = false;
+        } else {
+            separatorIndex = specifier.indexOf('/', separatorIndex + 1);
+        }
+    }
+    const packageName = separatorIndex === -1 ?
+        specifier : specifier.slice(0, separatorIndex);
+
+    // Package name cannot have leading . and cannot have percent-encoding or
+    // separators.
+    for (let i = 0; i < packageName.length; i++) {
+        if (packageName[i] === '%' || packageName[i] === '\\') {
+            validPackageName = false;
+            break;
+        }
+    }
+    if (!validPackageName) {
+        throw new Error('Invalid Module Specifier')
+    }
+    const packageSubpath = '.' + (separatorIndex === -1 ? '' : specifier.slice(separatorIndex))
+    return { packageName, packageSubpath, isScoped };
+}
+export const PACKAGE_RESOLVE = async (packageSpecifier: string, parentURL: URL, conditions: Set<string>, fs: FileURLSystem): Promise<URL> => {
+    const { packageName, packageSubpath, isScoped } = parsePackageName(packageSpecifier)
+    const selfURL = await PACKAGE_SELF_RESOLVE(packageName, packageSubpath, parentURL, conditions, fs)
+    if (selfURL) {
+        return selfURL
+    }
+    let pjsonURL = new URL('./node_modules/' + packageName + '/package.json', parentURL)
+    let last
+    do {
+        const pjson = await READ_PACKAGE_JSON(pjsonURL, fs)
+        if (pjson.exists) {
+            if (pjson.exports) {
+                const { resolved } = await PACKAGE_EXPORTS_RESOLVE(pjsonURL, packageSubpath, pjson.exports, conditions, fs)
+                return resolved
+            }
+            else if (packageSubpath === '.') {
+                return await LOAD_AS_DIRECTORY(pjson, fs)
+            }
+            return new URL(packageSubpath, pjsonURL)
+        }
+        last = pjsonURL
+        pjsonURL = new URL((isScoped ? '../../../../node_modules/' : '../../../node_modules/') + packageName + '/package.json', pjsonURL);
+    }
+    while (pjsonURL.pathname !== last.pathname)
+    throw new Error('Module Not Found')
+}
+export const LOAD_AS_DIRECTORY = async (pjson: PackageJSON, fs: FileURLSystem): Promise<URL> => {
+    if (pjson.exists) {
+        if (pjson.main) {
+            const m = new URL(`./${pjson.main}`, pjson.pjsonURL)
+            const f = await LOAD_AS_FILE(m, fs)
+            if (f) {
+                return f
+            }
+            const i = await LOAD_INDEX(m, fs)
+            if (i) {
+                return i
+            }
+            const ix = await LOAD_INDEX(pjson.pjsonURL, fs)
+            if (ix) {
+                return ix
+            }
+            throw new Error('Module Not Found')
+        }
+    }
+    const ix = await LOAD_INDEX(pjson.pjsonURL, fs)
+    if (ix) {
+        return ix
+    }
+    throw new Error('Module Not Found')
+}
+export const LOAD_AS_FILE = async (url: URL, fs: FileURLSystem): Promise<URL> => {
+    if (await fs.exists(url)) {
+        return url
+    }
+    let u = new URL(url.href + '.js')
+    if (await fs.exists(u)) {
+        return u
+    }
+    u = new URL(url.href + '.json')
+    if (await fs.exists(u)) {
+        return u
+    }
+    u = new URL(url.href + '.node')
+    if (await fs.exists(u)) {
+        return u
+    }
+}
+export const LOAD_INDEX = async (url: URL, fs: FileURLSystem): Promise<URL> => {
+    let u = new URL('./index.js', url)
+    if (await fs.exists(u)) {
+        return u
+    }
+    u = new URL('./index.json', url)
+    if (await fs.exists(u)) {
+        return u
+    }
+    u = new URL('./index.node', url)
+    if (await fs.exists(u)) {
+        return u
+    }
+}
+function isRelativeSpecifier(specifier) {
+    if (specifier[0] === '.') {
+        if (specifier.length === 1 || specifier[1] === '/') return true;
+        if (specifier[1] === '.') {
+            if (specifier.length === 2 || specifier[2] === '/') return true;
+        }
+    }
+    return false;
+}
+function shouldBeTreatedAsRelativeOrAbsolutePath(specifier) {
+    if (specifier === '') return false;
+    if (specifier[0] === '/') return true;
+    return isRelativeSpecifier(specifier);
+}
+export const encodedSepRegEx = /%2F|%2C/i; //TODO should be %5C in node repo also
+export const ESM_RESOLVE = async (specifier: string, parentURL: URL, conditions: Set<string>, fs: FileURLSystem): Promise<URL> => {
+    let resolved;
+    if (shouldBeTreatedAsRelativeOrAbsolutePath(specifier)) {
+        resolved = new URL(specifier, parentURL);
+    } else if (specifier[0] === '#') {
+        ({ resolved } = await PACKAGE_IMPORTS_RESOLVE(specifier, parentURL, conditions, fs));
+    } else {
+        try {
+            resolved = new URL(specifier);
+        } catch {
+            resolved = await PACKAGE_RESOLVE(specifier, parentURL, conditions, fs)
+        }
+    }
+    if (encodedSepRegEx.test(resolved.pathname)) {
+        throw new Error('Invalid Module Specifier')
+    }
+    if (!await fs.exists(resolved)) {
+        throw new Error('Module Not Found')
+    }
+    return resolved
 }
