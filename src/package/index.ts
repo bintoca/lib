@@ -324,15 +324,18 @@ export const parseFile = (k: string, b: Buffer): Map<number, any> => {
                 'ImportSpecifier': declareModuleSpecifier,
                 'ImportNamespaceSpecifier': declareModuleSpecifier,
                 'ExportAllDeclaration': function (node: any) {//TODO make pull request or formal fork
-                    ast.locals = ast.locals || Object.create(null);
+                    ast.ignore = ast.ignore || new WeakSet();
                     if (node.exported) {
-                        ast.locals[node.exported.name] = true;
+                        ast.ignore.add(node.exported)
                     }
                 }
             });
             function identifier(node, parents) {
                 var name = node.name;
                 if (name === 'undefined') return;
+                if (ast.ignore && ast.ignore.has(node)) {
+                    return
+                }
                 for (var i = 0; i < parents.length; i++) {
                     if (name === 'arguments' && declaresArguments(parents[i])) {
                         return;

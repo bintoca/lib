@@ -11,7 +11,7 @@ export function f($vvvvv) {
 export class c {
     #$ppppp = this
     #clicked() {
-        const h = Math.log(1) + this.#$ppppp
+        const h = Math.log(1) + this.#$ppppp + d2
         try { } catch { }
     }
 }
@@ -19,6 +19,7 @@ export { ar }
 export { c1 } from 'c1'
 export * from 'd1'
 export * as d2 from 'd2'
+export * as d3 from 'd3'
 export default {}
 const cc = class { #v = this }
 const fe = function () { return this }
