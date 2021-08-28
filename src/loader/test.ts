@@ -1,18 +1,13 @@
-import { ChunkType, FileType, encode, decodePackage, decodeFile, createLookup, exists } from '@bintoca/loader'
-import { DecoderState } from '@bintoca/cbor/core'
+import { ChunkType, FileType, encode, decodePackage, decodeFile, createLookup, exists, FileURLSystem, defaultConditions } from '@bintoca/loader'
 
-const importResolve = (u: Uint8Array, len: number, dv: DataView, state: DecoderState, size: number): number => {
-    u[len++] = 98
-    u[len++] = 120
-    u[len++] = 120
-    return 3
-}
 const freeGlobals = createLookup(['Free'])
 const controlledGlobals = createLookup(['Math'])
+const parentURL = new URL('file://')
+const fs = { exists: null, read: null }
 test('buffer', () => {
     const cb = encode({ files: { 'p.json': new Map<number, any>([[1, FileType.buffer], [2, new TextEncoder().encode('{"a":2}')]]) } })
     const d = decodePackage(cb)
-    expect(new TextDecoder().decode(decodeFile(d.get(1)['p.json'], freeGlobals, controlledGlobals, importResolve))).toBe('{"a":2}')
+    expect(new TextDecoder().decode(decodeFile(d.get(1)['p.json'], freeGlobals, controlledGlobals, parentURL, defaultConditions, fs))).toBe('{"a":2}')
 })
 test.each([['const w = 4;          const r=5;', new Map<number, any>([[1, FileType.js], [2, 500], [3, ['const w = 4;', new Map<number, any>([[1, ChunkType.Placeholder], [2, 10]]), 'const r=5;']]])],
 ['const w = 4;          ImporTTHISconst r=5;\nimport Math from"/x/g/Math"\nimport Number from"/x/u"\nimport $bbbbb from "bxx"\nimport ImporT from"/x/i"\nimport THIS from"/x/t"\nexport {b0} from "bxx"\nexport {r}\nexport{r}\nexport default $AA',
@@ -24,7 +19,7 @@ test.each([['const w = 4;          const r=5;', new Map<number, any>([[1, FileTy
     ])]])('js', (a, b) => {
         const cb = encode({ files: { 'p.js': b } })
         const d = decodePackage(cb)
-        expect(new TextDecoder().decode(decodeFile(d.get(1)['p.js'], freeGlobals, controlledGlobals, importResolve))).toBe(a)
+        expect(new TextDecoder().decode(decodeFile(d.get(1)['p.js'], freeGlobals, controlledGlobals, parentURL, defaultConditions, fs))).toBe(a)
     })
 test('createLookup', () => {
     expect(new Uint8Array(createLookup(['hey', 'dude']).buffer)).toEqual(new Uint8Array([0, 0, 0, 2, 100, 0, 0, 12, 104, 0, 0, 17, 4, 100, 117, 100, 101, 3, 104, 101, 121]))
@@ -53,7 +48,7 @@ const bench = (n, f, d) => {
     }
     console.log(n, Date.now() - c)
 }
-const f = (d) => decodeFile(d, freeGlobals, controlledGlobals, importResolve)
+const f = (d) => decodeFile(d, freeGlobals, controlledGlobals, parentURL, defaultConditions, fs)
 const doBench = () => {
     bench('a', f, testFile([shortString], [], []))
     bench('b', f, testFile([shortString, longString], [], []))

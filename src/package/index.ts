@@ -59,7 +59,7 @@ export const enum ParseFilesError {
 }
 export const thisScopes = ['FunctionDeclaration', 'FunctionExpression', 'ClassDeclaration', 'ClassExpression']
 export const isSpecifierInvalid = (file: string, specifier: string): boolean => (specifier.startsWith('.') && !specifier.startsWith('./') && !specifier.startsWith('../')) || !new URL(specifier, 'http://x/x/' + file).href.startsWith('http://x/x/') || !new URL(specifier, 'http://y/y/' + file).href.startsWith('http://y/y/')
-export const parseFiles = (files: { [k: string]: Buffer }): { files: {} } => {
+export const parseFiles = (files: { [k: string]: Buffer }): { files: { [k: string]: Map<number, any> } } => {
     const r = { files: {} }
     for (let k in files) {
         r.files[k] = parseFile(k, files[k])

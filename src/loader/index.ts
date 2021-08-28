@@ -1,5 +1,6 @@
 import { Encoder, Decoder } from '@bintoca/cbor'
 import { defaultTypeMap, EncoderState, binaryItem, tagItem, tags, bufferSourceToDataView, DecoderState, decodeInfo, bufferSourceToUint8Array } from '@bintoca/cbor/core'
+const TD = new TextDecoder()
 
 export const enum FileType {
     buffer = 1,
@@ -35,7 +36,7 @@ export const decodeCount = (dv: DataView, state: DecoderState): number => {
     const ai = c & 31
     return decodeInfo(major, ai, dv, state) as number
 }
-export const decodeFile = (b: BufferSource, freeGlobals: DataView, controlledGlobals: DataView, importResolve: (u: Uint8Array, len: number, dv: DataView, state: DecoderState, size: number) => number): Uint8Array => {
+export const decodeFile = (b: BufferSource, freeGlobals: DataView, controlledGlobals: DataView, parentURL: URL, conditions: Set<string>, fs: FileURLSystem): Uint8Array => {
     const state = { position: 0 } as DecoderState
     const dv = bufferSourceToDataView(b)
     if (dv.getUint8(0) >> 5 != 5) {
@@ -190,7 +191,7 @@ export const decodeFile = (b: BufferSource, freeGlobals: DataView, controlledGlo
                 state.position += size + 1
                 u[len++] = 34
                 const specifierSize = decodeCount(dv, state)
-                len += importResolve(u, len, dv, state, specifierSize)
+                len += importResolve(u, len, dv, state, specifierSize, parentURL, conditions, fs)
                 u[len++] = 34
                 state.position += specifierSize
             }
@@ -309,7 +310,7 @@ export const decodeFile = (b: BufferSource, freeGlobals: DataView, controlledGlo
                         state.position++
                         u[len++] = 34
                         const specifierSize = decodeCount(dv, state)
-                        len += importResolve(u, len, dv, state, specifierSize)
+                        len += importResolve(u, len, dv, state, specifierSize, parentURL, conditions, fs)
                         u[len++] = 34
                         state.position += specifierSize
                     }
@@ -326,6 +327,22 @@ export const decodeFile = (b: BufferSource, freeGlobals: DataView, controlledGlo
     else {
         throw new Error('FileType not implemented ' + type)
     }
+}
+const importResolve = (u: Uint8Array, len: number, dv: DataView, state: DecoderState, size: number, parentURL: URL, conditions: Set<string>, fs: FileURLSystem): number => {
+    const s = TD.decode(bufferSourceToUint8Array(dv, state.position, size))
+    let sp
+    if (s[0] == '.') {
+        sp = s
+    }
+    else {
+        if (s == 'b1') {
+            sp = 'bxx'
+        }
+    }
+
+    const spb = new TextEncoder().encode(sp)
+    u.set(spb, len)
+    return spb.byteLength
 }
 export const createLookup = (s: string[]): DataView => {
     const TE = new TextEncoder()
@@ -395,6 +412,7 @@ export const exists = (lookup: DataView, dv: DataView, position: number, length:
 
 export type FileURLSystem = { exists: (path: URL) => Promise<boolean>, read: (path: URL) => Promise<Uint8Array> }
 export type PackageJSON = { pjsonURL: URL, exists: boolean, main: string, name: string, type: string, exports, imports }
+export const defaultConditions = new Set(['import', 'default'])
 //https://github.com/nodejs/node/blob/master/doc/api/esm.md
 export const READ_PACKAGE_JSON = async (pjsonURL: URL, fs: FileURLSystem): Promise<PackageJSON> => {
     if (!await fs.exists(pjsonURL)) {

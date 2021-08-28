@@ -4,8 +4,7 @@ import * as path from 'path'
 import open from 'open'
 import { cwd } from 'process';
 import { parseFiles, ParseFilesError } from '@bintoca/package'
-import { encode, decodePackage, decodeFile, createLookup, FileType } from '@bintoca/loader'
-import { DecoderState, bufferSourceToUint8Array } from '@bintoca/cbor/core'
+import { encode, decodePackage, decodeFile, createLookup, FileType, defaultConditions, FileURLSystem } from '@bintoca/loader'
 import * as chokidar from 'chokidar'
 import { server as wss } from 'websocket'
 import anymatch from 'anymatch'
@@ -21,29 +20,10 @@ const config = {
 }
 const freeGlobals = createLookup(['window', 'document', 'console'])
 const controlledGlobals = createLookup([])
-const importResolve = (u: Uint8Array, len: number, dv: DataView, state: DecoderState, size: number): number => {
-    const s = TD.decode(bufferSourceToUint8Array(dv, state.position, size))
-    let isPassThrough = false
-    if (s[0] == '.') {
-        if (s[1] == '/') {
-            isPassThrough = true
-        }
-        else if (s[1] == '.' && s[2] == '/') {
-            isPassThrough = true
-        }
-    }
-    let sp
-    if (isPassThrough) {
-        sp = s
-    }
-    else {
-        sp = s
-    }
-
-    const spb = new TextEncoder().encode(sp)
-    u.set(spb, len)
-    return spb.byteLength
-}
+const fus = { exists: null, read: null }
+let encodedFiles = {}
+let notifyTimeout
+let notifyEnabled = false
 const server1 = http.createServer({}, async (req: http.IncomingMessage, res: http.ServerResponse) => {
     let chunks: Buffer[] = []
     req.on('data', (c: Buffer) => {
@@ -56,7 +36,7 @@ const server1 = http.createServer({}, async (req: http.IncomingMessage, res: htt
             let packageJSON
             let err
             try {
-                packageJSON = JSON.parse(TD.decode(decodeFile(encodedFiles['package.json'], freeGlobals, controlledGlobals, importResolve)))
+                packageJSON = JSON.parse(TD.decode(decodeFile(encodedFiles['package.json'], freeGlobals, controlledGlobals, new URL('file://'), defaultConditions, fus)))
             }
             catch { }
             if (!packageJSON) {
@@ -91,7 +71,7 @@ const server1 = http.createServer({}, async (req: http.IncomingMessage, res: htt
                     res.setHeader('Content-Type', 'text/javascript')
                 }
                 try {
-                    res.end(Buffer.from(decodeFile(f, freeGlobals, controlledGlobals, importResolve)))
+                    res.end(Buffer.from(decodeFile(f, freeGlobals, controlledGlobals, new URL(path, 'file://'), defaultConditions, fus)))
                 }
                 catch (e) {
                     res.statusCode = 500
@@ -138,9 +118,6 @@ export const readDir = (p, wd, files) => {
     }
     return files
 }
-let encodedFiles = {}
-let notifyTimeout
-let notifyEnabled = false
 const notify = () => {
     if (notifyEnabled) {
         if (notifyTimeout) {
