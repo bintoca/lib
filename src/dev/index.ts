@@ -3,8 +3,8 @@ import * as fs from 'fs'
 import * as path from 'path'
 import open from 'open'
 import { cwd } from 'process';
-import { parseFiles, ParseFilesError } from '@bintoca/package'
-import { encode, decodePackage, decodeFile, createLookup, FileType, defaultConditions, FileURLSystem } from '@bintoca/loader'
+import { parseFiles, parseFile, ParseFilesError } from '@bintoca/package'
+import { encode, decodePackage, decodeFile, createLookup, FileType, defaultConditions, FileURLSystem, ESM_RESOLVE } from '@bintoca/loader'
 import * as chokidar from 'chokidar'
 import { server as wss } from 'websocket'
 import anymatch from 'anymatch'
@@ -14,14 +14,16 @@ const TD = new TextDecoder()
 const base = '/x/p/'
 let loadedFiles = {}
 const config = {
+    hostname: 'localhost',
     port: 3000,
     ignore: [/(^|[\/\\])\../, 'node_modules'], // ignore dotfiles
     awaitWriteFinish: { stabilityThreshold: 100, pollInterval: 50 }
 }
-const freeGlobals = createLookup(['window', 'document', 'console'])
+const freeGlobals = createLookup(['window', 'document', 'console', 'Array', 'BigInt', 'Infinity', 'Object', 'RegExp', 'String', 'Symbol', 'SyntaxError', 'parseFloat', 'parseInt'])
 const controlledGlobals = createLookup([])
-const fus = { exists: null, read: null }
+const fus = { exists: (p: URL) => { console.log(p.href.replace(getRootURL() + base, './')); return Promise.resolve(fs.existsSync(p.href.replace(getRootURL() + base, './'))) }, read: (p: URL) => Promise.resolve(fs.readFileSync(p.href.replace(getRootURL() + base, './'))) }
 let encodedFiles = {}
+let shrinkwrap
 let notifyTimeout
 let notifyEnabled = false
 const server1 = http.createServer({}, async (req: http.IncomingMessage, res: http.ServerResponse) => {
@@ -31,26 +33,36 @@ const server1 = http.createServer({}, async (req: http.IncomingMessage, res: htt
     })
     req.on('end', async () => {
         if (req.url == '/') {
-            loadedFiles = {}
+            loadedFiles = { 'npm-shrinkwrap.json': 1 }
             let mod
             let packageJSON
             let err
             try {
-                packageJSON = JSON.parse(TD.decode(decodeFile(encodedFiles['package.json'], freeGlobals, controlledGlobals, new URL('file://'), defaultConditions, fus)))
+                packageJSON = JSON.parse(TD.decode(await decodeFile(encodedFiles['package.json'], freeGlobals, controlledGlobals, new URL(getRootURL()), defaultConditions, fus)))
+            }
+            catch { }
+            try {
+                shrinkwrap = JSON.parse(TD.decode(await decodeFile(encodedFiles['npm-shrinkwrap.json'], freeGlobals, controlledGlobals, new URL(getRootURL()), defaultConditions, fus)))
             }
             catch { }
             if (!packageJSON) {
                 err = 'package.json not found or invalid'
             }
+            else if (!shrinkwrap) {
+                err = 'npm-shrinkwrap.json not found or invalid'
+            }
             else {
                 if (packageJSON.type != 'module') {
                     err = 'package type must be module'
                 }
-                if (!packageJSON.exports || !packageJSON.exports['.']) {
-                    err = 'package.json root export not found'
+                else if (!packageJSON.name) {
+                    err = 'package name required'
+                }
+                else if (shrinkwrap.lockfileVersion != 2) {
+                    err = 'npm-shrinkwrap.json lockfileVersion 2 (npm 7) required'
                 }
                 else {
-                    mod = packageJSON.exports['.']
+                    mod = await ESM_RESOLVE(packageJSON.name, new URL(base, getRootURL()), defaultConditions, fus)
                 }
             }
             if (err) {
@@ -59,11 +71,14 @@ const server1 = http.createServer({}, async (req: http.IncomingMessage, res: htt
             }
             else {
                 res.setHeader('Content-Type', 'text/html')
-                res.end('<html><head><meta charset="utf-8"/><meta name="viewport" content="width=device-width, initial-scale=1" /><script>const ws = new WebSocket("ws://localhost:' + config.port + '");ws.onmessage = (ev)=>{window.location.reload()}</script><script type="module" src="' + base + mod + '"></script></head><body></body></html>')
+                res.end('<html><head><meta charset="utf-8"/><meta name="viewport" content="width=device-width, initial-scale=1" /><script>const ws = new WebSocket("ws://localhost:' + config.port + '");ws.onmessage = (ev)=>{window.location.reload()}</script><script type="module" src="' + mod + '"></script></head><body></body></html>')
             }
         }
         else if (req.url.startsWith(base)) {
             const path = req.url.substring(base.length)
+            if (!encodedFiles[path] && fs.existsSync(path)) {
+                encodedFiles[path] = decodePackage(encode(parseFiles({ [path]: fs.readFileSync(path) }))).get(1)[path]
+            }
             const f = encodedFiles[path]
             if (f) {
                 loadedFiles[path] = 1
@@ -71,7 +86,7 @@ const server1 = http.createServer({}, async (req: http.IncomingMessage, res: htt
                     res.setHeader('Content-Type', 'text/javascript')
                 }
                 try {
-                    res.end(Buffer.from(decodeFile(f, freeGlobals, controlledGlobals, new URL(path, 'file://'), defaultConditions, fus)))
+                    res.end(Buffer.from(await decodeFile(f, freeGlobals, controlledGlobals, new URL(req.url, getRootURL()), defaultConditions, fus)))
                 }
                 catch (e) {
                     res.statusCode = 500
@@ -90,6 +105,9 @@ const server1 = http.createServer({}, async (req: http.IncomingMessage, res: htt
     })
 
 })
+function getRootURL() {
+    return 'http://' + config.hostname + ':' + config.port
+}
 const wsServer = new wss({ httpServer: server1 })
 const wsConnections = []
 wsServer.on('request', function (request) {
@@ -151,6 +169,13 @@ export const update = (f) => {
     const enc = decodePackage(encode(parsed)).get(1)
     for (let x in enc) {
         const path = alignPath(x)
+        if (path == 'npm-shrinkwrap.json') {
+            for (let k in encodedFiles) {
+                if (k.startsWith('node_modules/')) {
+                    encodedFiles[k] = undefined
+                }
+            }
+        }
         encodedFiles[path] = enc[x]
         if (loadedFiles[path]) {
             notify()
@@ -190,7 +215,7 @@ export const init = async () => {
     update(readDir('', cwd(), {}))
     notifyEnabled = true
     server1.listen(config.port)
-    //open('http://localhost:' + config.port)
+    //open(getRootURL())
     log('Auto-refresh is on. Enter "a" to toggle.')
     rl.on('line', line => {
         if (line.trim() == 'a') {

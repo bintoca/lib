@@ -36,7 +36,7 @@ export const decodeCount = (dv: DataView, state: DecoderState): number => {
     const ai = c & 31
     return decodeInfo(major, ai, dv, state) as number
 }
-export const decodeFile = (b: BufferSource, freeGlobals: DataView, controlledGlobals: DataView, parentURL: URL, conditions: Set<string>, fs: FileURLSystem): Uint8Array => {
+export const decodeFile = async (b: BufferSource, freeGlobals: DataView, controlledGlobals: DataView, parentURL: URL, conditions: Set<string>, fs: FileURLSystem): Promise<Uint8Array> => {
     const state = { position: 0 } as DecoderState
     const dv = bufferSourceToDataView(b)
     if (dv.getUint8(0) >> 5 != 5) {
@@ -191,7 +191,7 @@ export const decodeFile = (b: BufferSource, freeGlobals: DataView, controlledGlo
                 state.position += size + 1
                 u[len++] = 34
                 const specifierSize = decodeCount(dv, state)
-                len += importResolve(u, len, dv, state, specifierSize, parentURL, conditions, fs)
+                len += await importResolve(u, len, dv, state, specifierSize, parentURL, conditions, fs)
                 u[len++] = 34
                 state.position += specifierSize
             }
@@ -310,7 +310,7 @@ export const decodeFile = (b: BufferSource, freeGlobals: DataView, controlledGlo
                         state.position++
                         u[len++] = 34
                         const specifierSize = decodeCount(dv, state)
-                        len += importResolve(u, len, dv, state, specifierSize, parentURL, conditions, fs)
+                        len += await importResolve(u, len, dv, state, specifierSize, parentURL, conditions, fs)
                         u[len++] = 34
                         state.position += specifierSize
                     }
@@ -328,7 +328,7 @@ export const decodeFile = (b: BufferSource, freeGlobals: DataView, controlledGlo
         throw new Error('FileType not implemented ' + type)
     }
 }
-const importResolve = (u: Uint8Array, len: number, dv: DataView, state: DecoderState, size: number, parentURL: URL, conditions: Set<string>, fs: FileURLSystem): number => {
+const importResolve = async (u: Uint8Array, len: number, dv: DataView, state: DecoderState, size: number, parentURL: URL, conditions: Set<string>, fs: FileURLSystem): Promise<number> => {
     const s = TD.decode(bufferSourceToUint8Array(dv, state.position, size))
     let sp
     if (s[0] == '.') {
@@ -338,6 +338,7 @@ const importResolve = (u: Uint8Array, len: number, dv: DataView, state: DecoderS
         if (s == 'b1') {
             sp = 'bxx'
         }
+        sp = await ESM_RESOLVE(s, parentURL, conditions, fs)
     }
 
     const spb = new TextEncoder().encode(sp)
@@ -831,8 +832,8 @@ export const ESM_RESOLVE = async (specifier: string, parentURL: URL, conditions:
     if (encodedSepRegEx.test(resolved.pathname)) {
         throw new Error('Invalid Module Specifier')
     }
-    if (!await fs.exists(resolved)) {
-        throw new Error('Module Not Found')
-    }
+    // if (!await fs.exists(resolved)) {
+    //     throw new Error('Module Not Found')
+    // }
     return resolved
 }

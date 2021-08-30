@@ -10,6 +10,9 @@
       "license": "Apache-2.0 WITH LLVM-exception",
       "dependencies": {
         "acorn": "^8.4.1"
+      },
+      "devDependencies": {
+        "source-map": "^0.7.3"
       }
     },
     "node_modules/acorn": {
@@ -22,6 +25,15 @@
       "engines": {
         "node": ">=0.4.0"
       }
+    },
+    "node_modules/source-map": {
+      "version": "0.7.3",
+      "resolved": "https://registry.npmjs.org/source-map/-/source-map-0.7.3.tgz",
+      "integrity": "sha512-CkCj6giN3S+n9qrYiBTX5gystlENnRW5jZeNLHpe6aue+SrHcG5VYwujhW9s4dY31mEGsxBDrHR6oI69fTXsaQ==",
+      "dev": true,
+      "engines": {
+        "node": ">= 8"
+      }
     }
   },
   "dependencies": {
@@ -29,6 +41,12 @@
       "version": "8.4.1",
       "resolved": "https://registry.npmjs.org/acorn/-/acorn-8.4.1.tgz",
       "integrity": "sha512-asabaBSkEKosYKMITunzX177CXxQ4Q8BSSzMTKD+FefUhipQC70gfW5SiUDhYQ3vk8G+81HqQk7Fv9OXwwn9KA=="
+    },
+    "source-map": {
+      "version": "0.7.3",
+      "resolved": "https://registry.npmjs.org/source-map/-/source-map-0.7.3.tgz",
+      "integrity": "sha512-CkCj6giN3S+n9qrYiBTX5gystlENnRW5jZeNLHpe6aue+SrHcG5VYwujhW9s4dY31mEGsxBDrHR6oI69fTXsaQ==",
+      "dev": true
     }
   }
 }
