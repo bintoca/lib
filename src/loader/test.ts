@@ -9,12 +9,12 @@ test('buffer', async () => {
     const d = decodePackage(cb)
     expect(new TextDecoder().decode((await decodeFile(d.get(1)['p.json'], freeGlobals, controlledGlobals, parentURL, defaultConditions, fs)).data)).toBe('{"a":2}')
 })
-test.each([['const w = 4;          const r=5;', new Map<number, any>([[1, FileType.js], [2, 500], [3, ['const w = 4;', new Map<number, any>([[1, ChunkType.Placeholder], [2, 10]]), 'const r=5;']]])],
+test.each([['const w = 4;          const r=5;', new Map<number, any>([[1, FileType.js], [2, 500], [3, 'const w = 4;          const r=5;']])],
 ['const w = 4;          ImporTTHISconst r=5;\nimport Math from"/x/g/Math"\nimport Number from"/x/u"\nimport $bbbbb from "bxx"\nimport ImporT from"/x/i"\nimport THIS from"/x/t"\nexport {b0} from "bxx"\nexport {r}\nexport{r}\nexport default $AA',
-    new Map<number, any>([[1, FileType.js], [2, 500], [6, 'ImporT'], [7, 'THIS'],
-    [3, ['const w = 4;', new Map<number, any>([[1, ChunkType.Placeholder], [2, 10]]), new Map<number, any>([[1, ChunkType.Import]]), new Map<number, any>([[1, ChunkType.This]]), 'const r=5;']],
+    new Map<number, any>([[1, FileType.js], [2, 500],
+    [3, 'const w = 4;          ImporTTHISconst r=5;'],
     [4, ['Math', 'Number', 'Free']],
-    [5, [new Map<number, any>([[1, "import $bbbbb from "], [2, 'b1']])]],
+    [5, [new Map<number, any>([[1, "import $bbbbb from "], [2, 'b1']])]], [6, 'ImporT'], [7, 'THIS'],
     [8, [new Map<number, any>([[2, "export {b0} from "], [3, 'b1']]), new Map<number, any>([[2, "export {r}"]]), new Map<number, any>([[1, "r"]]), new Map<number, any>([[4, "$AA"]])]]
     ])]])('js', async (a, b) => {
         const cb = encode({ files: { 'p.js': b } })
@@ -59,7 +59,7 @@ const doBench = () => {
 }
 //doBench()
 test.each([['', -1], ['a', -1], ['/x/x/node_modules/', -1], ['/x/x/node_modules/a', -1], ['/x/x/node_modules/@', -1], ['/x/x/node_modules/@/', -1],
-['/x/x/node_modules/a/', '/'], ['/x/x/node_modules/@a/a/', '/'], ['/x/x/node_modules/a/wes', '/wes'], ['/x/x/node_modules/@a/a/wes', '/wes']])('getPackageBreakIndex(%s)', (a, e) => {
+['/x/x/node_modules/a/', '/'], ['/x/x/node_modules/@a/a/', '/'], ['/x/x/node_modules/a/wes', '/wes'], ['/x/x/node_modules/@a/a/wes', '/wes'], ['/x/x/node_modules/cv/node_modules/@a/a/wes', '/wes']])('getPackageBreakIndex(%s)', (a, e) => {
     const index = getPackageBreakIndex(a)
     expect(index === -1 ? index : a.slice(index)).toBe(e)
 })

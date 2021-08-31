@@ -4,7 +4,7 @@ import * as path from 'path'
 import open from 'open'
 import { cwd } from 'process';
 import { parseFiles, ParseFilesError, parseTar, getShrinkwrapURLs, cacacheDir } from '@bintoca/package'
-import { encode, decodePackage, decodeFile, createLookup, FileType, defaultConditions, FileURLSystem, ESM_RESOLVE, getCacheKey, getShrinkwrapResolved } from '@bintoca/loader'
+import { encode, decodePackage, decodeFile, createLookup, FileType, defaultConditions, ESM_RESOLVE, getCacheKey, getShrinkwrapResolved, ShrinkwrapPackageDescription } from '@bintoca/loader'
 import * as chokidar from 'chokidar'
 import { server as wss } from 'websocket'
 import anymatch from 'anymatch'
@@ -18,7 +18,9 @@ const config = {
     hostname: 'localhost',
     port: 3000,
     ignore: [/(^|[\/\\])\../, 'node_modules'], // ignore dotfiles
-    awaitWriteFinish: { stabilityThreshold: 100, pollInterval: 50 }
+    awaitWriteFinish: { stabilityThreshold: 100, pollInterval: 50 },
+    autoRefresh: true,
+    open: true
 }
 const freeGlobals = createLookup(['window', 'document', 'console', 'Array', 'BigInt', 'Infinity', 'Object', 'RegExp', 'String', 'Symbol', 'SyntaxError', 'parseFloat', 'parseInt'])
 const controlledGlobals = createLookup([])
@@ -165,6 +167,9 @@ const notify = () => {
 }
 const cacacheExists = async (key: string): Promise<boolean> => await cacache.get.info(cacacheDir, key)
 const checkParsed = (parsed: { files: { [k: string]: Map<number, any> } }, prefix: string): boolean => {
+    if (prefix) {
+        prefix += '/'
+    }
     let r = true
     for (let x in parsed.files) {
         const m = parsed.files[x]
@@ -184,20 +189,20 @@ const checkParsed = (parsed: { files: { [k: string]: Map<number, any> } }, prefi
     }
     return r
 }
-const processPackage = async (x: string) => {
+const processPackage = async (x: ShrinkwrapPackageDescription) => {
     try {
-        const prefix = x.substring(x.lastIndexOf('/'))
-        log('Processing: ', prefix)
-        const parsed = parseFiles(await pacote.tarball.stream(x, parseTar))
+        const prefix = x.resolved.substring(x.resolved.lastIndexOf('/') + 1)
+        log('Optimizing:', prefix)
+        const parsed = parseFiles(await pacote.tarball.stream(x.resolved, parseTar))
         if (checkParsed(parsed, prefix)) {
             const enc = decodePackage(encode(parsed)).get(1)
             for (let k in enc) {
-                await cacache.put(cacacheDir, x + '/' + k, enc[k])
+                await cacache.put(cacacheDir, x.resolved + '/' + k, enc[k])
             }
         }
     }
     catch (e) {
-        log('Error processing package', e)
+        log('Error optimizing package', e)
     }
 }
 export const update = async (f) => {
@@ -216,7 +221,7 @@ export const update = async (f) => {
             urlCache = {}
             shrinkwrap = JSON.parse(TD.decode(f['npm-shrinkwrap.json']))
             for (let x of getShrinkwrapURLs(shrinkwrap)) {
-                if (!await cacacheExists(x + '/package.json')) {
+                if (!await cacacheExists(x.resolved + '/package.json')) {
                     await processPackage(x)
                 }
             }
@@ -248,6 +253,7 @@ export const init = async () => {
         const dev = await import(path.join('file://' + cwd(), configFile))
         Object.assign(config, dev.default)
     }
+    rl.prompt()
     const w = chokidar.watch('.', {
         ignored: config.ignore,
         ignoreInitial: true,
@@ -266,15 +272,38 @@ export const init = async () => {
             }
         }
     })
-    await update(readDir('', cwd(), {}))
-    notifyEnabled = true
+    //cacache.ls(cacacheDir).then(x => log('ls', x)).catch(x => log('lse', x))
+    try {
+        await update(readDir('', cwd(), {}))
+    }
+    catch (e) {
+        log(e)
+    }
+    notifyEnabled = config.autoRefresh
     server1.listen(config.port)
-    //open(getRootURL())
-    log('Auto-refresh is on. Enter "a" to toggle.')
+    if (config.open) {
+        open(getRootURL())
+    }
     rl.on('line', line => {
-        if (line.trim() == 'a') {
+        if (line.trim() == 'a' || line.trim() == 'autorefresh') {
             notifyEnabled = !notifyEnabled
             console.log('Auto-refresh is ' + (notifyEnabled ? 'on' : 'off'))
+        }
+        else if (line.trim() == 'clear cache') {
+            cacache.rm.all(cacacheDir).then(x => log('Cache cleared successfully')).catch(x => log(x))
+        }
+        else if (line.trim() == 'help' || line.trim() == 'h' || line.trim() == '?') {
+            console.log('Commands:')
+            console.log('  autorefresh|a   toggle auto refresh')
+            console.log('  clear cache     delete cached optimized packages')
+            console.log('  help|h|?        display help')
+            console.log('  exit|quit|q     exit the program')
+        }
+        else if (line.trim() == 'q' || line.trim() == 'quit' || line.trim() == 'exit') {
+            process.exit()
+        }
+        else {
+            console.log('Unknown command "' + line + '"')
         }
         rl.prompt()
     })

@@ -14,7 +14,8 @@
   "author": "",
   "license": "Apache-2.0 WITH LLVM-exception",
   "dependencies": {
-    "acorn": "^8.4.1"
+    "acorn": "^8.4.1",
+    "react": "^17.0.2"
   },
   "devDependencies": {
     "source-map": "^0.7.3"

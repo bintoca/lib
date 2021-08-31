@@ -63,75 +63,22 @@ export const decodeFile = async (b: BufferSource, freeGlobals: DataView, control
         const sizeEstimate = decodeCount(dv, state)
         const u = new Uint8Array(sizeEstimate)
         let len = 0
-        let importSubIndex = 0
-        let thisSubIndex = 0
-        if (dv.getUint8(state.position) == 6) {
-            importSubIndex = state.position + 2
-            state.position += 8
-        }
-        if (dv.getUint8(state.position) == 7) {
-            thisSubIndex = state.position + 2
-            state.position += 6
-        }
         if (dv.getUint8(state.position) != 3) {
             throw new Error('invalid cbor at index ' + state.position)
         }
         state.position++
-        const chunkCount = decodeCount(dv, state)
-        for (let i = 0; i < chunkCount; i++) {
-            const maj = dv.getUint8(state.position) >> 5
-            if (maj == 3) {
-                const size = decodeCount(dv, state)
-                if (size > 100) {
-                    u.set(new Uint8Array(dv.buffer, dv.byteOffset + state.position, size), len)
-                }
-                else {
-                    for (let j = 0; j < size; j++) {
-                        u[len + j] = dv.getUint8(state.position + j)
-                    }
-                }
-                state.position += size
-                len += size
-            }
-            else {
-                state.position += 2
-                const chunkType = dv.getUint8(state.position)
-                state.position++
-                if (chunkType == ChunkType.Placeholder) {
-                    state.position++
-                    const size = decodeCount(dv, state)
-                    for (let j = 0; j < size; j++) {
-                        u[len + j] = 32
-                    }
-                    len += size
-                }
-                else if (chunkType == ChunkType.Import) {
-                    if (!importSubIndex) {
-                        throw new Error('import substitute not found')
-                    }
-                    for (let j = 0; j < 6; j++) {
-                        u[len + j] = dv.getUint8(importSubIndex + j)
-                    }
-                    len += 6
-                }
-                else if (chunkType == ChunkType.This) {
-                    if (!thisSubIndex) {
-                        throw new Error('this substitute not found')
-                    }
-                    for (let j = 0; j < 4; j++) {
-                        u[len + j] = dv.getUint8(thisSubIndex + j)
-                    }
-                    len += 4
-                }
-                else {
-                    throw new Error('ChunkType not implemented ' + chunkType)
-                }
+        const size = decodeCount(dv, state)
+        if (size > 100) {
+            u.set(new Uint8Array(dv.buffer, dv.byteOffset + state.position, size), len)
+        }
+        else {
+            for (let j = 0; j < size; j++) {
+                u[len + j] = dv.getUint8(state.position + j)
             }
         }
-        if (dv.byteLength > state.position) {
-            if (dv.getUint8(state.position) != 4) {
-                throw new Error('invalid cbor at index ' + state.position)
-            }
+        state.position += size
+        len += size
+        if (dv.byteLength > state.position && dv.getUint8(state.position) == 4) {
             state.position++
             const globalCount = decodeCount(dv, state)
             for (let i = 0; i < globalCount; i++) {
@@ -174,10 +121,7 @@ export const decodeFile = async (b: BufferSource, freeGlobals: DataView, control
                 state.position += size
             }
         }
-        if (dv.byteLength > state.position) {
-            if (dv.getUint8(state.position) != 5) {
-                throw new Error('invalid cbor at index ' + state.position)
-            }
+        if (dv.byteLength > state.position && dv.getUint8(state.position) == 5) {
             state.position++
             const importCount = decodeCount(dv, state)
             for (let i = 0; i < importCount; i++) {
@@ -196,7 +140,9 @@ export const decodeFile = async (b: BufferSource, freeGlobals: DataView, control
                 state.position += specifierSize
             }
         }
-        if (importSubIndex) {
+        if (dv.byteLength > state.position && dv.getUint8(state.position) == 6) {
+            state.position++
+            const size = decodeCount(dv, state)
             u[len++] = 10
             u[len++] = 105
             u[len++] = 109
@@ -205,10 +151,11 @@ export const decodeFile = async (b: BufferSource, freeGlobals: DataView, control
             u[len++] = 114
             u[len++] = 116
             u[len++] = 32
-            for (let j = 0; j < 6; j++) {
-                u[len + j] = dv.getUint8(importSubIndex + j)
+            for (let j = 0; j < size; j++) {
+                u[len + j] = dv.getUint8(state.position + j)
             }
-            len += 6
+            len += size
+            state.position += size
             u[len++] = 32
             u[len++] = 102
             u[len++] = 114
@@ -221,7 +168,9 @@ export const decodeFile = async (b: BufferSource, freeGlobals: DataView, control
             u[len++] = 105
             u[len++] = 34
         }
-        if (thisSubIndex) {
+        if (dv.byteLength > state.position && dv.getUint8(state.position) == 7) {
+            state.position++
+            const size = decodeCount(dv, state)
             u[len++] = 10
             u[len++] = 105
             u[len++] = 109
@@ -230,10 +179,11 @@ export const decodeFile = async (b: BufferSource, freeGlobals: DataView, control
             u[len++] = 114
             u[len++] = 116
             u[len++] = 32
-            for (let j = 0; j < 4; j++) {
-                u[len + j] = dv.getUint8(thisSubIndex + j)
+            for (let j = 0; j < size; j++) {
+                u[len + j] = dv.getUint8(state.position + j)
             }
-            len += 4
+            len += size
+            state.position += size
             u[len++] = 32
             u[len++] = 102
             u[len++] = 114
@@ -246,10 +196,7 @@ export const decodeFile = async (b: BufferSource, freeGlobals: DataView, control
             u[len++] = 116
             u[len++] = 34
         }
-        if (dv.byteLength > state.position) {
-            if (dv.getUint8(state.position) != 8) {
-                throw new Error('invalid cbor at index ' + state.position)
-            }
+        if (dv.byteLength > state.position && dv.getUint8(state.position) == 8) {
             state.position++
             const exportCount = decodeCount(dv, state)
             for (let i = 0; i < exportCount; i++) {
@@ -316,6 +263,9 @@ export const decodeFile = async (b: BufferSource, freeGlobals: DataView, control
                     }
                 }
             }
+        }
+        if(state.position != dv.byteLength){
+            throw new Error('cbor not fully consumed')
         }
         return { type: 'text/javascript', data: new Uint8Array(u.buffer, 0, len) }
     }
@@ -440,24 +390,20 @@ export const getCacheKey = (urlpath: string, base: string, shrinkwrap): string =
     if (index == -1) {
         return undefined
     }
-    const shrinkwrapPath = urlpath.slice(base.length, index)
-    const pack = shrinkwrap.packages[shrinkwrapPath]
+    const pack = getShrinkwrapResolved(urlpath, base, shrinkwrap)
     if (pack) {
         return pack.resolved + urlpath.slice(index)
     }
     return undefined
 }
-export const getShrinkwrapResolved = (urlpath: string, base: string, shrinkwrap): string => {
+export type ShrinkwrapPackageDescription = { resolved: string, integrity: string }
+export const getShrinkwrapResolved = (urlpath: string, base: string, shrinkwrap): ShrinkwrapPackageDescription => {
     const index = getPackageBreakIndex(urlpath)
     if (index == -1) {
         return undefined
     }
     const shrinkwrapPath = urlpath.slice(base.length, index)
-    const pack = shrinkwrap.packages[shrinkwrapPath]
-    if (pack) {
-        return pack.resolved
-    }
-    return undefined
+    return shrinkwrap.packages[shrinkwrapPath]
 }
 export type FileURLSystem = { exists: (path: URL) => Promise<boolean>, read: (path: URL, decoded: boolean) => Promise<Uint8Array> }
 export type PackageJSON = { pjsonURL: URL, exists: boolean, main: string, name: string, type: string, exports, imports }
@@ -791,7 +737,7 @@ export const PACKAGE_RESOLVE = async (packageSpecifier: string, parentURL: URL, 
         pjsonURL = new URL((isScoped ? '../../../../node_modules/' : '../../../node_modules/') + packageName + '/package.json', pjsonURL);
     }
     while (pjsonURL.pathname !== last.pathname)
-    throw new Error('Module Not Found')
+    throw new Error('Module Not Found ' + packageSpecifier + ' ' + parentURL)
 }
 export const LOAD_AS_DIRECTORY = async (pjson: PackageJSON, fs: FileURLSystem): Promise<URL> => {
     if (pjson.exists) {

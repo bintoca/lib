@@ -1,7 +1,7 @@
 import * as tar from 'tar'
 import * as pack from '@bintoca/package'
 import { ParseFilesError } from '@bintoca/package'
-import { ChunkType, FileType } from '@bintoca/loader'
+import { FileType } from '@bintoca/loader'
 
 function tarCreate(folder: string) {
     return tar.create({ gzip: true, prefix: 'package', cwd: './src/package/' + folder }, ['./'])
@@ -24,25 +24,31 @@ test('parseFiles', async () => {
     [5, [new Map<number, any>([[1, "import * as $eeeee from "], [2, 'es😀d']]), new Map<number, any>([[1, "import { $AAAAA } from "], [2, 'a1']]), new Map<number, any>([[1, "import $bbbbb from "], [2, 'b1']])]],
     [8, [new Map<number, any>([[1, "$AAA"]]), new Map<number, any>([[1, "f"]]), new Map<number, any>([[1, "c"]]), new Map<number, any>([[2, "export { ar }"]]), new Map<number, any>([[2, "export { c1 } from "], [3, 'c1']]),
     new Map<number, any>([[2, "export * from "], [3, 'd1']]), new Map<number, any>([[2, "export * as d2 from "], [3, 'd2']]), new Map<number, any>([[2, "export * as d3 from "], [3, 'd3']]), new Map<number, any>([[4, "$AAAAAAAA"]])]],
-    [3, [new Map<number, any>([[1, ChunkType.Placeholder], [2, 31]]), "\n", new Map<number, any>([[1, ChunkType.Placeholder], [2, 27]]), "\n", new Map<number, any>([[1, ChunkType.Placeholder], [2, 23]]),
-        "\n", new Map<number, any>([[1, ChunkType.Placeholder], [2, 6]]), " const $AAA = ", new Map<number, any>([[1, ChunkType.This]]),
-        "\nconst ar = () => ", new Map<number, any>([[1, ChunkType.This]]), "\nconst $ddddd = Number.EPSILON + Number.MAX_SAFE_INTEGER\n",
-    new Map<number, any>([[1, ChunkType.Import]]),
-        "('ss')\n", new Map<number, any>([[1, ChunkType.Placeholder], [2, 6]]),
-    " function f($vvvvv) {\n" +
-    "    return this\n" +
-    "}\n", new Map<number, any>([[1, ChunkType.Placeholder], [2, 6]]),
-    " class c {\n" +
-    "    #$ppppp = this\n" +
-    "    #clicked() {\n" +
-    "        const h = Math.log(1) + this.#$ppppp + d2\n" +
-    "        try { } catch { }\n" +
-    "    }\n" +
-    "}\n",
-    new Map<number, any>([[1, ChunkType.Placeholder], [2, 13]]), "\n", new Map<number, any>([[1, ChunkType.Placeholder], [2, 23]]), "\n",
-    new Map<number, any>([[1, ChunkType.Placeholder], [2, 18]]), "\n", new Map<number, any>([[1, ChunkType.Placeholder], [2, 24]]), "\n", new Map<number, any>([[1, ChunkType.Placeholder], [2, 24]]), "\n",
-        "var $AAAAAAAA=", " {}\nconst cc = class { #v = this }\n" +
-    "const fe = function () { return this }"]]]))
+    [3, `                               
+                           
+                       
+       const $AAA = $BAA
+const ar = () => $BAA
+const $ddddd = Number.EPSILON + Number.MAX_SAFE_INTEGER
+$BAAAA('ss')
+       function f($vvvvv) {
+    return this
+}
+       class c {
+    #$ppppp = this
+    #clicked() {
+        const h = Math.log(1) + this.#$ppppp + d2
+        try { } catch { }
+    }
+}
+             
+                       
+                  
+                        
+                        
+var $AAAAAAAA= {}
+const cc = class { #v = this }
+const fe = function () { return this }`]]))
 })
 test.each([['import a from "/x"', new Map<number, any>([[1, FileType.error], [2, ParseFilesError.invalidSpecifier], [3, '/x']])],
 ['import a from "/x/a"', new Map<number, any>([[1, FileType.error], [2, ParseFilesError.invalidSpecifier], [3, '/x/a']])],

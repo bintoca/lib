@@ -3,7 +3,7 @@ import cachedir from 'cachedir'
 import * as acorn from 'acorn'
 import glo from 'acorn-globals'
 import * as walk from 'acorn-walk'
-import { ChunkType, FileType } from '@bintoca/loader'
+import { ChunkType, FileType, ShrinkwrapPackageDescription } from '@bintoca/loader'
 import path from 'path'
 const TD = new TextDecoder()
 const TE = new TextEncoder()
@@ -69,13 +69,20 @@ export const parseFiles = (files: { [k: string]: Buffer }): { files: { [k: strin
     }
     return r
 }
+export const placeholderString = (size: number) => {
+    let s = ''
+    for (let i = 0; i < size; i++) {
+        s += ' '
+    }
+    return s
+}
 export const parseFile = (k: string, b: Buffer): Map<number, any> => {
     if (k.endsWith('.js') || k.endsWith('.cjs') || k.endsWith('.mjs')) {
         let ast//: acorn.Node
         let text: string
         try {
             text = TD.decode(b)
-            ast = acorn.parse(text, { ecmaVersion: 2022, sourceType: 'module' })
+            ast = acorn.parse(text, { ecmaVersion: 2022, sourceType: 'module', allowHashBang: true })
             //console.log(JSON.stringify(ast))
         }
         catch (e) {
@@ -142,19 +149,19 @@ export const parseFile = (k: string, b: Buffer): Map<number, any> => {
             }
         })
         let position = 0
-        const chunks: (Map<number, any> | string)[] = []
         const imports: Map<number, any>[] = []
         const exports: Map<number, any>[] = []
-        let hasDynamicImport = false
-        let hasGlobalThis = false
+        let importSubstitute
+        let thisSubstitute
         removeNodes.sort((a, b) => a.start - b.start)
+        let body = ''
         for (let n of removeNodes) {
             if (position != n.start) {
-                chunks.push(text.substring(position, n.start))
+                body += text.substring(position, n.start)
             }
             position = n.end
             if (n.type == 'ImportDeclaration') {
-                chunks.push(new Map([[1, ChunkType.Placeholder], [2, n.end - n.start]]))
+                body += placeholderString(n.end - n.start)
                 const specifier = n.source.value
                 if (isSpecifierInvalid(k, specifier)) {
                     return new Map<number, any>([[1, FileType.error], [2, ParseFilesError.invalidSpecifier], [3, specifier]])
@@ -163,17 +170,23 @@ export const parseFile = (k: string, b: Buffer): Map<number, any> => {
             }
             else if (n.type == 'ImportExpression') {
                 position = n.start + 6
-                chunks.push(new Map([[1, ChunkType.Import]]))
-                hasDynamicImport = true
+                importSubstitute = getSubstituteId(importSuspectIds, 5, '$')
+                if (!importSubstitute) {
+                    return new Map<number, any>([[1, FileType.error], [2, ParseFilesError.importSubstitute], [3, k]])
+                }
+                body += importSubstitute
             }
             else if (n.type == 'ThisExpression') {
-                chunks.push(new Map([[1, ChunkType.This]]))
-                hasGlobalThis = true
+                thisSubstitute = getSubstituteId(thisSuspectIds, 3, '$')
+                if (!thisSubstitute) {
+                    return new Map<number, any>([[1, FileType.error], [2, ParseFilesError.thisSubstitute], [3, k]])
+                }
+                body += thisSubstitute
             }
             else if (n.type == 'ExportNamedDeclaration') {
                 if (n.declaration) {
                     position = n.start + 6
-                    chunks.push(new Map([[1, ChunkType.Placeholder], [2, 6]]))
+                    body += placeholderString(6)
                     if (n.declaration.type == 'FunctionDeclaration' || n.declaration.type == 'ClassDeclaration') {
                         exports.push(new Map([[1, n.declaration.id.name]]))
                     }
@@ -184,7 +197,7 @@ export const parseFile = (k: string, b: Buffer): Map<number, any> => {
                     }
                 }
                 else {
-                    chunks.push(new Map([[1, ChunkType.Placeholder], [2, n.end - n.start]]))
+                    body += placeholderString(n.end - n.start)
                     if (n.source) {
                         const specifier = n.source.value
                         if (isSpecifierInvalid(k, specifier)) {
@@ -200,11 +213,11 @@ export const parseFile = (k: string, b: Buffer): Map<number, any> => {
             else if (n.type == 'ExportDefaultDeclaration') {
                 position = n.start + 14
                 const sub = getSubstituteId(exportDefaultSuspectIds, 8, '$')
-                chunks.push('var ' + sub + '=')
+                body += 'var ' + sub + '='
                 exports.push(new Map([[4, sub]]))
             }
             else if (n.type == 'ExportAllDeclaration') {
-                chunks.push(new Map([[1, ChunkType.Placeholder], [2, n.end - n.start]]))
+                body += placeholderString(n.end - n.start)
                 const specifier = n.source.value
                 if (isSpecifierInvalid(k, specifier)) {
                     return new Map<number, any>([[1, FileType.error], [2, ParseFilesError.invalidSpecifier], [3, specifier]])
@@ -212,7 +225,7 @@ export const parseFile = (k: string, b: Buffer): Map<number, any> => {
                 exports.push(new Map([[2, text.substring(n.start, n.source.start)], [3, specifier]]))
             }
         }
-        chunks.push(text.substring(position))
+        body += text.substring(position)
         let glob
         //const g = glo(ast)
         {//fork of acorn-globals with PRs #52 #58 #60 and fix for ExportAllDeclaration es2020
@@ -374,25 +387,16 @@ export const parseFile = (k: string, b: Buffer): Map<number, any> => {
             });
         }
         glob = glob.filter(x => x.name != 'this').map(x => x.name)
-        const importSubstitute = hasDynamicImport ? getSubstituteId(importSuspectIds, 5, '$') : undefined
-        const thisSubstitute = hasGlobalThis ? getSubstituteId(thisSuspectIds, 3, '$') : undefined
-        const sizeEstimate = chunks.map(x => typeof x == 'string' ? TE.encode(x).length : x.get(1) == ChunkType.Placeholder ? x.get(2) : x.get(1) == ChunkType.Import ? 6 : x.get(1) == ChunkType.This ? 4 : 0)
-            .concat(imports.map(x => TE.encode(x.get(1)).length + TE.encode(x.get(2)).length + 50))
+        const sizeEstimate = imports.map(x => TE.encode(x.get(1)).length + TE.encode(x.get(2)).length + 50)
             .concat(exports.map(x => TE.encode(x.get(1) || '').length + TE.encode(x.get(2) || '').length + TE.encode(x.get(3) || '').length + TE.encode(x.get(4) || '').length + 50))
             .concat(glob.map(x => TE.encode(x).length * 2 + 50)).reduce((a, b) => a + b, 0)
-            + (importSubstitute ? 50 : 0) + (thisSubstitute ? 50 : 0)
-        if (hasDynamicImport && !importSubstitute) {
-            return new Map<number, any>([[1, FileType.error], [2, ParseFilesError.importSubstitute], [3, k]])
-        }
-        if (hasGlobalThis && !thisSubstitute) {
-            return new Map<number, any>([[1, FileType.error], [2, ParseFilesError.thisSubstitute], [3, k]])
-        }
-        const m = new Map<number, any>([[1, FileType.js], [2, sizeEstimate], [6, importSubstitute], [7, thisSubstitute], [3, chunks], [4, glob], [5, imports], [8, exports]])
-        if (!importSubstitute) {
-            m.delete(6)
-        }
-        if (!thisSubstitute) {
-            m.delete(7)
+            + (importSubstitute ? 50 : 0) + (thisSubstitute ? 50 : 0) + body.length
+        const m = new Map<number, any>([[1, FileType.js], [2, sizeEstimate], [3, body], [4, glob], [5, imports], [6, importSubstitute], [7, thisSubstitute], [8, exports]])
+
+        for (let x of m) {
+            if (x[1] === undefined || (Array.isArray(x[1]) && x[1].length == 0)) {
+                m.delete(x[0])
+            }
         }
         return m
     }
@@ -400,12 +404,12 @@ export const parseFile = (k: string, b: Buffer): Map<number, any> => {
         return new Map<number, any>([[1, FileType.buffer], [2, b]])
     }
 }
-export const getShrinkwrapURLs = (shrinkwrap: any): string[] => {
-    const u: string[] = []
+export const getShrinkwrapURLs = (shrinkwrap: any): ShrinkwrapPackageDescription[] => {
+    const u = []
     for (let k in shrinkwrap.packages) {
         const v = shrinkwrap.packages[k]
         if (k && !v.dev) {
-            u.push(v.resolved)
+            u.push(v)
         }
     }
     return u
