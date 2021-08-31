@@ -1,4 +1,4 @@
-import { ChunkType, FileType, encode, decodePackage, decodeFile, createLookup, exists, FileURLSystem, defaultConditions } from '@bintoca/loader'
+import { ChunkType, FileType, encode, decodePackage, decodeFile, createLookup, exists, FileURLSystem, defaultConditions, getPackageBreakIndex } from '@bintoca/loader'
 
 const freeGlobals = createLookup(['Free'])
 const controlledGlobals = createLookup(['Math'])
@@ -7,7 +7,7 @@ const fs = { exists: null, read: null }
 test('buffer', async () => {
     const cb = encode({ files: { 'p.json': new Map<number, any>([[1, FileType.buffer], [2, new TextEncoder().encode('{"a":2}')]]) } })
     const d = decodePackage(cb)
-    expect(new TextDecoder().decode(await decodeFile(d.get(1)['p.json'], freeGlobals, controlledGlobals, parentURL, defaultConditions, fs))).toBe('{"a":2}')
+    expect(new TextDecoder().decode((await decodeFile(d.get(1)['p.json'], freeGlobals, controlledGlobals, parentURL, defaultConditions, fs)).data)).toBe('{"a":2}')
 })
 test.each([['const w = 4;          const r=5;', new Map<number, any>([[1, FileType.js], [2, 500], [3, ['const w = 4;', new Map<number, any>([[1, ChunkType.Placeholder], [2, 10]]), 'const r=5;']]])],
 ['const w = 4;          ImporTTHISconst r=5;\nimport Math from"/x/g/Math"\nimport Number from"/x/u"\nimport $bbbbb from "bxx"\nimport ImporT from"/x/i"\nimport THIS from"/x/t"\nexport {b0} from "bxx"\nexport {r}\nexport{r}\nexport default $AA',
@@ -19,7 +19,7 @@ test.each([['const w = 4;          const r=5;', new Map<number, any>([[1, FileTy
     ])]])('js', async (a, b) => {
         const cb = encode({ files: { 'p.js': b } })
         const d = decodePackage(cb)
-        expect(new TextDecoder().decode(await decodeFile(d.get(1)['p.js'], freeGlobals, controlledGlobals, parentURL, defaultConditions, fs))).toBe(a)
+        expect(new TextDecoder().decode((await decodeFile(d.get(1)['p.js'], freeGlobals, controlledGlobals, parentURL, defaultConditions, fs)).data)).toBe(a)
     })
 test('createLookup', () => {
     expect(new Uint8Array(createLookup(['hey', 'dude']).buffer)).toEqual(new Uint8Array([0, 0, 0, 2, 100, 0, 0, 12, 104, 0, 0, 17, 4, 100, 117, 100, 101, 3, 104, 101, 121]))
@@ -58,3 +58,8 @@ const doBench = () => {
     bench('f', f, testFile([shortString, longString], [new Map<number, any>([[1, "import $bbbbb from "], [2, 'b1']]), new Map<number, any>([[1, "import $bbbbb from "], [2, 'b1']])], ['Math', 'Number']))
 }
 //doBench()
+test.each([['', -1], ['a', -1], ['/x/x/node_modules/', -1], ['/x/x/node_modules/a', -1], ['/x/x/node_modules/@', -1], ['/x/x/node_modules/@/', -1],
+['/x/x/node_modules/a/', '/'], ['/x/x/node_modules/@a/a/', '/'], ['/x/x/node_modules/a/wes', '/wes'], ['/x/x/node_modules/@a/a/wes', '/wes']])('getPackageBreakIndex(%s)', (a, e) => {
+    const index = getPackageBreakIndex(a)
+    expect(index === -1 ? index : a.slice(index)).toBe(e)
+})

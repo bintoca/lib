@@ -1,11 +1,14 @@
 import tar from 'tar'
+import cachedir from 'cachedir'
 import * as acorn from 'acorn'
 import glo from 'acorn-globals'
 import * as walk from 'acorn-walk'
 import { ChunkType, FileType } from '@bintoca/loader'
+import path from 'path'
 const TD = new TextDecoder()
 const TE = new TextEncoder()
 
+export const cacacheDir = path.join(cachedir('bintoca'), '_cacache')
 export async function parseTar(t: NodeJS.ReadableStream): Promise<{ [k: string]: Buffer }> {
     return new Promise((resolve, reject) => {
         const files = {}
@@ -396,4 +399,14 @@ export const parseFile = (k: string, b: Buffer): Map<number, any> => {
     else {
         return new Map<number, any>([[1, FileType.buffer], [2, b]])
     }
+}
+export const getShrinkwrapURLs = (shrinkwrap: any): string[] => {
+    const u: string[] = []
+    for (let k in shrinkwrap.packages) {
+        const v = shrinkwrap.packages[k]
+        if (k && !v.dev) {
+            u.push(v.resolved)
+        }
+    }
+    return u
 }

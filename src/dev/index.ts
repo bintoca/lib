@@ -3,16 +3,17 @@ import * as fs from 'fs'
 import * as path from 'path'
 import open from 'open'
 import { cwd } from 'process';
-import { parseFiles, parseFile, ParseFilesError } from '@bintoca/package'
-import { encode, decodePackage, decodeFile, createLookup, FileType, defaultConditions, FileURLSystem, ESM_RESOLVE } from '@bintoca/loader'
+import { parseFiles, ParseFilesError, parseTar, getShrinkwrapURLs, cacacheDir } from '@bintoca/package'
+import { encode, decodePackage, decodeFile, createLookup, FileType, defaultConditions, FileURLSystem, ESM_RESOLVE, getCacheKey, getShrinkwrapResolved } from '@bintoca/loader'
 import * as chokidar from 'chokidar'
 import { server as wss } from 'websocket'
 import anymatch from 'anymatch'
 import * as readline from 'readline'
+import pacote from 'pacote'
+import cacache from 'cacache'
 
 const TD = new TextDecoder()
 const base = '/x/p/'
-let loadedFiles = {}
 const config = {
     hostname: 'localhost',
     port: 3000,
@@ -21,9 +22,36 @@ const config = {
 }
 const freeGlobals = createLookup(['window', 'document', 'console', 'Array', 'BigInt', 'Infinity', 'Object', 'RegExp', 'String', 'Symbol', 'SyntaxError', 'parseFloat', 'parseInt'])
 const controlledGlobals = createLookup([])
-const fus = { exists: (p: URL) => { console.log(p.href.replace(getRootURL() + base, './')); return Promise.resolve(fs.existsSync(p.href.replace(getRootURL() + base, './'))) }, read: (p: URL) => Promise.resolve(fs.readFileSync(p.href.replace(getRootURL() + base, './'))) }
-let encodedFiles = {}
+const fus = {
+    exists: async (p: URL) => {
+        if (!p.pathname.startsWith(base)) {
+            return false
+        }
+        if (p.pathname.startsWith(base + 'node_modules/')) {
+            const key = getCacheKey(p.pathname, base, shrinkwrap)
+            return key ? await cacacheExists(key) : false
+        }
+        return urlCache[p.pathname] !== undefined
+    },
+    read: async (p: URL, decoded: boolean) => {
+        if (p.pathname.startsWith(base + 'node_modules/')) {
+            let r
+            try {
+                r = await cacache.get(cacacheDir, getCacheKey(p.pathname, base, shrinkwrap))
+            }
+            catch (e) {
+                processPackage(getShrinkwrapResolved(p.pathname, base, shrinkwrap))
+                r = await cacache.get(cacacheDir, getCacheKey(p.pathname, base, shrinkwrap))
+            }
+            return decoded ? (await decodeFile(r.data, freeGlobals, controlledGlobals, null, defaultConditions, { exists: null, read: null })).data : r.data
+        }
+        return urlCache[p.pathname].data
+    }
+}
+let loadedFiles = {}
+let urlCache = {}
 let shrinkwrap
+let packageJSON
 let notifyTimeout
 let notifyEnabled = false
 const server1 = http.createServer({}, async (req: http.IncomingMessage, res: http.ServerResponse) => {
@@ -32,74 +60,60 @@ const server1 = http.createServer({}, async (req: http.IncomingMessage, res: htt
         chunks.push(c)
     })
     req.on('end', async () => {
-        if (req.url == '/') {
-            loadedFiles = { 'npm-shrinkwrap.json': 1 }
-            let mod
-            let packageJSON
-            let err
-            try {
-                packageJSON = JSON.parse(TD.decode(await decodeFile(encodedFiles['package.json'], freeGlobals, controlledGlobals, new URL(getRootURL()), defaultConditions, fus)))
-            }
-            catch { }
-            try {
-                shrinkwrap = JSON.parse(TD.decode(await decodeFile(encodedFiles['npm-shrinkwrap.json'], freeGlobals, controlledGlobals, new URL(getRootURL()), defaultConditions, fus)))
-            }
-            catch { }
-            if (!packageJSON) {
-                err = 'package.json not found or invalid'
-            }
-            else if (!shrinkwrap) {
-                err = 'npm-shrinkwrap.json not found or invalid'
-            }
-            else {
-                if (packageJSON.type != 'module') {
-                    err = 'package type must be module'
+        try {
+            if (req.url == '/') {
+                loadedFiles = { 'npm-shrinkwrap.json': 1 }
+                let mod
+                let err
+                if (!packageJSON) {
+                    err = 'package.json not found or invalid'
                 }
-                else if (!packageJSON.name) {
-                    err = 'package name required'
-                }
-                else if (shrinkwrap.lockfileVersion != 2) {
-                    err = 'npm-shrinkwrap.json lockfileVersion 2 (npm 7) required'
+                else if (!shrinkwrap) {
+                    err = 'npm-shrinkwrap.json not found or invalid'
                 }
                 else {
-                    mod = await ESM_RESOLVE(packageJSON.name, new URL(base, getRootURL()), defaultConditions, fus)
+                    if (packageJSON.type != 'module') {
+                        err = 'package type must be module'
+                    }
+                    else if (!packageJSON.name) {
+                        err = 'package name required'
+                    }
+                    else if (shrinkwrap.lockfileVersion != 2) {
+                        err = 'npm-shrinkwrap.json lockfileVersion 2 (npm 7) required'
+                    }
+                    else {
+                        mod = await ESM_RESOLVE(packageJSON.name, new URL(base, getRootURL()), defaultConditions, fus)
+                    }
                 }
-            }
-            if (err) {
-                res.statusCode = 500
-                res.end(err)
-            }
-            else {
-                res.setHeader('Content-Type', 'text/html')
-                res.end('<html><head><meta charset="utf-8"/><meta name="viewport" content="width=device-width, initial-scale=1" /><script>const ws = new WebSocket("ws://localhost:' + config.port + '");ws.onmessage = (ev)=>{window.location.reload()}</script><script type="module" src="' + mod + '"></script></head><body></body></html>')
-            }
-        }
-        else if (req.url.startsWith(base)) {
-            const path = req.url.substring(base.length)
-            if (!encodedFiles[path] && fs.existsSync(path)) {
-                encodedFiles[path] = decodePackage(encode(parseFiles({ [path]: fs.readFileSync(path) }))).get(1)[path]
-            }
-            const f = encodedFiles[path]
-            if (f) {
-                loadedFiles[path] = 1
-                if (req.url.endsWith('.js') || req.url.endsWith('.mjs') || req.url.endsWith('.cjs')) {
-                    res.setHeader('Content-Type', 'text/javascript')
-                }
-                try {
-                    res.end(Buffer.from(await decodeFile(f, freeGlobals, controlledGlobals, new URL(req.url, getRootURL()), defaultConditions, fus)))
-                }
-                catch (e) {
+                if (err) {
                     res.statusCode = 500
-                    res.end(e)
+                    res.end(err)
                 }
+                else {
+                    res.setHeader('Content-Type', 'text/html')
+                    res.end('<html><head><meta charset="utf-8"/><meta name="viewport" content="width=device-width, initial-scale=1" /><script>const ws = new WebSocket("ws://localhost:' + config.port + '");ws.onmessage = (ev)=>{window.location.reload()}</script><script type="module" src="' + mod + '"></script></head><body></body></html>')
+                }
+            }
+            else if (urlCache[req.url]) {
+                loadedFiles[req.url] = 1
+                const u = urlCache[req.url]
+                res.setHeader('Content-Type', u.type)
+                res.end(Buffer.from(u.data))
+            }
+            else if (await fus.exists(new URL(req.url, getRootURL()))) {
+                const u = await decodeFile(await fus.read(new URL(req.url, getRootURL()), false), freeGlobals, controlledGlobals, new URL(req.url, getRootURL()), defaultConditions, fus)
+                urlCache[req.url] = u
+                res.setHeader('Content-Type', u.type)
+                res.end(Buffer.from(u.data))
             }
             else {
                 res.statusCode = 404
                 res.end()
             }
         }
-        else {
-            res.statusCode = 404
+        catch (e) {
+            res.statusCode = 500
+            log(e)
             res.end()
         }
     })
@@ -149,35 +163,75 @@ const notify = () => {
         }, 100)
     }
 }
-export const update = (f) => {
-    const parsed = parseFiles(f)
+const cacacheExists = async (key: string): Promise<boolean> => await cacache.get.info(cacacheDir, key)
+const checkParsed = (parsed: { files: { [k: string]: Map<number, any> } }, prefix: string): boolean => {
+    let r = true
     for (let x in parsed.files) {
         const m = parsed.files[x]
         if (m.get(1) == FileType.error) {
+            r = false
             const type = m.get(2)
             if (type == ParseFilesError.syntax) {
-                log('File: ' + x, 'Syntax error: ' + m.get(3))
+                log('File: ' + prefix + x, 'Syntax error: ' + m.get(3))
             }
             else if (type == ParseFilesError.invalidSpecifier) {
-                log('File: ' + x, 'Invalid import specifier: ' + m.get(3))
+                log('File: ' + prefix + x, 'Invalid import specifier: ' + m.get(3))
             }
             else {
-                log('File: ' + x, 'Error type: ' + m.get(2), 'Message: ' + m.get(3))
+                log('File: ' + prefix + x, 'Error type: ' + m.get(2), 'Message: ' + m.get(3))
             }
         }
     }
-    const enc = decodePackage(encode(parsed)).get(1)
-    for (let x in enc) {
-        const path = alignPath(x)
-        if (path == 'npm-shrinkwrap.json') {
-            for (let k in encodedFiles) {
-                if (k.startsWith('node_modules/')) {
-                    encodedFiles[k] = undefined
+    return r
+}
+const processPackage = async (x: string) => {
+    try {
+        const prefix = x.substring(x.lastIndexOf('/'))
+        log('Processing: ', prefix)
+        const parsed = parseFiles(await pacote.tarball.stream(x, parseTar))
+        if (checkParsed(parsed, prefix)) {
+            const enc = decodePackage(encode(parsed)).get(1)
+            for (let k in enc) {
+                await cacache.put(cacacheDir, x + '/' + k, enc[k])
+            }
+        }
+    }
+    catch (e) {
+        log('Error processing package', e)
+    }
+}
+export const update = async (f) => {
+    if (f['package.json']) {
+        try {
+            packageJSON = undefined
+            packageJSON = JSON.parse(TD.decode(f['package.json']))
+        }
+        catch (e) {
+            log('Invalid package.json', e)
+        }
+    }
+    if (f['npm-shrinkwrap.json']) {
+        try {
+            shrinkwrap = undefined
+            urlCache = {}
+            shrinkwrap = JSON.parse(TD.decode(f['npm-shrinkwrap.json']))
+            for (let x of getShrinkwrapURLs(shrinkwrap)) {
+                if (!await cacacheExists(x + '/package.json')) {
+                    await processPackage(x)
                 }
             }
         }
-        encodedFiles[path] = enc[x]
-        if (loadedFiles[path]) {
+        catch (e) {
+            log('Invalid npm-shrinkwrap.json', e)
+        }
+    }
+    const parsed = parseFiles(f)
+    checkParsed(parsed, '')
+    const enc = decodePackage(encode(parsed)).get(1)
+    for (let x in enc) {
+        const url = base + alignPath(x)
+        urlCache[url] = await decodeFile(enc[x], freeGlobals, controlledGlobals, new URL(url, getRootURL()), defaultConditions, fus)
+        if (loadedFiles[url]) {
             notify()
         }
     }
@@ -204,15 +258,15 @@ export const init = async () => {
     w.on('add', path => { update({ [path]: fs.readFileSync(path) }) })
     w.on('addDir', path => { update(readDir(path, cwd(), {})) })
     w.on('change', path => { update({ [path]: fs.readFileSync(path) }) })
-    w.on('unlink', path => { encodedFiles[alignPath(path)] = undefined })
+    w.on('unlink', path => { urlCache[base + alignPath(path)] = undefined })
     w.on('unlinkDir', path => {
-        for (let k in encodedFiles) {
-            if (k.startsWith(alignPath(path) + '/')) {
-                encodedFiles[k] = undefined
+        for (let k in urlCache) {
+            if (k.startsWith(base + alignPath(path) + '/')) {
+                urlCache[k] = undefined
             }
         }
     })
-    update(readDir('', cwd(), {}))
+    await update(readDir('', cwd(), {}))
     notifyEnabled = true
     server1.listen(config.port)
     //open(getRootURL())

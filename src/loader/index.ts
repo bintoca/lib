@@ -36,7 +36,7 @@ export const decodeCount = (dv: DataView, state: DecoderState): number => {
     const ai = c & 31
     return decodeInfo(major, ai, dv, state) as number
 }
-export const decodeFile = async (b: BufferSource, freeGlobals: DataView, controlledGlobals: DataView, parentURL: URL, conditions: Set<string>, fs: FileURLSystem): Promise<Uint8Array> => {
+export const decodeFile = async (b: BufferSource, freeGlobals: DataView, controlledGlobals: DataView, parentURL: URL, conditions: Set<string>, fs: FileURLSystem): Promise<{ type: string, data: Uint8Array }> => {
     const state = { position: 0 } as DecoderState
     const dv = bufferSourceToDataView(b)
     if (dv.getUint8(0) >> 5 != 5) {
@@ -52,7 +52,7 @@ export const decodeFile = async (b: BufferSource, freeGlobals: DataView, control
             state.position += 2
         }
         const len = decodeCount(dv, state)
-        return new Uint8Array(dv.buffer, dv.byteOffset + state.position, len)
+        return { type: 'application/octet-stream', data: new Uint8Array(dv.buffer, dv.byteOffset + state.position, len) }
     }
     else if (type == FileType.js) {
         state.position = 3
@@ -317,12 +317,12 @@ export const decodeFile = async (b: BufferSource, freeGlobals: DataView, control
                 }
             }
         }
-        return new Uint8Array(u.buffer, 0, len)
+        return { type: 'text/javascript', data: new Uint8Array(u.buffer, 0, len) }
     }
     else if (type == FileType.error) {
         const m = new Decoder().decode(b)
         const s = 'Error type: ' + m.get(2) + ' Message: ' + m.get(3)
-        return new TextEncoder().encode(s)
+        return { type: 'text/plain', data: new TextEncoder().encode(s) }
     }
     else {
         throw new Error('FileType not implemented ' + type)
@@ -338,9 +338,10 @@ const importResolve = async (u: Uint8Array, len: number, dv: DataView, state: De
         if (s == 'b1') {
             sp = 'bxx'
         }
-        sp = await ESM_RESOLVE(s, parentURL, conditions, fs)
+        else {
+            sp = (await ESM_RESOLVE(s, parentURL, conditions, fs)).pathname
+        }
     }
-
     const spb = new TextEncoder().encode(sp)
     u.set(spb, len)
     return spb.byteLength
@@ -410,8 +411,55 @@ export const exists = (lookup: DataView, dv: DataView, position: number, length:
     }
     return false
 }
-
-export type FileURLSystem = { exists: (path: URL) => Promise<boolean>, read: (path: URL) => Promise<Uint8Array> }
+export const getPackageBreakIndex = (urlpath: string): number => {
+    let index = urlpath.lastIndexOf('/node_modules/')
+    if (index < 0 || index + 14 >= urlpath.length) {
+        return -1
+    }
+    index += 14
+    if (urlpath[index] == '@') {
+        const ni = urlpath.indexOf('/', index)
+        if (ni >= 0) {
+            index = ni + 1
+        }
+        else {
+            return -1
+        }
+    }
+    const ni = urlpath.indexOf('/', index)
+    if (ni >= 0) {
+        index = ni
+    }
+    else {
+        return -1
+    }
+    return index
+}
+export const getCacheKey = (urlpath: string, base: string, shrinkwrap): string => {
+    const index = getPackageBreakIndex(urlpath)
+    if (index == -1) {
+        return undefined
+    }
+    const shrinkwrapPath = urlpath.slice(base.length, index)
+    const pack = shrinkwrap.packages[shrinkwrapPath]
+    if (pack) {
+        return pack.resolved + urlpath.slice(index)
+    }
+    return undefined
+}
+export const getShrinkwrapResolved = (urlpath: string, base: string, shrinkwrap): string => {
+    const index = getPackageBreakIndex(urlpath)
+    if (index == -1) {
+        return undefined
+    }
+    const shrinkwrapPath = urlpath.slice(base.length, index)
+    const pack = shrinkwrap.packages[shrinkwrapPath]
+    if (pack) {
+        return pack.resolved
+    }
+    return undefined
+}
+export type FileURLSystem = { exists: (path: URL) => Promise<boolean>, read: (path: URL, decoded: boolean) => Promise<Uint8Array> }
 export type PackageJSON = { pjsonURL: URL, exists: boolean, main: string, name: string, type: string, exports, imports }
 export const defaultConditions = new Set(['import', 'default'])
 //https://github.com/nodejs/node/blob/master/doc/api/esm.md
@@ -427,7 +475,7 @@ export const READ_PACKAGE_JSON = async (pjsonURL: URL, fs: FileURLSystem): Promi
             imports: undefined,
         }
     }
-    const p = await fs.read(pjsonURL)
+    const p = await fs.read(pjsonURL, true)
     try {
         const obj = JSON.parse(new TextDecoder().decode(p))
         if (typeof obj.imports !== 'object' || obj.imports == null) {
@@ -453,7 +501,7 @@ export const READ_PACKAGE_JSON = async (pjsonURL: URL, fs: FileURLSystem): Promi
         }
     }
     catch (e) {
-        throw new Error('Invalid Package Configuration')
+        throw new Error('Invalid Package Configuration ' + e)
     }
 }
 export const READ_PACKAGE_SCOPE = async (url: URL, fs: FileURLSystem): Promise<PackageJSON> => {
