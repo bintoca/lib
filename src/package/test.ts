@@ -19,7 +19,7 @@ test.each([[{}, '$AAAAA'], [{ '$AAAAA': 1, '$BAAAA': 1, }, '$CAAAA']])('getSubst
 test('parseFiles', async () => {
     const files = await pack.parseTar(tarCreate('pack1'))
     const r = pack.parseFiles(files)
-    expect(r.files['dist/index.js']).toEqual(new Map<number, any>([[1, FileType.js], [2, 1637],
+    expect(r.files['dist/index.js']).toEqual(new Map<number, any>([[1, FileType.js], [2, 2255],
     [4, ['Math', 'Number', 'd2']], [6, "$BAAAA"], [7, "$BAA"],
     [5, [new Map<number, any>([[1, "import * as $eeeee from "], [2, 'es😀d']]), new Map<number, any>([[1, "import { $AAAAA } from "], [2, 'a1']]), new Map<number, any>([[1, "import $bbbbb from "], [2, 'b1']])]],
     [8, [new Map<number, any>([[1, "$AAA"]]), new Map<number, any>([[1, "f"]]), new Map<number, any>([[1, "c"]]), new Map<number, any>([[2, "export { ar }"]]), new Map<number, any>([[2, "export { c1 } from "], [3, 'c1']]),
@@ -30,7 +30,7 @@ test('parseFiles', async () => {
        const $AAA = $BAA
 const ar = () => $BAA
 const $ddddd = Number.EPSILON + Number.MAX_SAFE_INTEGER
-$BAAAA('ss')
+$BAAAA('ss' + $BAAAA.meta.url)
        function f($vvvvv) {
     return this
 }

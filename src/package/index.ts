@@ -146,6 +146,9 @@ export const parseFile = (k: string, b: Buffer): Map<number, any> => {
             },
             ExportAllDeclaration(n) {
                 removeNodes.push(n)
+            },
+            MetaProperty(n) {
+                removeNodes.push(n)
             }
         })
         let position = 0
@@ -168,16 +171,20 @@ export const parseFile = (k: string, b: Buffer): Map<number, any> => {
                 }
                 imports.push(new Map([[1, text.substring(n.start, n.source.start)], [2, specifier]]))
             }
-            else if (n.type == 'ImportExpression') {
+            else if (n.type == 'ImportExpression' || (n.type == 'MetaProperty' && n.meta.name == 'import')) {
                 position = n.start + 6
-                importSubstitute = getSubstituteId(importSuspectIds, 5, '$')
+                if (!importSubstitute) {
+                    importSubstitute = getSubstituteId(importSuspectIds, 5, '$')
+                }
                 if (!importSubstitute) {
                     return new Map<number, any>([[1, FileType.error], [2, ParseFilesError.importSubstitute], [3, k]])
                 }
                 body += importSubstitute
             }
             else if (n.type == 'ThisExpression') {
-                thisSubstitute = getSubstituteId(thisSuspectIds, 3, '$')
+                if (!thisSubstitute) {
+                    thisSubstitute = getSubstituteId(thisSuspectIds, 3, '$')
+                }
                 if (!thisSubstitute) {
                     return new Map<number, any>([[1, FileType.error], [2, ParseFilesError.thisSubstitute], [3, k]])
                 }
@@ -223,6 +230,9 @@ export const parseFile = (k: string, b: Buffer): Map<number, any> => {
                     return new Map<number, any>([[1, FileType.error], [2, ParseFilesError.invalidSpecifier], [3, specifier]])
                 }
                 exports.push(new Map([[2, text.substring(n.start, n.source.start)], [3, specifier]]))
+            }
+            else if (n.type == 'MetaProperty' && n.meta.name == 'import') {
+
             }
         }
         body += text.substring(position)
@@ -387,8 +397,8 @@ export const parseFile = (k: string, b: Buffer): Map<number, any> => {
             });
         }
         glob = glob.filter(x => x.name != 'this').map(x => x.name)
-        const sizeEstimate = imports.map(x => TE.encode(x.get(1)).length + TE.encode(x.get(2)).length + 50)
-            .concat(exports.map(x => TE.encode(x.get(1) || '').length + TE.encode(x.get(2) || '').length + TE.encode(x.get(3) || '').length + TE.encode(x.get(4) || '').length + 50))
+        const sizeEstimate = imports.map(x => TE.encode(x.get(1)).length + TE.encode(x.get(2)).length + 100)
+            .concat(exports.map(x => TE.encode(x.get(1) || '').length + TE.encode(x.get(2) || '').length + TE.encode(x.get(3) || '').length + TE.encode(x.get(4) || '').length + 100))
             .concat(glob.map(x => TE.encode(x).length * 2 + 50)).reduce((a, b) => a + b, 0)
             + (importSubstitute ? 50 : 0) + (thisSubstitute ? 50 : 0) + body.length
         const m = new Map<number, any>([[1, FileType.js], [2, sizeEstimate], [3, body], [4, glob], [5, imports], [6, importSubstitute], [7, thisSubstitute], [8, exports]])

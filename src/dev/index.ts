@@ -4,7 +4,7 @@ import * as path from 'path'
 import open from 'open'
 import { cwd } from 'process';
 import { parseFiles, ParseFilesError, parseTar, getShrinkwrapURLs, cacacheDir } from '@bintoca/package'
-import { encode, decodePackage, decodeFile, createLookup, FileType, defaultConditions, ESM_RESOLVE, getCacheKey, getShrinkwrapResolved, ShrinkwrapPackageDescription } from '@bintoca/loader'
+import { encode, decodePackage, decodeFile, createLookup, FileType, defaultConditions, ESM_RESOLVE, getCacheKey, getShrinkwrapResolved, ShrinkwrapPackageDescription, dynamicImportBase, getDynamicImportModule } from '@bintoca/loader'
 import * as chokidar from 'chokidar'
 import { server as wss } from 'websocket'
 import anymatch from 'anymatch'
@@ -95,6 +95,10 @@ const server1 = http.createServer({}, async (req: http.IncomingMessage, res: htt
                     res.setHeader('Content-Type', 'text/html')
                     res.end('<html><head><meta charset="utf-8"/><meta name="viewport" content="width=device-width, initial-scale=1" /><script>const ws = new WebSocket("ws://localhost:' + config.port + '");ws.onmessage = (ev)=>{window.location.reload()}</script><script type="module" src="' + mod + '"></script></head><body></body></html>')
                 }
+            }
+            else if (req.url.startsWith(dynamicImportBase)) {
+                res.setHeader('Content-Type', 'text/javascript')
+                res.end(getDynamicImportModule(req.url))
             }
             else if (urlCache[req.url]) {
                 loadedFiles[req.url] = 1
@@ -254,6 +258,7 @@ export const init = async () => {
         Object.assign(config, dev.default)
     }
     rl.prompt()
+    log('Loading files...')
     const w = chokidar.watch('.', {
         ignored: config.ignore,
         ignoreInitial: true,
@@ -275,6 +280,7 @@ export const init = async () => {
     //cacache.ls(cacacheDir).then(x => log('ls', x)).catch(x => log('lse', x))
     try {
         await update(readDir('', cwd(), {}))
+        log('Done loading files.')
     }
     catch (e) {
         log(e)

@@ -4,7 +4,7 @@ import $bbbbb from 'b1'
 export const $AAA = this
 const ar = () => this
 const $ddddd = Number.EPSILON + Number.MAX_SAFE_INTEGER
-import('ss')
+import('ss' + import.meta.url)
 export function f($vvvvv) {
     return this
 }

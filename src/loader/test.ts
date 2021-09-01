@@ -9,9 +9,9 @@ test('buffer', async () => {
     const d = decodePackage(cb)
     expect(new TextDecoder().decode((await decodeFile(d.get(1)['p.json'], freeGlobals, controlledGlobals, parentURL, defaultConditions, fs)).data)).toBe('{"a":2}')
 })
-test.each([['const w = 4;          const r=5;', new Map<number, any>([[1, FileType.js], [2, 500], [3, 'const w = 4;          const r=5;']])],
-['const w = 4;          ImporTTHISconst r=5;\nimport Math from"/x/g/Math"\nimport Number from"/x/u"\nimport $bbbbb from "bxx"\nimport ImporT from"/x/i"\nimport THIS from"/x/t"\nexport {b0} from "bxx"\nexport {r}\nexport{r}\nexport default $AA',
-    new Map<number, any>([[1, FileType.js], [2, 500],
+test.each([['const w = 4;          const r=5;', new Map<number, any>([[1, FileType.js], [2, 50], [3, 'const w = 4;          const r=5;']])],
+['const w = 4;          ImporTTHISconst r=5;\nimport Math from"/x/g/Math"\nimport Number from"/x/u"\nimport $bbbbb from "bxx"\nimport ImporT from"/x/i/file%3A%2F%2F%2F"\nimport THIS from"/x/t"\nexport {b0} from "bxx"\nexport {r}\nexport{r}\nexport default $AA',
+    new Map<number, any>([[1, FileType.js], [2, 50],
     [3, 'const w = 4;          ImporTTHISconst r=5;'],
     [4, ['Math', 'Number', 'Free']],
     [5, [new Map<number, any>([[1, "import $bbbbb from "], [2, 'b1']])]], [6, 'ImporT'], [7, 'THIS'],

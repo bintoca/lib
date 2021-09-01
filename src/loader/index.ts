@@ -60,211 +60,237 @@ export const decodeFile = async (b: BufferSource, freeGlobals: DataView, control
             throw new Error('invalid cbor at index ' + state.position)
         }
         state.position++
-        const sizeEstimate = decodeCount(dv, state)
-        const u = new Uint8Array(sizeEstimate)
-        let len = 0
-        if (dv.getUint8(state.position) != 3) {
-            throw new Error('invalid cbor at index ' + state.position)
-        }
-        state.position++
-        const size = decodeCount(dv, state)
-        if (size > 100) {
-            u.set(new Uint8Array(dv.buffer, dv.byteOffset + state.position, size), len)
-        }
-        else {
-            for (let j = 0; j < size; j++) {
-                u[len + j] = dv.getUint8(state.position + j)
+        let sizeEstimate = decodeCount(dv, state)
+        const loopStart = state.position
+        let loop = true
+        let u
+        let len
+        const parentURLencoded = encodeURIComponent(parentURL.href)
+        while (loop) {
+            loop = false
+            state.position = loopStart
+            u = new Uint8Array(sizeEstimate + parentURLencoded.length)
+            len = 0
+            if (dv.getUint8(state.position) != 3) {
+                throw new Error('invalid cbor at index ' + state.position)
             }
-        }
-        state.position += size
-        len += size
-        if (dv.byteLength > state.position && dv.getUint8(state.position) == 4) {
             state.position++
-            const globalCount = decodeCount(dv, state)
-            for (let i = 0; i < globalCount; i++) {
-                const size = decodeCount(dv, state)
-                if (!exists(freeGlobals, dv, state.position, size)) {
-                    u[len++] = 10
-                    u[len++] = 105
-                    u[len++] = 109
-                    u[len++] = 112
-                    u[len++] = 111
-                    u[len++] = 114
-                    u[len++] = 116
-                    u[len++] = 32
-                    for (let j = 0; j < size; j++) {
-                        u[len + j] = dv.getUint8(state.position + j)
-                    }
-                    len += size
-                    u[len++] = 32
-                    u[len++] = 102
-                    u[len++] = 114
-                    u[len++] = 111
-                    u[len++] = 109
-                    u[len++] = 34
-                    u[len++] = 47
-                    u[len++] = 120
-                    u[len++] = 47
-                    if (exists(controlledGlobals, dv, state.position, size)) {
-                        u[len++] = 103
-                        u[len++] = 47
+            const size = decodeCount(dv, state)
+            if (size > 100) {
+                u.set(new Uint8Array(dv.buffer, dv.byteOffset + state.position, size), len)
+            }
+            else {
+                for (let j = 0; j < size; j++) {
+                    u[len + j] = dv.getUint8(state.position + j)
+                }
+            }
+            state.position += size
+            len += size
+            if (dv.byteLength > state.position && dv.getUint8(state.position) == 4) {
+                state.position++
+                const globalCount = decodeCount(dv, state)
+                for (let i = 0; i < globalCount; i++) {
+                    const size = decodeCount(dv, state)
+                    if (!exists(freeGlobals, dv, state.position, size)) {
+                        u[len++] = 10
+                        u[len++] = 105
+                        u[len++] = 109
+                        u[len++] = 112
+                        u[len++] = 111
+                        u[len++] = 114
+                        u[len++] = 116
+                        u[len++] = 32
                         for (let j = 0; j < size; j++) {
                             u[len + j] = dv.getUint8(state.position + j)
                         }
                         len += size
+                        u[len++] = 32
+                        u[len++] = 102
+                        u[len++] = 114
+                        u[len++] = 111
+                        u[len++] = 109
+                        u[len++] = 34
+                        u[len++] = 47
+                        u[len++] = 120
+                        u[len++] = 47
+                        if (exists(controlledGlobals, dv, state.position, size)) {
+                            u[len++] = 103
+                            u[len++] = 47
+                            for (let j = 0; j < size; j++) {
+                                u[len + j] = dv.getUint8(state.position + j)
+                            }
+                            len += size
+                        }
+                        else {
+                            u[len++] = 117
+                        }
+                        u[len++] = 34
                     }
-                    else {
-                        u[len++] = 117
-                    }
-                    u[len++] = 34
+                    state.position += size
                 }
-                state.position += size
             }
-        }
-        if (dv.byteLength > state.position && dv.getUint8(state.position) == 5) {
-            state.position++
-            const importCount = decodeCount(dv, state)
-            for (let i = 0; i < importCount; i++) {
-                state.position += 2
+            if (dv.byteLength > state.position && dv.getUint8(state.position) == 5) {
+                state.position++
+                const importCount = decodeCount(dv, state)
+                for (let i = 0; i < importCount; i++) {
+                    state.position += 2
+                    const size = decodeCount(dv, state)
+                    u[len++] = 10
+                    for (let j = 0; j < size; j++) {
+                        u[len + j] = dv.getUint8(state.position + j)
+                    }
+                    len += size
+                    state.position += size + 1
+                    u[len++] = 34
+                    const specifierSize = decodeCount(dv, state)
+                    const rCount = await importResolve(u, len, dv, state, specifierSize, parentURL, conditions, fs)
+                    if (rCount == -1) {
+                        loop = true
+                        sizeEstimate = sizeEstimate * 2
+                        continue
+                    }
+                    len += rCount
+                    u[len++] = 34
+                    state.position += specifierSize
+                }
+            }
+            if (dv.byteLength > state.position && dv.getUint8(state.position) == 6) {
+                state.position++
                 const size = decodeCount(dv, state)
                 u[len++] = 10
+                u[len++] = 105
+                u[len++] = 109
+                u[len++] = 112
+                u[len++] = 111
+                u[len++] = 114
+                u[len++] = 116
+                u[len++] = 32
                 for (let j = 0; j < size; j++) {
                     u[len + j] = dv.getUint8(state.position + j)
                 }
                 len += size
-                state.position += size + 1
+                state.position += size
+                u[len++] = 32
+                u[len++] = 102
+                u[len++] = 114
+                u[len++] = 111
+                u[len++] = 109
                 u[len++] = 34
-                const specifierSize = decodeCount(dv, state)
-                len += await importResolve(u, len, dv, state, specifierSize, parentURL, conditions, fs)
+                u[len++] = 47
+                u[len++] = 120
+                u[len++] = 47
+                u[len++] = 105
+                u[len++] = 47
+                for (let j = 0; j < parentURLencoded.length; j++) {
+                    u[len + j] = parentURLencoded.charCodeAt(j)
+                }
+                len += parentURLencoded.length
                 u[len++] = 34
-                state.position += specifierSize
             }
-        }
-        if (dv.byteLength > state.position && dv.getUint8(state.position) == 6) {
-            state.position++
-            const size = decodeCount(dv, state)
-            u[len++] = 10
-            u[len++] = 105
-            u[len++] = 109
-            u[len++] = 112
-            u[len++] = 111
-            u[len++] = 114
-            u[len++] = 116
-            u[len++] = 32
-            for (let j = 0; j < size; j++) {
-                u[len + j] = dv.getUint8(state.position + j)
-            }
-            len += size
-            state.position += size
-            u[len++] = 32
-            u[len++] = 102
-            u[len++] = 114
-            u[len++] = 111
-            u[len++] = 109
-            u[len++] = 34
-            u[len++] = 47
-            u[len++] = 120
-            u[len++] = 47
-            u[len++] = 105
-            u[len++] = 34
-        }
-        if (dv.byteLength > state.position && dv.getUint8(state.position) == 7) {
-            state.position++
-            const size = decodeCount(dv, state)
-            u[len++] = 10
-            u[len++] = 105
-            u[len++] = 109
-            u[len++] = 112
-            u[len++] = 111
-            u[len++] = 114
-            u[len++] = 116
-            u[len++] = 32
-            for (let j = 0; j < size; j++) {
-                u[len + j] = dv.getUint8(state.position + j)
-            }
-            len += size
-            state.position += size
-            u[len++] = 32
-            u[len++] = 102
-            u[len++] = 114
-            u[len++] = 111
-            u[len++] = 109
-            u[len++] = 34
-            u[len++] = 47
-            u[len++] = 120
-            u[len++] = 47
-            u[len++] = 116
-            u[len++] = 34
-        }
-        if (dv.byteLength > state.position && dv.getUint8(state.position) == 8) {
-            state.position++
-            const exportCount = decodeCount(dv, state)
-            for (let i = 0; i < exportCount; i++) {
-                const mapCount = dv.getUint8(state.position) & 31
+            if (dv.byteLength > state.position && dv.getUint8(state.position) == 7) {
                 state.position++
-                const type = dv.getUint8(state.position)
+                const size = decodeCount(dv, state)
+                u[len++] = 10
+                u[len++] = 105
+                u[len++] = 109
+                u[len++] = 112
+                u[len++] = 111
+                u[len++] = 114
+                u[len++] = 116
+                u[len++] = 32
+                for (let j = 0; j < size; j++) {
+                    u[len + j] = dv.getUint8(state.position + j)
+                }
+                len += size
+                state.position += size
+                u[len++] = 32
+                u[len++] = 102
+                u[len++] = 114
+                u[len++] = 111
+                u[len++] = 109
+                u[len++] = 34
+                u[len++] = 47
+                u[len++] = 120
+                u[len++] = 47
+                u[len++] = 116
+                u[len++] = 34
+            }
+            if (dv.byteLength > state.position && dv.getUint8(state.position) == 8) {
                 state.position++
-                if (type == 1) {
-                    const size = decodeCount(dv, state)
-                    u[len++] = 10
-                    u[len++] = 101
-                    u[len++] = 120
-                    u[len++] = 112
-                    u[len++] = 111
-                    u[len++] = 114
-                    u[len++] = 116
-                    u[len++] = 123
-                    for (let j = 0; j < size; j++) {
-                        u[len + j] = dv.getUint8(state.position + j)
+                const exportCount = decodeCount(dv, state)
+                for (let i = 0; i < exportCount; i++) {
+                    const mapCount = dv.getUint8(state.position) & 31
+                    state.position++
+                    const type = dv.getUint8(state.position)
+                    state.position++
+                    if (type == 1) {
+                        const size = decodeCount(dv, state)
+                        u[len++] = 10
+                        u[len++] = 101
+                        u[len++] = 120
+                        u[len++] = 112
+                        u[len++] = 111
+                        u[len++] = 114
+                        u[len++] = 116
+                        u[len++] = 123
+                        for (let j = 0; j < size; j++) {
+                            u[len + j] = dv.getUint8(state.position + j)
+                        }
+                        len += size
+                        state.position += size
+                        u[len++] = 125
                     }
-                    len += size
-                    state.position += size
-                    u[len++] = 125
-                }
-                else if (type == 4) {
-                    const size = decodeCount(dv, state)
-                    u[len++] = 10
-                    u[len++] = 101
-                    u[len++] = 120
-                    u[len++] = 112
-                    u[len++] = 111
-                    u[len++] = 114
-                    u[len++] = 116
-                    u[len++] = 32
-                    u[len++] = 100
-                    u[len++] = 101
-                    u[len++] = 102
-                    u[len++] = 97
-                    u[len++] = 117
-                    u[len++] = 108
-                    u[len++] = 116
-                    u[len++] = 32
-                    for (let j = 0; j < size; j++) {
-                        u[len + j] = dv.getUint8(state.position + j)
+                    else if (type == 4) {
+                        const size = decodeCount(dv, state)
+                        u[len++] = 10
+                        u[len++] = 101
+                        u[len++] = 120
+                        u[len++] = 112
+                        u[len++] = 111
+                        u[len++] = 114
+                        u[len++] = 116
+                        u[len++] = 32
+                        u[len++] = 100
+                        u[len++] = 101
+                        u[len++] = 102
+                        u[len++] = 97
+                        u[len++] = 117
+                        u[len++] = 108
+                        u[len++] = 116
+                        u[len++] = 32
+                        for (let j = 0; j < size; j++) {
+                            u[len + j] = dv.getUint8(state.position + j)
+                        }
+                        len += size
+                        state.position += size
                     }
-                    len += size
-                    state.position += size
-                }
-                else {
-                    const size = decodeCount(dv, state)
-                    u[len++] = 10
-                    for (let j = 0; j < size; j++) {
-                        u[len + j] = dv.getUint8(state.position + j)
-                    }
-                    len += size
-                    state.position += size
-                    if (mapCount == 2) {
-                        state.position++
-                        u[len++] = 34
-                        const specifierSize = decodeCount(dv, state)
-                        len += await importResolve(u, len, dv, state, specifierSize, parentURL, conditions, fs)
-                        u[len++] = 34
-                        state.position += specifierSize
+                    else {
+                        const size = decodeCount(dv, state)
+                        u[len++] = 10
+                        for (let j = 0; j < size; j++) {
+                            u[len + j] = dv.getUint8(state.position + j)
+                        }
+                        len += size
+                        state.position += size
+                        if (mapCount == 2) {
+                            state.position++
+                            u[len++] = 34
+                            const specifierSize = decodeCount(dv, state)
+                            const rCount = await importResolve(u, len, dv, state, specifierSize, parentURL, conditions, fs)
+                            if (rCount == -1) {
+                                loop = true
+                                sizeEstimate = sizeEstimate * 2
+                                continue
+                            }
+                            len += rCount
+                            u[len++] = 34
+                            state.position += specifierSize
+                        }
                     }
                 }
             }
         }
-        if(state.position != dv.byteLength){
+        if (state.position != dv.byteLength) {
             throw new Error('cbor not fully consumed')
         }
         return { type: 'text/javascript', data: new Uint8Array(u.buffer, 0, len) }
@@ -277,6 +303,10 @@ export const decodeFile = async (b: BufferSource, freeGlobals: DataView, control
     else {
         throw new Error('FileType not implemented ' + type)
     }
+}
+export const dynamicImportBase = '/x/i/'
+export const getDynamicImportModule = (urlpath: string): string => {
+    return 'function imp(){};imp.meta={url:"' + decodeURIComponent(urlpath.slice(dynamicImportBase.length)) + '"};export default imp'
 }
 const importResolve = async (u: Uint8Array, len: number, dv: DataView, state: DecoderState, size: number, parentURL: URL, conditions: Set<string>, fs: FileURLSystem): Promise<number> => {
     const s = TD.decode(bufferSourceToUint8Array(dv, state.position, size))
@@ -293,6 +323,9 @@ const importResolve = async (u: Uint8Array, len: number, dv: DataView, state: De
         }
     }
     const spb = new TextEncoder().encode(sp)
+    if (u.byteLength - len - spb.byteLength < 100) {
+        return -1
+    }
     u.set(spb, len)
     return spb.byteLength
 }
