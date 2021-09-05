@@ -3,15 +3,15 @@ import cachedir from 'cachedir'
 import * as acorn from 'acorn'
 import glo from 'acorn-globals'
 import * as walk from 'acorn-walk'
-import { ChunkType, FileType, ShrinkwrapPackageDescription } from '@bintoca/loader'
+import { FileType, ShrinkwrapPackageDescription, Update } from '@bintoca/loader'
 import path from 'path'
 const TD = new TextDecoder()
 const TE = new TextEncoder()
 
 export const cacacheDir = path.join(cachedir('bintoca'), '_cacache')
-export async function parseTar(t: NodeJS.ReadableStream): Promise<{ [k: string]: Buffer }> {
+export async function parseTar(t: NodeJS.ReadableStream): Promise<Update> {
     return new Promise((resolve, reject) => {
-        const files = {}
+        const files: Update = {}
         const p: tar.ParseStream = new (tar.Parse as any)()
         const ent = (e: tar.ReadEntry) => {
             const fn = e.path.substring(e.path.indexOf('/') + 1)
@@ -21,7 +21,7 @@ export async function parseTar(t: NodeJS.ReadableStream): Promise<{ [k: string]:
             })
             e.on('end', () => {
                 if (fn && !fn.endsWith('/')) {
-                    files[fn] = Buffer.concat(chunks)
+                    files[fn] = { action: 'add', buffer: Buffer.concat(chunks) }
                 }
             })
         }
@@ -62,10 +62,12 @@ export const enum ParseFilesError {
 }
 export const thisScopes = ['FunctionDeclaration', 'FunctionExpression', 'ClassDeclaration', 'ClassExpression']
 export const isSpecifierInvalid = (file: string, specifier: string): boolean => (specifier.startsWith('.') && !specifier.startsWith('./') && !specifier.startsWith('../')) || !new URL(specifier, 'http://x/x/' + file).href.startsWith('http://x/x/') || !new URL(specifier, 'http://y/y/' + file).href.startsWith('http://y/y/')
-export const parseFiles = (files: { [k: string]: Buffer }): { files: { [k: string]: Map<number, any> } } => {
+export const parseFiles = (files: Update): { files: { [k: string]: Map<number, any> } } => {
     const r = { files: {} }
     for (let k in files) {
-        r.files[k] = parseFile(k, files[k])
+        if (files[k].action != 'remove') {
+            r.files[k] = parseFile(k, files[k].buffer)
+        }
     }
     return r
 }

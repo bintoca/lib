@@ -22,7 +22,7 @@
   },
   "homepage": "https://github.com/bintoca/lib#readme",
   "devDependencies": {
-    "@types/jest": "26.0.23",
+    "@types/jest": "^27.0.0",
     "@types/node": "^16.6.1",
     "@types/tar": "^4.0.5",
     "acorn": "^8.4.1",

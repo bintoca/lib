@@ -1,4 +1,4 @@
-import { ChunkType, FileType, encode, decodePackage, decodeFile, createLookup, exists, FileURLSystem, defaultConditions, getPackageBreakIndex } from '@bintoca/loader'
+import { FileType, encode, decodePackage, decodeFile, createLookup, exists, FileURLSystem, defaultConditions, getPackageBreakIndex } from '@bintoca/loader'
 
 const freeGlobals = createLookup(['Free'])
 const controlledGlobals = createLookup(['Math'])
@@ -38,7 +38,7 @@ const repeat = (d, n) => {
     }
     return a
 }
-const sizeEstimate = (chunks, imports, glob) => chunks.map(x => typeof x == 'string' ? new TextEncoder().encode(x).length : x.get(1) == ChunkType.Placeholder ? x.get(2) : x.get(1) == ChunkType.Import ? 6 : x.get(1) == ChunkType.This ? 4 : 0)
+const sizeEstimate = (chunks, imports, glob) => chunks.map(x => typeof x == 'string' ? new TextEncoder().encode(x).length : 0)
     .concat(imports.map(x => new TextEncoder().encode(x.get(1)).length + new TextEncoder().encode(x.get(2)).length + 50)).concat(glob.map(x => new TextEncoder().encode(x).length * 2 + 50)).reduce((a, b) => a + b, 0)
 const testFile = (chunks, imports, glob) => decodePackage(encode({ files: { 'p.js': new Map<number, any>([[1, FileType.js], [2, sizeEstimate(chunks, imports, glob)], [3, chunks], [4, glob], [5, imports]]) } })).get(1)['p.js']
 const bench = (n, f, d) => {

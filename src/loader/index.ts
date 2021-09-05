@@ -7,11 +7,6 @@ export const enum FileType {
     js = 2,
     error = 3,
 }
-export const enum ChunkType {
-    Placeholder = 1,
-    Import = 2,
-    This = 3
-}
 export const encode = (p: { files: {} }): Uint8Array => {
     const en = new Encoder({ omitMapTag: true })
     for (let k in p.files) {
@@ -305,9 +300,15 @@ export const decodeFile = async (b: BufferSource, freeGlobals: DataView, control
     }
 }
 export const dynamicImportBase = '/x/i/'
-export const getDynamicImportModule = (urlpath: string): string => {
-    return 'function imp(){};imp.meta={url:"' + decodeURIComponent(urlpath.slice(dynamicImportBase.length)) + '"};export default imp'
+export const reloadBase = '/x/h/'
+export const getDynamicImportModule = (urlpath: string, hot: boolean): string => {
+    const url = decodeURIComponent(urlpath.slice(dynamicImportBase.length)).replace(/"/g, '\\"')
+    const meta = 'imp.meta.url="' + url + '";' +
+        (hot ? 'imp.meta.server=self.metaServer;' : '')
+    return 'function imp(){};imp.meta=Object.create(null);' + meta + ';export default imp'
 }
+export type Update = { [k: string]: { action: UpdateActions, buffer: Buffer } }
+export type UpdateActions = 'add' | 'change' | 'remove'
 const importResolve = async (u: Uint8Array, len: number, dv: DataView, state: DecoderState, size: number, parentURL: URL, conditions: Set<string>, fs: FileURLSystem): Promise<number> => {
     const s = TD.decode(bufferSourceToUint8Array(dv, state.position, size))
     let sp
