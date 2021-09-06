@@ -3,14 +3,18 @@ import * as fs from 'fs'
 import * as path from 'path'
 import open from 'open'
 import { cwd } from 'process';
-import { parseFiles, ParseFilesError, parseTar, getShrinkwrapURLs, cacacheDir } from '@bintoca/package'
-import { encode, decodePackage, decodeFile, createLookup, FileType, defaultConditions, ESM_RESOLVE, getCacheKey, getShrinkwrapResolved, ShrinkwrapPackageDescription, dynamicImportBase, getDynamicImportModule, reloadBase, Update, FileURLSystem } from '@bintoca/loader'
+import {
+    parseFiles, ParseFilesError, getShrinkwrapURLs, encode, decodePackage, decodeFile, createLookup, FileType, defaultConditions, ESM_RESOLVE, getCacheKey,
+    getShrinkwrapResolved, ShrinkwrapPackageDescription, dynamicImportBase, getDynamicImportModule, reloadBase, Update, FileURLSystem, getManifest
+} from '@bintoca/package'
 import * as chokidar from 'chokidar'
 import { server as wss } from 'websocket'
 import anymatch from 'anymatch'
 import * as readline from 'readline'
 import pacote from 'pacote'
 import cacache from 'cacache'
+import tar from 'tar'
+import cachedir from 'cachedir'
 
 const TD = new TextDecoder()
 export const base = '/x/p/'
@@ -25,8 +29,9 @@ export const defaultConfig: Config = {
 }
 export const freeGlobals = createLookup(['window', 'document', 'console', 'Array', 'BigInt', 'Infinity', 'Object', 'RegExp', 'String', 'Symbol', 'SyntaxError', 'parseFloat', 'parseInt'])
 export const controlledGlobals = createLookup([])
-export const getFileURLSystem = (state: State): FileURLSystem => {
-    return {
+export const reset = (state: State) => {
+    state.urlCache = {}
+    state.fileURLSystem = {
         exists: async (p: URL) => {
             if (!p.pathname.startsWith(base)) {
                 return false
@@ -35,26 +40,56 @@ export const getFileURLSystem = (state: State): FileURLSystem => {
                 const key = getCacheKey(p.pathname, base, state.shrinkwrap)
                 return key ? await cacache.get.info(cacacheDir, key) != null : false
             }
-            return state.urlCache[p.pathname] !== undefined
+            return state.fileCache[p.pathname] !== undefined
         },
         read: async (p: URL, decoded: boolean) => {
+            let r
             if (p.pathname.startsWith(base + 'node_modules/')) {
-                let r
                 try {
-                    r = await cacache.get(cacacheDir, getCacheKey(p.pathname, base, state.shrinkwrap))
+                    r = (await cacache.get(cacacheDir, getCacheKey(p.pathname, base, state.shrinkwrap))).data
                 }
                 catch (e) {
-                    optimizePackage(getShrinkwrapResolved(p.pathname, base, state.shrinkwrap))
-                    r = await cacache.get(cacacheDir, getCacheKey(p.pathname, base, state.shrinkwrap))
+                    optimizePackage(getShrinkwrapResolved(p.pathname, base, state.shrinkwrap), state)
+                    r = (await cacache.get(cacacheDir, getCacheKey(p.pathname, base, state.shrinkwrap))).data
                 }
-                return decoded ? (await decodeFile(r.data, freeGlobals, controlledGlobals, null, defaultConditions, { exists: null, read: null })).data : r.data
             }
-            return state.urlCache[p.pathname].data
-        }
+            else {
+                r = state.fileCache[p.pathname]
+            }
+            return decoded ? (await decodeFile(r, null, null, null, null, null)).data : r
+        },
+        jsonCache: {}
     }
 }
 export type Config = { hostname: string, port: number, ignore, awaitWriteFinish, open: boolean, watch: boolean, configFile }
-export type State = { urlCache, shrinkwrap, packageJSON, wsConnections: any[], config: Config }
+export type State = { urlCache, fileCache, fileURLSystem: FileURLSystem, readlineInterface: readline.Interface, shrinkwrap, packageJSON, wsConnections: any[], config: Config }
+export const cacacheDir = path.join(cachedir('bintoca'), '_cacache')
+export const parseTar = async (t: NodeJS.ReadableStream): Promise<Update> => {
+    return new Promise((resolve, reject) => {
+        const files: Update = {}
+        const p: tar.ParseStream = new (tar.Parse as any)()
+        const ent = (e: tar.ReadEntry) => {
+            const fn = e.path.substring(e.path.indexOf('/') + 1)
+            let chunks = []
+            e.on('data', d => {
+                chunks.push(d)
+            })
+            e.on('end', () => {
+                if (fn && !fn.endsWith('/')) {
+                    files[fn] = { action: 'add', buffer: Buffer.concat(chunks) }
+                }
+            })
+        }
+        p.on('entry', ent)
+        p.on('end', () => {
+            resolve(files)
+        })
+        t.on('error', er => {
+            reject(er)
+        })
+        t.pipe(p)
+    })
+}
 export const httpHandler = async (req: http.IncomingMessage, res: http.ServerResponse, state: State) => {
     let chunks: Buffer[] = []
     req.on('data', (c: Buffer) => {
@@ -62,7 +97,6 @@ export const httpHandler = async (req: http.IncomingMessage, res: http.ServerRes
     })
     req.on('end', async () => {
         try {
-            const fus = getFileURLSystem(state)
             if (req.url == '/') {
                 let mod
                 let err
@@ -83,7 +117,7 @@ export const httpHandler = async (req: http.IncomingMessage, res: http.ServerRes
                         err = 'npm-shrinkwrap.json lockfileVersion 2 (npm 7) required'
                     }
                     else {
-                        mod = await ESM_RESOLVE(state.packageJSON.name, new URL(base, getRootURL(state)), defaultConditions, fus)
+                        mod = await ESM_RESOLVE(state.packageJSON.name, new URL(base, getRootURL(state)), defaultConditions, state.fileURLSystem)
                     }
                 }
                 if (err) {
@@ -119,8 +153,8 @@ export const httpHandler = async (req: http.IncomingMessage, res: http.ServerRes
                 res.setHeader('Content-Type', u.type)
                 res.end(Buffer.from(u.data))
             }
-            else if (await fus.exists(new URL(req.url, getRootURL(state)))) {
-                const u = await decodeFile(await fus.read(new URL(req.url, getRootURL(state)), false), freeGlobals, controlledGlobals, new URL(req.url, getRootURL(state)), defaultConditions, fus)
+            else if (await state.fileURLSystem.exists(new URL(req.url, getRootURL(state)))) {
+                const u = await decodeFile(await state.fileURLSystem.read(new URL(req.url, getRootURL(state)), false), freeGlobals, controlledGlobals, new URL(req.url, getRootURL(state)), defaultConditions, state.fileURLSystem)
                 state.urlCache[req.url] = u
                 res.setHeader('Content-Type', u.type)
                 res.end(Buffer.from(u.data))
@@ -132,7 +166,7 @@ export const httpHandler = async (req: http.IncomingMessage, res: http.ServerRes
         }
         catch (e) {
             res.statusCode = 500
-            log(e)
+            log(state, e)
             res.end()
         }
     })
@@ -169,7 +203,7 @@ export const notify = (updates, state: State) => {
         x.sendUTF(JSON.stringify({ type: 'update', data: { base: new URL(base, getRootURL(state)).href, baseReload: new URL(reloadBase, getRootURL(state)).href, updates } }))
     }
 }
-export const checkParsed = (parsed: { files: { [k: string]: Map<number, any> } }, prefix: string): boolean => {
+export const checkParsed = (parsed: { files: { [k: string]: Map<number, any> } }, prefix: string, state: State): boolean => {
     if (prefix) {
         prefix += '/'
     }
@@ -180,32 +214,33 @@ export const checkParsed = (parsed: { files: { [k: string]: Map<number, any> } }
             r = false
             const type = m.get(2)
             if (type == ParseFilesError.syntax) {
-                log('File: ' + prefix + x, 'Syntax error: ' + m.get(3))
+                log(state, 'File: ' + prefix + x, 'Syntax error: ' + m.get(3))
             }
             else if (type == ParseFilesError.invalidSpecifier) {
-                log('File: ' + prefix + x, 'Invalid import specifier: ' + m.get(3))
+                log(state, 'File: ' + prefix + x, 'Invalid import specifier: ' + m.get(3))
             }
             else {
-                log('File: ' + prefix + x, 'Error type: ' + m.get(2), 'Message: ' + m.get(3))
+                log(state, 'File: ' + prefix + x, 'Error type: ' + m.get(2), 'Message: ' + m.get(3))
             }
         }
     }
     return r
 }
-export const optimizePackage = async (x: ShrinkwrapPackageDescription) => {
+export const optimizePackage = async (x: ShrinkwrapPackageDescription, state: State) => {
     try {
         const prefix = x.resolved.substring(x.resolved.lastIndexOf('/') + 1)
-        log('Optimizing:', prefix)
+        log(state, 'Optimizing:', prefix)
         const parsed = parseFiles(await pacote.tarball.stream(x.resolved, parseTar))
-        if (checkParsed(parsed, prefix)) {
+        if (checkParsed(parsed, prefix, state)) {
             const enc = decodePackage(encode(parsed)).get(1)
             for (let k in enc) {
-                await cacache.put(cacacheDir, x.resolved + '/' + k, enc[k])
+                await cacache.put(cacacheDir, x.resolved + '/files/' + k, enc[k])
             }
+            await cacache.put(cacacheDir, x.resolved + '/manifest', getManifest(enc))
         }
     }
     catch (e) {
-        log('Error optimizing package', e)
+        log(state, 'Error optimizing package', e)
     }
 }
 export const update = async (f: Update, state: State) => {
@@ -217,48 +252,52 @@ export const update = async (f: Update, state: State) => {
             }
         }
         catch (e) {
-            log('Invalid package.json', e)
+            log(state, 'Invalid package.json', e)
         }
     }
     if (f['npm-shrinkwrap.json']) {
         try {
             state.shrinkwrap = undefined
-            state.urlCache = {}
+            reset(state)
             if (f['npm-shrinkwrap.json'].action != 'remove') {
                 state.shrinkwrap = JSON.parse(TD.decode(f['npm-shrinkwrap.json'].buffer))
                 for (let x of getShrinkwrapURLs(state.shrinkwrap)) {
                     if (!await cacache.get.info(cacacheDir, x.resolved + '/package.json')) {
-                        await optimizePackage(x)
+                        await optimizePackage(x, state)
                     }
                 }
             }
         }
         catch (e) {
-            log('Invalid npm-shrinkwrap.json', e)
+            log(state, 'Invalid npm-shrinkwrap.json', e)
         }
     }
     const parsed = parseFiles(f)
-    checkParsed(parsed, '')
+    checkParsed(parsed, '', state)
     const enc = decodePackage(encode(parsed)).get(1)
     for (let x in enc) {
         const url = base + alignPath(x)
-        state.urlCache[url] = await decodeFile(enc[x], freeGlobals, controlledGlobals, new URL(url, getRootURL(state)), defaultConditions, getFileURLSystem(state))
+        state.fileCache[url] = enc[x]
+        state.urlCache[url] = undefined
     }
     const notif = {}
     for (let k in f) {
-        const url = new URL(base + alignPath(k), getRootURL(state)).href
-        notif[url] = { action: f[k].action }
+        const url = new URL(base + alignPath(k), getRootURL(state))
+        notif[url.href] = { action: f[k].action }
         if (f[k].action == 'remove') {
-            state.urlCache[url] = undefined
+            state.fileCache[url.pathname] = undefined
+            state.urlCache[url.pathname] = undefined
+        }
+        if (url.href.endsWith('package.json')) {
+            reset(state)
         }
     }
     notify(notif, state)
 }
 export const alignPath = (s) => s.replace(/\\/g, '/')
-export const readlineInterface = readline.createInterface({ input: process.stdin, output: process.stdout, prompt: 'DEV> ' })
-export const readlineHandler = line => {
+export const readlineHandler = (line, state: State) => {
     if (line.trim() == 'clear cache') {
-        cacache.rm.all(cacacheDir).then(x => log('Cache cleared successfully')).catch(x => log(x))
+        cacache.rm.all(cacacheDir).then(x => log(state, 'Cache cleared successfully')).catch(x => log(x))
     }
     else if (line.trim() == 'help' || line.trim() == 'h' || line.trim() == '?') {
         console.log('Commands:')
@@ -272,11 +311,11 @@ export const readlineHandler = line => {
     else {
         console.log('Unknown command "' + line + '"')
     }
-    readlineInterface.prompt()
+    state.readlineInterface.prompt()
 }
-export const log = (...x) => {
+export const log = (state: State, ...x) => {
     console.log(...x)
-    readlineInterface.prompt()
+    state.readlineInterface.prompt()
 }
 export const watch = (state: State) => {
     const w = chokidar.watch('.', {
@@ -285,7 +324,7 @@ export const watch = (state: State) => {
         awaitWriteFinish: state.config.awaitWriteFinish
     })
     //w.on('ready', () => log(w.getWatched(), config))
-    w.on('error', er => log('Watcher error', er))
+    w.on('error', er => log(state, 'Watcher error', er))
     w.on('add', path => { update({ [path]: { action: 'add', buffer: fs.readFileSync(path) } }, state) })
     w.on('addDir', path => { update(readDir(path, cwd(), {}, state), state) })
     w.on('change', path => { update({ [path]: { action: 'change', buffer: fs.readFileSync(path) } }, state) })
@@ -306,17 +345,21 @@ export const applyConfigFile = async (state: State) => {
         Object.assign(state.config, dev.default)
     }
 }
-export const init = async (st?: State) => {
-    const state = st || { urlCache: {}, wsConnections: [], shrinkwrap: undefined, packageJSON: undefined, config: defaultConfig }
+export const init = async (config?: Config) => {
+    const state = {
+        urlCache: {}, fileCache: {}, fileURLSystem: null, wsConnections: [], shrinkwrap: undefined, packageJSON: undefined,
+        readlineInterface: readline.createInterface({ input: process.stdin, output: process.stdout, prompt: 'DEV> ' }),
+        config: config || Object.assign({}, defaultConfig)
+    }
     if (state.config.configFile) {
         await applyConfigFile(state)
     }
-    readlineInterface.prompt()
-    log('Loading files...')
+    state.readlineInterface.prompt()
+    log(state, 'Loading files...')
     //cacache.ls(cacacheDir).then(x => log('ls', x)).catch(x => log('lse', x))
     try {
         await update(readDir('', cwd(), {}, state), state)
-        log('Done loading files.')
+        log(state, 'Done loading files.')
     }
     catch (e) {
         log(e)
@@ -328,7 +371,7 @@ export const init = async (st?: State) => {
     if (state.config.open) {
         open(getRootURL(state))
     }
-    readlineInterface.on('line', readlineHandler)
+    state.readlineInterface.on('line', line => readlineHandler(line, state))
     if (state.config.watch) {
         watch(state)
     }
