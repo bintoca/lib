@@ -1,4 +1,4 @@
-import { ParseFilesError, getSubstituteId, getSubstituteIdCore, parseFile, parseFiles, createLookup, encode, decodePackage, decodeFile, defaultConditions, exists, getPackageBreakIndex, FileType, Update } from '@bintoca/package'
+import { ParseFilesError, getSubstituteId, getSubstituteIdCore, parseFile, parseFiles, createLookup, encodePackage, encodeFile, decodePackage, decodeFile, defaultConditions, exists, getPackageBreakIndex, FileType, Update, packageBase } from '@bintoca/package'
 import { readFileSync } from 'fs'
 
 test.each([[0, '$AAAAA'], [1, '$BAAAA'], [63, '$$AAAA'], [64, '$ABAAA'], [4095, '$$$AAA'], [4096, '$AABAA'], [262143, '$$$$AA'], [262144, '$AAABA'], [16777215, '$$$$$A'], [16777216, '$AAAAB'], [1073741823, '$$$$$$']])('getSubstitueIdCore(%i)', (a, e) => {
@@ -62,24 +62,32 @@ test.each([['import a from "/x"', new Map<number, any>([[1, FileType.error], [2,
 })
 const freeGlobals = createLookup(['Free'])
 const controlledGlobals = createLookup(['Math'])
-const parentURL = new URL('file://')
-const fs = { exists: null, read: null, jsonCache: null }
-test('buffer', async () => {
-    const cb = encode({ files: { 'p.json': new Map<number, any>([[1, FileType.buffer], [2, new TextEncoder().encode('{"a":2}')]]) } })
-    const d = decodePackage(cb)
-    expect(new TextDecoder().decode((await decodeFile(d.get(1)['p.json'], freeGlobals, controlledGlobals, parentURL, defaultConditions, fs)).data)).toBe('{"a":2}')
+const parentURL = new URL('file:///a.mjs')
+const fs = { exists: async (u: URL) => u.href == parentURL.href, read: null, jsonCache: {} }
+test('decodeFile buffer', async () => {
+    const cb = encodeFile(new Map<number, any>([[1, FileType.buffer], [2, new TextEncoder().encode('{"a":2}')]]))
+    expect(new TextDecoder().decode((await decodeFile(cb, freeGlobals, controlledGlobals, parentURL, defaultConditions, fs)).data)).toBe('{"a":2}')
 })
-test.each([['const w = 4;          const r=5;', new Map<number, any>([[1, FileType.js], [2, 50], [3, 'const w = 4;          const r=5;']])],
-['const w = 4;          ImporTTHISconst r=5;\nimport Math from"/x/g/Math"\nimport Number from"/x/u"\nimport $bbbbb from "bxx"\nimport ImporT from"/x/i/file%3A%2F%2F%2F"\nimport THIS from"/x/t"\nexport {b0} from "bxx"\nexport {r}\nexport{r}\nexport default $AA',
+const testPath = encodeURIComponent(new URL('./index.ts', import.meta.url).href)
+test('decodeFile cjs', async () => {
+    const cb = encodeFile(new Map<number, any>([[1, FileType.js], [2, 50], [3, 'const a = 2']]))
+    expect(new TextDecoder().decode((await decodeFile(cb, freeGlobals, controlledGlobals, new URL('file://' + packageBase + 'a.cjs'), defaultConditions, fs)).data))
+        .toBe('import "/x/pc";import{cjsExec}from"/x/a/' + testPath + '";export default cjsExec("file:///x/p/a.cjs");')
+})
+test.each([['const w = 4;          const r=5;',
+    'import{cjsRegister as s3jY8Nt5dO3xokuh194BF}from"/x/a/' + testPath + '";s3jY8Nt5dO3xokuh194BF(function (module,exports,require,__dirname,__filename,s3jY8Nt5dO3xokuh194BF){const w = 4;          const r=5;},"file:///a.cjs");'
+    , new Map<number, any>([[1, FileType.js], [2, 50], [3, 'const w = 4;          const r=5;']])],
+['const w = 4;          ImporTTHISconst r=5;\nimport Math from"/x/g/Math"\nimport Number from"/x/u"\nimport $bbbbb from "bxx"\nimport ImporT from"/x/i/file%3A%2F%2F%2Fa.mjs"\nimport THIS from"/x/t"\nexport {b0} from "bxx"\nexport {r}\nexport{r}\nexport default $AA',
+    'import{cjsRegister as s3jY8Nt5dO3xokuh194BF}from"/x/a/' + testPath + '";s3jY8Nt5dO3xokuh194BF(function (module,exports,require,__dirname,__filename,s3jY8Nt5dO3xokuh194BF){const w = 4;          ImporTTHISconst r=5;},"file:///a.cjs");\nimport Math from"/x/g/Math"\nimport Number from"/x/u"',
     new Map<number, any>([[1, FileType.js], [2, 50],
     [3, 'const w = 4;          ImporTTHISconst r=5;'],
     [4, ['Math', 'Number', 'Free']],
     [5, [new Map<number, any>([[1, "import $bbbbb from "], [2, 'b1']])]], [6, 'ImporT'], [7, 'THIS'],
     [8, [new Map<number, any>([[2, "export {b0} from "], [3, 'b1']]), new Map<number, any>([[2, "export {r}"]]), new Map<number, any>([[1, "r"]]), new Map<number, any>([[4, "$AA"]])]]
-    ])]])('js', async (a, b) => {
-        const cb = encode({ files: { 'p.js': b } })
-        const d = decodePackage(cb)
-        expect(new TextDecoder().decode((await decodeFile(d.get(1)['p.js'], freeGlobals, controlledGlobals, parentURL, defaultConditions, fs)).data)).toBe(a)
+    ])]])('decodeFile js', async (a, c, b) => {
+        const cb = encodeFile(b)
+        expect(new TextDecoder().decode((await decodeFile(cb, freeGlobals, controlledGlobals, parentURL, defaultConditions, fs)).data)).toBe(a)
+        expect(new TextDecoder().decode((await decodeFile(cb, freeGlobals, controlledGlobals, new URL('file:///a.cjs'), defaultConditions, fs)).data)).toBe(c)
     })
 test('createLookup', () => {
     expect(new Uint8Array(createLookup(['hey', 'dude']).buffer)).toEqual(new Uint8Array([0, 0, 0, 2, 100, 0, 0, 12, 104, 0, 0, 17, 4, 100, 117, 100, 101, 3, 104, 101, 121]))
@@ -100,7 +108,7 @@ const repeat = (d, n) => {
 }
 const sizeEstimate = (chunks, imports, glob) => chunks.map(x => typeof x == 'string' ? new TextEncoder().encode(x).length : 0)
     .concat(imports.map(x => new TextEncoder().encode(x.get(1)).length + new TextEncoder().encode(x.get(2)).length + 50)).concat(glob.map(x => new TextEncoder().encode(x).length * 2 + 50)).reduce((a, b) => a + b, 0)
-const testFile = (chunks, imports, glob) => decodePackage(encode({ files: { 'p.js': new Map<number, any>([[1, FileType.js], [2, sizeEstimate(chunks, imports, glob)], [3, chunks], [4, glob], [5, imports]]) } })).get(1)['p.js']
+const testFile = (chunks, imports, glob) => decodePackage(encodePackage({ files: { 'p.js': new Map<number, any>([[1, FileType.js], [2, sizeEstimate(chunks, imports, glob)], [3, chunks], [4, glob], [5, imports]]) } })).get(1)['p.js']
 const bench = (n, f, d) => {
     const c = Date.now()
     for (let i = 0; i < 100000; i++) {
