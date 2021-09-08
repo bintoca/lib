@@ -898,6 +898,58 @@ export const decodeString = (major: 2 | 3, ai: number, dv: DataView, state: Deco
     }
     return result
 }
+export const decodeSkip = (dv: DataView, state: DecoderState) => {
+    if (state.position >= dv.byteLength) {
+        return undefined
+    }
+    const c = dv.getUint8(state.position)
+    state.position++
+    const major = c >> 5
+    const ai = c & 31
+    const a = decodeInfo(major, ai, dv, state) as number
+    if (a === undefined) {
+        return a
+    }
+    let r = a
+    switch (major) {
+        case 0:
+        case 1:
+        case 7: {
+            break
+        }
+        case 2:
+        case 3: {
+            state.position += a
+            break
+        }
+        case 4: {
+            for (let i = 0; i < a; i++) {
+                r = decodeSkip(dv, state)
+                if (r === undefined) {
+                    break
+                }
+            }
+            break
+        }
+        case 5: {
+            for (let i = 0; i < a * 2; i++) {
+                r = decodeSkip(dv, state)
+                if (r === undefined) {
+                    break
+                }
+            }
+            break
+        }
+        case 6: {
+            r = decodeSkip(dv, state)
+            break
+        }
+    }
+    if (state.position > dv.byteLength) {
+        return undefined
+    }
+    return r
+}
 export const decodeItem = (major: number, ai: number, dv: DataView, state: DecoderState) => {
     let result
     let head = state.stack[state.stack.length - 1]
@@ -1133,6 +1185,7 @@ export const setupDecoder = (op: DecoderOptions = {}): DecoderState => {
     o.shared = []
     o.promises = []
     o.currentItemByteCount = 0
+    o.position = 0
     return o
 }
 export class TagHelper { constructor(t) { this.tag = t }; tag: number }

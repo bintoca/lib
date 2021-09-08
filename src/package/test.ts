@@ -1,4 +1,4 @@
-import { ParseFilesError, getSubstituteId, getSubstituteIdCore, parseFile, parseFiles, createLookup, encodePackage, encodeFile, decodePackage, decodeFile, defaultConditions, exists, getPackageBreakIndex, FileType, Update, packageBase } from '@bintoca/package'
+import { ParseFilesError, getSubstituteId, getSubstituteIdCore, parseFile, parseFiles, createLookup, encodePackage, encodeFile, decodePackage, decodeFile, defaultConditions, exists, getPackageBreakIndex, FileType, Update, packageBase, packageCJSPath } from '@bintoca/package'
 import { readFileSync } from 'fs'
 
 test.each([[0, '$AAAAA'], [1, '$BAAAA'], [63, '$$AAAA'], [64, '$ABAAA'], [4095, '$$$AAA'], [4096, '$AABAA'], [262143, '$$$$AA'], [262144, '$AAABA'], [16777215, '$$$$$A'], [16777216, '$AAAAB'], [1073741823, '$$$$$$']])('getSubstitueIdCore(%i)', (a, e) => {
@@ -68,17 +68,22 @@ test('decodeFile buffer', async () => {
     const cb = encodeFile(new Map<number, any>([[1, FileType.buffer], [2, new TextEncoder().encode('{"a":2}')]]))
     expect(new TextDecoder().decode((await decodeFile(cb, freeGlobals, controlledGlobals, parentURL, defaultConditions, fs)).data)).toBe('{"a":2}')
 })
+test('decodeFile buffer cjs json', async () => {
+    const cb = encodeFile(new Map<number, any>([[1, FileType.buffer], [2, new TextEncoder().encode('{"a":2}')]]))
+    expect(new TextDecoder().decode((await decodeFile(cb, freeGlobals, controlledGlobals, new URL('file://' + packageCJSPath + '/a.json'), defaultConditions, fs)).data))
+    .toBe('import{cjsRegister}from\"/x/a/' + testPath + '";cjsRegister({"a":2},"file:///x/pc/a.json");')
+})
 const testPath = encodeURIComponent(new URL('./index.ts', import.meta.url).href)
 test('decodeFile cjs', async () => {
     const cb = encodeFile(new Map<number, any>([[1, FileType.js], [2, 50], [3, 'const a = 2']]))
     expect(new TextDecoder().decode((await decodeFile(cb, freeGlobals, controlledGlobals, new URL('file://' + packageBase + 'a.cjs'), defaultConditions, fs)).data))
-        .toBe('import "/x/pc";import{cjsExec}from"/x/a/' + testPath + '";export default cjsExec("file:///x/p/a.cjs");')
+        .toBe('import "/x/pc";import{cjsExec}from"/x/a/' + testPath + '";export default cjsExec("file:///x/p/a.cjs").exports;')
 })
 test.each([['const w = 4;          const r=5;',
-    'import{cjsRegister as s3jY8Nt5dO3xokuh194BF}from"/x/a/' + testPath + '";s3jY8Nt5dO3xokuh194BF(function (module,exports,require,__dirname,__filename,s3jY8Nt5dO3xokuh194BF){const w = 4;          const r=5;},"file:///a.cjs");'
+    'import{cjsRegister as s3jY8Nt5dO3xokuh194BF}from"/x/a/' + testPath + '";s3jY8Nt5dO3xokuh194BF((function (module,exports,require,__dirname,__filename,s3jY8Nt5dO3xokuh194BF){const w = 4;          const r=5;}),"file:///a.cjs");'
     , new Map<number, any>([[1, FileType.js], [2, 50], [3, 'const w = 4;          const r=5;']])],
 ['const w = 4;          ImporTTHISconst r=5;\nimport Math from"/x/g/Math"\nimport Number from"/x/u"\nimport $bbbbb from "bxx"\nimport ImporT from"/x/i/file%3A%2F%2F%2Fa.mjs"\nimport THIS from"/x/t"\nexport {b0} from "bxx"\nexport {r}\nexport{r}\nexport default $AA',
-    'import{cjsRegister as s3jY8Nt5dO3xokuh194BF}from"/x/a/' + testPath + '";s3jY8Nt5dO3xokuh194BF(function (module,exports,require,__dirname,__filename,s3jY8Nt5dO3xokuh194BF){const w = 4;          ImporTTHISconst r=5;},"file:///a.cjs");\nimport Math from"/x/g/Math"\nimport Number from"/x/u"',
+    'import{cjsRegister as s3jY8Nt5dO3xokuh194BF}from"/x/a/' + testPath + '";s3jY8Nt5dO3xokuh194BF((function (module,exports,require,__dirname,__filename,s3jY8Nt5dO3xokuh194BF){const w = 4;          ImporTTHISconst r=5;}),"file:///a.cjs");\nimport Math from"/x/g/Math"\nimport Number from"/x/u"\nimport ImporT from"/x/i/file%3A%2F%2F%2Fa.cjs"\nimport THIS from"/x/t"',
     new Map<number, any>([[1, FileType.js], [2, 50],
     [3, 'const w = 4;          ImporTTHISconst r=5;'],
     [4, ['Math', 'Number', 'Free']],

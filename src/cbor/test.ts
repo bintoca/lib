@@ -1,6 +1,6 @@
 import {
     integerItem, binaryItem, stringItem, numberItem, bigintItem, arrayItem, mapItem, tagItem, encodeSync, hasBadSurrogates, encodeItem, EncoderState, DecoderState, TagHelper, tags,
-    defaultTypeMap, defaultNamedConstructorMap, setupEncoder, setupDecoder, indefiniteBinaryBegin, indefiniteStringBegin, indefiniteArrayBegin, indefiniteMapBegin, indefiniteEnd, decodeLoop, decodeSync, promiseRefSymbol, defaultTagMap
+    defaultTypeMap, defaultNamedConstructorMap, setupEncoder, setupDecoder, indefiniteBinaryBegin, indefiniteStringBegin, indefiniteArrayBegin, indefiniteMapBegin, indefiniteEnd, decodeLoop, decodeSync, promiseRefSymbol, defaultTagMap, decodeSkip, bufferSourceToDataView
 } from '@bintoca/cbor/core'
 import * as node from '@bintoca/cbor/node'
 import wtf8 from 'wtf-8'
@@ -471,4 +471,10 @@ test('nodeRoundTripShared', async () => {
     const r = await roundTrip(a)
     expect(r).toEqual(a)
     expect(r[0]['a'][0] == r[0]['a'][1]).toBe(true)
+})
+test.each([[[2], 1, 2], [[24], 1, undefined], [[66, 1], 3, undefined], [[130, 65, 1], 3, undefined], ['a', 2, 1], [{ a: ['b', 1, 1.12], c: -3 }, 19, 2]])('decodeSkip(%i)', (src, pos, r) => {
+    const state = setupDecoder()
+    const x = decodeSkip(bufferSourceToDataView(Array.isArray(src) ? new Uint8Array(src) : encodeSync(src, setupEncoder())[0]), state)
+    expect(state.position).toBe(pos)
+    expect(x).toBe(r)
 })
