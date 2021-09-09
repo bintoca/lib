@@ -7,6 +7,7 @@ import {
     parseFiles, parseFile, ParseFilesError, getShrinkwrapURLs, encodePackage, encodeFile, decodePackage, decodeFile, createLookup, FileType, defaultConditions, ESM_RESOLVE, getCacheKey,
     getShrinkwrapResolved, ShrinkwrapPackageDescription, importBase, getDynamicImportModule, reloadBase, packageBase, internalBase, Update, FileURLSystem, getManifest, undefinedPath
 } from '@bintoca/package'
+import { url as stateURL } from '@bintoca/dev/state'
 import * as chokidar from 'chokidar'
 import { server as wss } from 'websocket'
 import anymatch from 'anymatch'
@@ -33,7 +34,7 @@ export const resetCache = (state: State) => {
     state.urlCache = {}
     state.fileURLSystem.jsonCache = {}
 }
-export const createFileURLSystem = (state: State) => {
+export const createFileURLSystem = (state: State): FileURLSystem => {
     return {
         exists: async (p: URL) => {
             if (state.fileCache[p.pathname]) {
@@ -67,7 +68,8 @@ export const createFileURLSystem = (state: State) => {
             }
             return decoded ? (await decodeFile(r, null, null, null, null, null)).data : r
         },
-        jsonCache: {}
+        jsonCache: {},
+        stateURL
     }
 }
 export type Config = { hostname: string, port: number, ignore, awaitWriteFinish, open: boolean, watch: boolean, configFile }

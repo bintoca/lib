@@ -3,7 +3,7 @@ import glo from 'acorn-globals'
 import * as walk from 'acorn-walk'
 import { Encoder, Decoder } from '@bintoca/cbor'
 import { defaultTypeMap, EncoderState, binaryItem, tagItem, tags, bufferSourceToDataView, DecoderState, decodeInfo, bufferSourceToUint8Array, decodeSkip } from '@bintoca/cbor/core'
-import { x } from 'tar'
+import * as cjsLexer from 'cjs-module-lexer'
 const TD = new TextDecoder()
 const TE = new TextEncoder()
 
@@ -443,8 +443,14 @@ export const decodeCount = (dv: DataView, state: DecoderState): number => {
 }
 export const cjsHiddenVariable = 's3jY8Nt5dO3xokuh194BF'
 export const cjsModuleGlobals = ['module', 'exports', 'require', '__dirname', '__filename', cjsHiddenVariable]
-export const cjsHeader = TE.encode('import{cjsRegister as ' + cjsHiddenVariable + '}from"' + internalBase + escapeDoubleQuote(encodeURIComponent(import.meta.url)) + '";' + cjsHiddenVariable + '((function (' + cjsModuleGlobals.join() + '){')
-export const cjsHeaderJSON = 'import{cjsRegister}from"' + internalBase + escapeDoubleQuote(encodeURIComponent(import.meta.url)) + '";cjsRegister('
+export const cjsPreparseModuleExports = (src: string, url: URL, fs: FileURLSystem) => {
+    const lex = cjsLexer.parse(src)
+    const exportNames = new Set(lex.exports)
+    if (lex.reexports.length) {
+
+    }
+    return { exportNames }
+}
 export const decodeFile = async (b: BufferSource, freeGlobals: DataView, controlledGlobals: DataView, parentURL: URL, conditions: Set<string>, fs: FileURLSystem): Promise<{ type: string, data: Uint8Array }> => {
     const state = { position: 0 } as DecoderState
     const dv = bufferSourceToDataView(b)
@@ -462,7 +468,8 @@ export const decodeFile = async (b: BufferSource, freeGlobals: DataView, control
         }
         const len = decodeCount(dv, state)
         if (parentURL.pathname.startsWith(packageCJSPath) && parentURL.pathname.endsWith('.json')) {
-            const s = cjsHeaderJSON + TD.decode(new Uint8Array(dv.buffer, dv.byteOffset + state.position, len)) + ',"' + escapeDoubleQuote(parentURL.href) + '");'
+            const s = 'import{cjsRegister}from"' + internalBase + escapeDoubleQuote(encodeURIComponent(fs.stateURL)) + '";cjsRegister('
+                + TD.decode(new Uint8Array(dv.buffer, dv.byteOffset + state.position, len)) + ',"' + escapeDoubleQuote(parentURL.href) + '");'
             return { type: 'text/javascript', data: TE.encode(s) }
         }
         return { type: 'application/octet-stream', data: new Uint8Array(dv.buffer, dv.byteOffset + state.position, len) }
@@ -470,10 +477,6 @@ export const decodeFile = async (b: BufferSource, freeGlobals: DataView, control
     else if (type == FileType.js) {
         const parentURLencoded = escapeDoubleQuote(encodeURIComponent(parentURL.href))
         const cjs = await isCommonJS(parentURL, fs)
-        if (cjs && parentURL.pathname.startsWith(packageBase)) {
-            const s = 'import "' + packageCJSPath + '";import{cjsExec}from"' + internalBase + escapeDoubleQuote(encodeURIComponent(import.meta.url)) + '";export default cjsExec("' + escapeDoubleQuote(parentURL.href) + '").exports;'
-            return { type: 'text/javascript', data: TE.encode(s) }
-        }
         state.position = 3
         if (dv.getUint8(state.position) != 2) {
             throw new Error('invalid cbor at index ' + state.position)
@@ -488,7 +491,7 @@ export const decodeFile = async (b: BufferSource, freeGlobals: DataView, control
         while (loop) {
             loop = false
             state.position = loopStart
-            u = new Uint8Array(sizeEstimate + parentURLencoded.length + (cjs ? parentURLencoded.length + cjsHeader.length + 50 : 0))
+            u = new Uint8Array(sizeEstimate + parentURLencoded.length + (cjs ? parentURLencoded.length + 250 : 0))
             len = 0
             if (dv.getUint8(state.position) != 3) {
                 throw new Error('invalid cbor at index ' + state.position)
@@ -496,6 +499,14 @@ export const decodeFile = async (b: BufferSource, freeGlobals: DataView, control
             state.position++
             const bodySize = decodeCount(dv, state)
             if (cjs) {
+                if (parentURL.pathname.startsWith(packageBase)) {
+                    await cjsLexer.init()
+                    const lex = cjsPreparseModuleExports(TD.decode(new Uint8Array(dv.buffer, dv.byteOffset + state.position, bodySize)), parentURL, fs)
+                    const s = 'import "' + packageCJSPath + '";import{cjsExec}from"' + internalBase + escapeDoubleQuote(encodeURIComponent(fs.stateURL)) +
+                        '";const m=cjsExec("' + escapeDoubleQuote(parentURL.href) + '");export default m.exports;export const {' + Array.from(lex.exportNames).join() + '}=m.exports;'
+                    return { type: 'text/javascript', data: TE.encode(s) }
+                }
+                const cjsHeader = TE.encode('import{cjsRegister as ' + cjsHiddenVariable + '}from"' + internalBase + escapeDoubleQuote(encodeURIComponent(fs.stateURL)) + '";' + cjsHiddenVariable + '((function (' + cjsModuleGlobals.join() + '){')
                 u.set(cjsHeader, len)
                 len += cjsHeader.byteLength
                 if (bodySize > 100) {
@@ -1024,7 +1035,7 @@ export const getShrinkwrapResolved = (urlpath: string, base: string, shrinkwrap)
     const shrinkwrapPath = urlpath.slice(base.length, index)
     return shrinkwrap.packages[shrinkwrapPath]
 }
-export type FileURLSystem = { exists: (path: URL) => Promise<boolean>, read: (path: URL, decoded: boolean) => Promise<Uint8Array>, jsonCache: { [k: string]: PackageJSON } }
+export type FileURLSystem = { exists: (path: URL) => Promise<boolean>, read: (path: URL, decoded: boolean) => Promise<Uint8Array>, jsonCache: { [k: string]: PackageJSON }, stateURL: string }
 export type FileURLSystemSync = { exists: (path: URL) => boolean, read: (path: URL, decoded: boolean) => Uint8Array, jsonCache: { [k: string]: PackageJSON } }
 export type PackageJSON = { pjsonURL: URL, exists: boolean, main: string, name: string, type: string, exports, imports }
 export const defaultConditions = new Set(['node', 'import'])
@@ -1796,30 +1807,39 @@ export const ESM_RESOLVE = async (specifier: string, parentURL: URL, conditions:
     // }
     return resolved
 }
-const cjsFunctions: { [k: string]: Function } = {}
-const cjsModules: Object = {}
-export const cjsRegister = (f, k: string) => {
+export const cjsRegister = (f, k: string, cjsFunctions: { [k: string]: Function }, cjsModules: { [k: string]: CJS_MODULE }) => {
     if (typeof f == 'function') {
         cjsFunctions[k] = f
     }
     else {
-        const module = { exports: f }
+        const module: CJS_MODULE = { exports: f }
         cjsModules[k] = module
         return module
     }
 }
-export const cjsExec = (k: string) => {
+export type CJS_MODULE = { exports }
+export const cjsExec = (k: string, cjsFunctions: { [k: string]: Function }, cjsModules: { [k: string]: CJS_MODULE }) => {
     if (!cjsModules.hasOwnProperty(k)) {
         if (cjsFunctions[k]) {
-            const module = { exports: {} }
+            const require = (specifier: string) => {
+                const mURL = CJS_RESOLVE(specifier, new URL(k), null, null)
+                const m = cjsExec(mURL.href, cjsFunctions, cjsModules)
+                return m.exports
+            }
+            const module: CJS_MODULE = { exports: {} }
             cjsModules[k] = module
-            cjsFunctions[k](module, module.exports, 'require', new URL('./', k).href, k)
+            cjsFunctions[k](module, module.exports, require, new URL('./', k).href, k)
         }
         else {
             throw new Error('cjs function not found ' + k)
         }
     }
     return cjsModules[k]
+}
+export const createRequire = (url: URL, cjsFunctions: { [k: string]: Function }, cjsModules: { [k: string]: CJS_MODULE }) => {
+    return (specifier: string) => {
+        //const m = cjsExec(url.href,)
+    }
 }
 export const RESOLVE_ESM_MATCH = (match: { resolved: URL, exact: boolean }, fs: FileURLSystemSync) => {
     if (match.exact) {
@@ -1872,7 +1892,7 @@ export const LOAD_NODE_MODULES = (packageSpecifier: string, dirURL: URL, conditi
     }
     while (dirURL.pathname !== last.pathname)
 }
-export const REQUIRE = (packageSpecifier: string, parentURL: URL, conditions: Set<string>, fs: FileURLSystemSync): URL => {
+export const CJS_RESOLVE = (packageSpecifier: string, parentURL: URL, conditions: Set<string>, fs: FileURLSystemSync): URL => {
     //TODO core modules
     if (packageSpecifier.startsWith('/')) {
         throw new Error('specifier must not start with "/" ' + packageSpecifier)

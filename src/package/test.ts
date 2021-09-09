@@ -63,7 +63,7 @@ test.each([['import a from "/x"', new Map<number, any>([[1, FileType.error], [2,
 const freeGlobals = createLookup(['Free'])
 const controlledGlobals = createLookup(['Math'])
 const parentURL = new URL('file:///a.mjs')
-const fs = { exists: async (u: URL) => u.href == parentURL.href, read: null, jsonCache: {} }
+const fs = { exists: async (u: URL) => u.href == parentURL.href, read: null, jsonCache: {}, stateURL: import.meta.url }
 test('decodeFile buffer', async () => {
     const cb = encodeFile(new Map<number, any>([[1, FileType.buffer], [2, new TextEncoder().encode('{"a":2}')]]))
     expect(new TextDecoder().decode((await decodeFile(cb, freeGlobals, controlledGlobals, parentURL, defaultConditions, fs)).data)).toBe('{"a":2}')
@@ -71,13 +71,13 @@ test('decodeFile buffer', async () => {
 test('decodeFile buffer cjs json', async () => {
     const cb = encodeFile(new Map<number, any>([[1, FileType.buffer], [2, new TextEncoder().encode('{"a":2}')]]))
     expect(new TextDecoder().decode((await decodeFile(cb, freeGlobals, controlledGlobals, new URL('file://' + packageCJSPath + '/a.json'), defaultConditions, fs)).data))
-    .toBe('import{cjsRegister}from\"/x/a/' + testPath + '";cjsRegister({"a":2},"file:///x/pc/a.json");')
+        .toBe('import{cjsRegister}from\"/x/a/' + testPath + '";cjsRegister({"a":2},"file:///x/pc/a.json");')
 })
-const testPath = encodeURIComponent(new URL('./index.ts', import.meta.url).href)
+const testPath = encodeURIComponent(import.meta.url)
 test('decodeFile cjs', async () => {
     const cb = encodeFile(new Map<number, any>([[1, FileType.js], [2, 50], [3, 'const a = 2']]))
     expect(new TextDecoder().decode((await decodeFile(cb, freeGlobals, controlledGlobals, new URL('file://' + packageBase + 'a.cjs'), defaultConditions, fs)).data))
-        .toBe('import "/x/pc";import{cjsExec}from"/x/a/' + testPath + '";export default cjsExec("file:///x/p/a.cjs").exports;')
+        .toBe('import "/x/pc";import{cjsExec}from"/x/a/' + testPath + '";const m=cjsExec("file:///x/p/a.cjs");export default m.exports;export const {}=m.exports;')
 })
 test.each([['const w = 4;          const r=5;',
     'import{cjsRegister as s3jY8Nt5dO3xokuh194BF}from"/x/a/' + testPath + '";s3jY8Nt5dO3xokuh194BF((function (module,exports,require,__dirname,__filename,s3jY8Nt5dO3xokuh194BF){const w = 4;          const r=5;}),"file:///a.cjs");'

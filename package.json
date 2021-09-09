@@ -38,6 +38,7 @@
     "cbor": "^7.0.6",
     "cbor-x": "^0.8.3",
     "chokidar": "^3.5.2",
+    "cjs-module-lexer": "^1.2.2",
     "idb": "^6.1.2",
     "jest": "^27.0.6",
     "msgpack-lite": "^0.1.26",

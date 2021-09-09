@@ -8,7 +8,8 @@
   },
   "exports": {
     ".": "./index.js",
-    "./core": "./core.js"
+    "./core": "./core.js",
+    "./state": "./state.js"
   },
   "types": "./index.d.ts",
   "license": "Apache-2.0 WITH LLVM-exception",
