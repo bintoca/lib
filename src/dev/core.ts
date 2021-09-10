@@ -4,8 +4,8 @@ import * as path from 'path'
 import open from 'open'
 import { cwd } from 'process';
 import {
-    parseFiles, parseFile, ParseFilesError, getShrinkwrapURLs, encodePackage, encodeFile, decodePackage, decodeFile, createLookup, FileType, defaultConditions, ESM_RESOLVE, getCacheKey,
-    getShrinkwrapResolved, ShrinkwrapPackageDescription, importBase, getDynamicImportModule, reloadBase, packageBase, internalBase, Update, FileURLSystem, getManifest, undefinedPath
+    parseFiles, parseFile, ParseFilesError, getShrinkwrapURLs, encodePackage, encodeFile, decodePackage, decodeFile, createLookup, FileType, READ_PACKAGE_JSON, ESM_RESOLVE, getCacheKey,
+    getShrinkwrapResolved, ShrinkwrapPackageDescription, importBase, getDynamicImportModule, reloadBase, packageBase, internalBase, Update, FileURLSystem, getManifest, undefinedPath, FileURLSystemSync, CJS_MODULE, packageCJSPath, getAllCJSModule, getCJSFiles, READ_PACKAGE_JSON_Sync
 } from '@bintoca/package'
 import { url as stateURL } from '@bintoca/dev/state'
 import * as chokidar from 'chokidar'
@@ -32,16 +32,22 @@ export const freeGlobals = createLookup(['window', 'document', 'console', 'Array
 export const controlledGlobals = createLookup([])
 export const resetCache = (state: State) => {
     state.urlCache = {}
-    state.fileURLSystem.jsonCache = {}
+    state.cjsCache = null
+    state.fileURLSystem.cjsParseCache = {}
+    state.fileURLSystem.jsonCache = state.fileURLSystem.fsSync.jsonCache = {}
 }
 export const createFileURLSystem = (state: State): FileURLSystem => {
-    return {
+    const jc = {}
+    const f: FileURLSystem = {
         exists: async (p: URL) => {
+            if (p.pathname.startsWith(packageCJSPath)) {
+                p = new URL(p.pathname.replace(packageCJSPath + '/', packageBase), p)
+            }
             if (state.fileCache[p.pathname]) {
                 return true
             }
             if (p.pathname.startsWith(internalBase)) {
-                return fs.existsSync(new URL(decodeURIComponent(p.pathname.slice(internalBase.length))) as any)
+                return fs.existsSync(new URL(p.pathname.slice(internalBase.length)) as any)
             }
             if (p.pathname.startsWith(packageBase + 'node_modules/')) {
                 const key = getCacheKey(p.pathname, packageBase, state.shrinkwrap)
@@ -50,12 +56,15 @@ export const createFileURLSystem = (state: State): FileURLSystem => {
             return false
         },
         read: async (p: URL, decoded: boolean) => {
+            if (p.pathname.startsWith(packageCJSPath)) {
+                p = new URL(p.pathname.replace(packageCJSPath + '/', packageBase), p)
+            }
             let r
             if (state.fileCache[p.pathname]) {
                 r = state.fileCache[p.pathname]
             }
             else if (p.pathname.startsWith(internalBase)) {
-                r = state.fileCache[p.pathname] = encodeFile(parseFile(p.pathname, fs.readFileSync(new URL(decodeURIComponent(p.pathname.slice(internalBase.length))) as any)))
+                r = state.fileCache[p.pathname] = encodeFile(parseFile(p.pathname, fs.readFileSync(new URL(p.pathname.slice(internalBase.length)) as any)))
             }
             else if (p.pathname.startsWith(packageBase + 'node_modules/')) {
                 try {
@@ -66,14 +75,46 @@ export const createFileURLSystem = (state: State): FileURLSystem => {
                     r = (await cacache.get(cacacheDir, getCacheKey(p.pathname, packageBase, state.shrinkwrap))).data
                 }
             }
-            return decoded ? (await decodeFile(r, null, null, null, null, null)).data : r
+            return decoded ? (await decodeFile(r, null, null, p, null)).data : r
         },
-        jsonCache: {},
-        stateURL
+        jsonCache: jc,
+        stateURL,
+        cjsParseCache: {},
+        fsSync: {
+            exists: (p: URL) => {
+                if (state.cjsCache[p.pathname]) {
+                    return true
+                }
+                return false
+            },
+            read: (p: URL) => {
+                const m: CJS_MODULE = { exports: f.jsonCache[p.href] }
+                return m
+            },
+            jsonCache: jc
+        },
+        initCJS: async () => {
+            if (!state.cjsCache) {
+                state.cjsCache = {}
+                const ur = getShrinkwrapURLs(state.shrinkwrap)
+                for (let x in ur) {
+                    const m = JSON.parse(TD.decode((await cacache.get(cacacheDir, ur[x].resolved + '/manifest')).data))
+                    const u = getCJSFiles(m)
+                    for (let y of u) {
+                        const pathname = packageBase + x + '/' + y
+                        state.cjsCache[pathname] = 1
+                        if (pathname.endsWith('/package.json')) {
+                            await READ_PACKAGE_JSON(new URL(pathname, getRootURL(state)), f)
+                        }
+                    }
+                }
+            }
+        }
     }
+    return f
 }
 export type Config = { hostname: string, port: number, ignore, awaitWriteFinish, open: boolean, watch: boolean, configFile }
-export type State = { urlCache, fileCache, fileURLSystem: FileURLSystem, readlineInterface: readline.Interface, shrinkwrap, packageJSON, wsConnections: any[], config: Config }
+export type State = { urlCache, fileCache, cjsCache: { [k: string]: 1 }, fileURLSystem: FileURLSystem, readlineInterface: readline.Interface, shrinkwrap, packageJSON, wsConnections: any[], config: Config }
 export const cacacheDir = path.join(cachedir('bintoca'), '_cacache')
 export const parseTar = async (t: NodeJS.ReadableStream): Promise<Update> => {
     return new Promise((resolve, reject) => {
@@ -128,7 +169,7 @@ export const httpHandler = async (req: http.IncomingMessage, res: http.ServerRes
                         err = 'npm-shrinkwrap.json lockfileVersion 2 (npm 7) required'
                     }
                     else {
-                        mod = await ESM_RESOLVE(state.packageJSON.name, new URL(packageBase, getRootURL(state)), defaultConditions, state.fileURLSystem)
+                        mod = await ESM_RESOLVE(state.packageJSON.name, new URL(packageBase, getRootURL(state)), state.fileURLSystem)
                     }
                 }
                 if (err) {
@@ -168,8 +209,12 @@ export const httpHandler = async (req: http.IncomingMessage, res: http.ServerRes
                 res.setHeader('Content-Type', u.type)
                 res.end(Buffer.from(u.data))
             }
+            else if (req.url == packageCJSPath) {
+                res.setHeader('Content-Type', 'text/javascript')
+                res.end(getAllCJSModule(state.cjsCache))
+            }
             else if (await state.fileURLSystem.exists(new URL(req.url, getRootURL(state)))) {
-                const u = await decodeFile(await state.fileURLSystem.read(new URL(req.url, getRootURL(state)), false), freeGlobals, controlledGlobals, new URL(req.url, getRootURL(state)), defaultConditions, state.fileURLSystem)
+                const u = await decodeFile(await state.fileURLSystem.read(new URL(req.url, getRootURL(state)), false), freeGlobals, controlledGlobals, new URL(req.url, getRootURL(state)), state.fileURLSystem)
                 state.urlCache[req.url] = u
                 res.setHeader('Content-Type', u.type)
                 res.end(Buffer.from(u.data))
@@ -245,13 +290,14 @@ export const optimizePackage = async (x: ShrinkwrapPackageDescription, state: St
     try {
         const prefix = x.resolved.substring(x.resolved.lastIndexOf('/') + 1)
         log(state, 'Optimizing:', prefix)
-        const parsed = parseFiles(await pacote.tarball.stream(x.resolved, parseTar))
+        const up: Update = await pacote.tarball.stream(x.resolved, parseTar)
+        const parsed = parseFiles(up)
         if (checkParsed(parsed, prefix, state)) {
             const enc = decodePackage(encodePackage(parsed)).get(1)
             for (let k in enc) {
                 await cacache.put(cacacheDir, x.resolved + '/files/' + k, enc[k])
             }
-            await cacache.put(cacacheDir, x.resolved + '/manifest', TE.encode(JSON.stringify(getManifest(enc))))
+            await cacache.put(cacacheDir, x.resolved + '/manifest', TE.encode(JSON.stringify(getManifest(up))))
         }
     }
     catch (e) {
@@ -276,9 +322,10 @@ export const update = async (f: Update, state: State) => {
             resetCache(state)
             if (f['npm-shrinkwrap.json'].action != 'remove') {
                 state.shrinkwrap = JSON.parse(TD.decode(f['npm-shrinkwrap.json'].buffer))
-                for (let x of getShrinkwrapURLs(state.shrinkwrap)) {
-                    if (!await cacache.get.info(cacacheDir, x.resolved + '/package.json')) {
-                        await optimizePackage(x, state)
+                const u = getShrinkwrapURLs(state.shrinkwrap)
+                for (let x in u) {
+                    if (!await cacache.get.info(cacacheDir, u[x].resolved + '/manifest')) {
+                        await optimizePackage(u[x], state)
                     }
                 }
             }
@@ -362,7 +409,7 @@ export const applyConfigFile = async (state: State) => {
 }
 export const init = async (config?: Config) => {
     const state = {
-        urlCache: {}, fileCache: {}, fileURLSystem: null, wsConnections: [], shrinkwrap: undefined, packageJSON: undefined,
+        urlCache: {}, fileCache: {}, cjsCache: null, fileURLSystem: null, wsConnections: [], shrinkwrap: undefined, packageJSON: undefined,
         readlineInterface: readline.createInterface({ input: process.stdin, output: process.stdout, prompt: 'DEV> ' }),
         config: config || Object.assign({}, defaultConfig)
     }

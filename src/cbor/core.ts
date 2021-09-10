@@ -568,6 +568,13 @@ export const slice = (dv: DataView, length: number, state: DecoderState) => {
     state.position += length;
     return b
 }
+export const decodeCount = (dv: DataView, state: DecoderState): number => {
+    const c = dv.getUint8(state.position)
+    state.position++
+    const major = c >> 5
+    const ai = c & 31
+    return decodeInfo(major, ai, dv, state) as number
+}
 export const decodeLoop = (state: DecoderState) => {
     let dv: DataView
     const first = state.queue[0]

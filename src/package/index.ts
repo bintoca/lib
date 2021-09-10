@@ -2,7 +2,7 @@ import * as acorn from 'acorn'
 import glo from 'acorn-globals'
 import * as walk from 'acorn-walk'
 import { Encoder, Decoder } from '@bintoca/cbor'
-import { defaultTypeMap, EncoderState, binaryItem, tagItem, tags, bufferSourceToDataView, DecoderState, decodeInfo, bufferSourceToUint8Array, decodeSkip } from '@bintoca/cbor/core'
+import { defaultTypeMap, EncoderState, binaryItem, tagItem, tags, bufferSourceToDataView, DecoderState, decodeCount, bufferSourceToUint8Array, decodeSkip } from '@bintoca/cbor/core'
 import * as cjsLexer from 'cjs-module-lexer'
 const TD = new TextDecoder()
 const TE = new TextEncoder()
@@ -60,7 +60,7 @@ export const placeholderString = (size: number) => {
     }
     return s
 }
-export const parseFile = (k: string, b: Buffer): Map<number, any> => {
+export const parseFile = (k: string, b: BufferSource): Map<number, any> => {
     if (k.endsWith('.js') || k.endsWith('.cjs') || k.endsWith('.mjs')) {
         let ast//: acorn.Node
         let text: string
@@ -398,12 +398,12 @@ export const parseFile = (k: string, b: Buffer): Map<number, any> => {
         return new Map<number, any>([[1, FileType.buffer], [2, b]])
     }
 }
-export const getShrinkwrapURLs = (shrinkwrap: any): ShrinkwrapPackageDescription[] => {
-    const u = []
+export const getShrinkwrapURLs = (shrinkwrap: any): { [k: string]: ShrinkwrapPackageDescription } => {
+    const u = {}
     for (let k in shrinkwrap.packages) {
         const v = shrinkwrap.packages[k]
         if (k && !v.dev) {
-            u.push(v)
+            u[k] = v
         }
     }
     return u
@@ -434,24 +434,9 @@ export const decodePackage = (b: BufferSource): Map<number, any> => {
     const dec = new Decoder({ byteStringNoCopy: true })
     return dec.decode(b)
 }
-export const decodeCount = (dv: DataView, state: DecoderState): number => {
-    const c = dv.getUint8(state.position)
-    state.position++
-    const major = c >> 5
-    const ai = c & 31
-    return decodeInfo(major, ai, dv, state) as number
-}
 export const cjsHiddenVariable = 's3jY8Nt5dO3xokuh194BF'
 export const cjsModuleGlobals = ['module', 'exports', 'require', '__dirname', '__filename', cjsHiddenVariable]
-export const cjsPreparseModuleExports = (src: string, url: URL, fs: FileURLSystem) => {
-    const lex = cjsLexer.parse(src)
-    const exportNames = new Set(lex.exports)
-    if (lex.reexports.length) {
-
-    }
-    return { exportNames }
-}
-export const decodeFile = async (b: BufferSource, freeGlobals: DataView, controlledGlobals: DataView, parentURL: URL, conditions: Set<string>, fs: FileURLSystem): Promise<{ type: string, data: Uint8Array }> => {
+export const decodeFile = async (b: BufferSource, freeGlobals: DataView, controlledGlobals: DataView, parentURL: URL, fs: FileURLSystem): Promise<{ type: string, data: Uint8Array }> => {
     const state = { position: 0 } as DecoderState
     const dv = bufferSourceToDataView(b)
     if (dv.getUint8(0) >> 5 != 5) {
@@ -468,7 +453,7 @@ export const decodeFile = async (b: BufferSource, freeGlobals: DataView, control
         }
         const len = decodeCount(dv, state)
         if (parentURL.pathname.startsWith(packageCJSPath) && parentURL.pathname.endsWith('.json')) {
-            const s = 'import{cjsRegister}from"' + internalBase + escapeDoubleQuote(encodeURIComponent(fs.stateURL)) + '";cjsRegister('
+            const s = 'import{cjsRegister}from"' + internalBase + escapeDoubleQuote(fs.stateURL) + '";cjsRegister('
                 + TD.decode(new Uint8Array(dv.buffer, dv.byteOffset + state.position, len)) + ',"' + escapeDoubleQuote(parentURL.href) + '");'
             return { type: 'text/javascript', data: TE.encode(s) }
         }
@@ -500,13 +485,30 @@ export const decodeFile = async (b: BufferSource, freeGlobals: DataView, control
             const bodySize = decodeCount(dv, state)
             if (cjs) {
                 if (parentURL.pathname.startsWith(packageBase)) {
+                    await fs.initCJS()
                     await cjsLexer.init()
-                    const lex = cjsPreparseModuleExports(TD.decode(new Uint8Array(dv.buffer, dv.byteOffset + state.position, bodySize)), parentURL, fs)
-                    const s = 'import "' + packageCJSPath + '";import{cjsExec}from"' + internalBase + escapeDoubleQuote(encodeURIComponent(fs.stateURL)) +
-                        '";const m=cjsExec("' + escapeDoubleQuote(parentURL.href) + '");export default m.exports;export const {' + Array.from(lex.exportNames).join() + '}=m.exports;'
+                    const lex = cjsLexer.parse(TD.decode(new Uint8Array(dv.buffer, dv.byteOffset + state.position, bodySize)))
+                    const exportNames = new Set(lex.exports)
+                    fs.cjsParseCache[parentURL.href] = { exportNames }
+                    for (const x of lex.reexports) {
+                        const r = CJS_RESOLVE(x, parentURL, fs.fsSync)
+                        if (r.href.endsWith('.js') || r.href.endsWith('.cjs')) {
+                            if (!fs.cjsParseCache[r.href]) {
+                                await decodeFile(await fs.read(r, false), freeGlobals, controlledGlobals, r, fs)
+                            }
+                            if (!fs.cjsParseCache[r.href]) {
+                                throw new Error('cjs parse cache not found: ' + r.href)
+                            }
+                            for (const n of fs.cjsParseCache[r.href].exportNames) {
+                                exportNames.add(n)
+                            }
+                        }
+                    }
+                    const s = 'import "' + packageCJSPath + '";import{cjsExec}from"' + internalBase + escapeDoubleQuote(fs.stateURL) +
+                        '";const m=cjsExec("' + escapeDoubleQuote(parentURL.href) + '");export default m.exports;export const {' + Array.from(exportNames).join() + '}=m.exports;'
                     return { type: 'text/javascript', data: TE.encode(s) }
                 }
-                const cjsHeader = TE.encode('import{cjsRegister as ' + cjsHiddenVariable + '}from"' + internalBase + escapeDoubleQuote(encodeURIComponent(fs.stateURL)) + '";' + cjsHiddenVariable + '((function (' + cjsModuleGlobals.join() + '){')
+                const cjsHeader = TE.encode('import{cjsRegister as ' + cjsHiddenVariable + '}from"' + internalBase + escapeDoubleQuote(fs.stateURL) + '";' + cjsHiddenVariable + '((function (' + cjsModuleGlobals.join() + '){')
                 u.set(cjsHeader, len)
                 len += cjsHeader.byteLength
                 if (bodySize > 100) {
@@ -709,7 +711,7 @@ export const decodeFile = async (b: BufferSource, freeGlobals: DataView, control
                         state.position += size + 1
                         u[len++] = 34
                         const specifierSize = decodeCount(dv, state)
-                        const rCount = await importResolve(u, len, dv, state, specifierSize, parentURL, conditions, fs)
+                        const rCount = await importResolve(u, len, dv, state, specifierSize, parentURL, fs)
                         if (rCount == -1) {
                             loop = true
                             sizeEstimate = sizeEstimate * 2
@@ -842,7 +844,7 @@ export const decodeFile = async (b: BufferSource, freeGlobals: DataView, control
                                 state.position++
                                 u[len++] = 34
                                 const specifierSize = decodeCount(dv, state)
-                                const rCount = await importResolve(u, len, dv, state, specifierSize, parentURL, conditions, fs)
+                                const rCount = await importResolve(u, len, dv, state, specifierSize, parentURL, fs)
                                 if (rCount == -1) {
                                     loop = true
                                     sizeEstimate = sizeEstimate * 2
@@ -878,24 +880,47 @@ export const isCommonJS = async (u: URL, fs: FileURLSystem) => {
     if (u.href.endsWith('.cjs')) {
         return true
     }
-    const pjson = await READ_PACKAGE_SCOPE(u, fs)
-    if (pjson.type == 'module' && u.href.endsWith('.js')) {
-        return false
+    if (u.href.endsWith('.js')) {
+        if (u.pathname.startsWith(internalBase)) {
+            return false
+        }
+        const pjson = await READ_PACKAGE_SCOPE(u, fs)
+        if (pjson.type == 'module') {
+            return false
+        }
+        return true
     }
     throw new Error('Unsupported File Extension ' + u.href)
 }
-export const getManifest = (p: { [k: string]: Uint8Array }) => {
+export const getManifest = (p: Update): { [k: string]: 1 | { type: string } } => {
     const m = {}
     for (let k in p) {
         m[k] = 1
-        if (k.endsWith('package.json')) {
+        if (k.endsWith((k.indexOf('/') == -1 ? '' : '/') + 'package.json')) {
             try {
-                const pj = JSON.parse(new TextDecoder().decode(p[k]))
-                m[k] = { type: pj.type }
+                const pj = JSON.parse(TD.decode(p[k].buffer))
+                m[k] = { type: pj.type || 'none' }
             }
-            catch { }
+            catch (e) { }
         }
     }
+    return m
+}
+export const getCJSFiles = (manifest: { [k: string]: 1 | { type: string } }): string[] => {
+    const a = []
+    const fs: FileURLSystemSync = { exists: (p: URL) => manifest[p.pathname.slice(1)] !== undefined, read: (p: URL): CJS_MODULE => { return { exports: manifest[p.pathname.slice(1)] } }, jsonCache: {} }
+    for (const k in manifest) {
+        if (k.endsWith('.cjs') || k.endsWith('.json')) {
+            a.push(k)
+        }
+        else if (k.endsWith('.js')) {
+            const pj = READ_PACKAGE_SCOPE_Sync(new URL(k, 'file:///'), fs)
+            if (pj.type == 'none' || pj.type == 'commonjs') {
+                a.push(k)
+            }
+        }
+    }
+    return a
 }
 export const getDynamicImportModule = (urlpath: string, hot: boolean): string => {
     const url = escapeDoubleQuote(decodeURIComponent(urlpath.slice(importBase.length)))
@@ -903,9 +928,10 @@ export const getDynamicImportModule = (urlpath: string, hot: boolean): string =>
         (hot ? 'imp.meta.server=self.metaServer;' : '')
     return 'function imp(){};imp.meta=Object.create(null);' + meta + ';export default imp'
 }
+export const getAllCJSModule = (u: { [k: string]: 1 }) => Object.keys(u).map(x => 'import "' + x.replace(packageBase, packageCJSPath + '/') + '"').join(';')
 export type Update = { [k: string]: { action: UpdateActions, buffer: Buffer } }
 export type UpdateActions = 'add' | 'change' | 'remove'
-const importResolve = async (u: Uint8Array, len: number, dv: DataView, state: DecoderState, size: number, parentURL: URL, conditions: Set<string>, fs: FileURLSystem): Promise<number> => {
+const importResolve = async (u: Uint8Array, len: number, dv: DataView, state: DecoderState, size: number, parentURL: URL, fs: FileURLSystem): Promise<number> => {
     const s = TD.decode(bufferSourceToUint8Array(dv, state.position, size))
     let sp
     if (s[0] == '.') {
@@ -916,7 +942,7 @@ const importResolve = async (u: Uint8Array, len: number, dv: DataView, state: De
             sp = 'bxx'
         }
         else {
-            sp = (await ESM_RESOLVE(s, parentURL, conditions, fs)).pathname
+            sp = (await ESM_RESOLVE(s, parentURL, fs)).pathname
         }
     }
     const spb = TE.encode(sp)
@@ -1022,7 +1048,7 @@ export const getCacheKey = (urlpath: string, base: string, shrinkwrap): string =
     }
     const pack = getShrinkwrapResolved(urlpath, base, shrinkwrap)
     if (pack) {
-        return pack.resolved + urlpath.slice(index)
+        return pack.resolved + '/files' + urlpath.slice(index)
     }
     return undefined
 }
@@ -1035,8 +1061,11 @@ export const getShrinkwrapResolved = (urlpath: string, base: string, shrinkwrap)
     const shrinkwrapPath = urlpath.slice(base.length, index)
     return shrinkwrap.packages[shrinkwrapPath]
 }
-export type FileURLSystem = { exists: (path: URL) => Promise<boolean>, read: (path: URL, decoded: boolean) => Promise<Uint8Array>, jsonCache: { [k: string]: PackageJSON }, stateURL: string }
-export type FileURLSystemSync = { exists: (path: URL) => boolean, read: (path: URL, decoded: boolean) => Uint8Array, jsonCache: { [k: string]: PackageJSON } }
+export type FileURLSystem = {
+    exists: (path: URL) => Promise<boolean>, read: (path: URL, decoded: boolean) => Promise<Uint8Array>, jsonCache: { [k: string]: PackageJSON }, stateURL: string, conditions?: Set<string>,
+    fsSync: FileURLSystemSync, cjsParseCache: { [k: string]: { exportNames: Set<string> } }, initCJS: () => Promise<void>
+}
+export type FileURLSystemSync = { exists: (path: URL) => boolean, read: (path: URL) => CJS_MODULE, jsonCache: { [k: string]: PackageJSON }, conditions?: Set<string> }
 export type PackageJSON = { pjsonURL: URL, exists: boolean, main: string, name: string, type: string, exports, imports }
 export const defaultConditions = new Set(['node', 'import'])
 export const defaultConditionsSync = new Set(['node', 'require'])
@@ -1106,36 +1135,31 @@ export const READ_PACKAGE_JSON_Sync = (pjsonURL: URL, fs: FileURLSystemSync): Pa
         fs.jsonCache[pjsonURL.href] = pj
         return pj
     }
-    const p = fs.read(pjsonURL, true)
-    try {
-        const obj = JSON.parse(new TextDecoder().decode(p))
-        if (typeof obj.imports !== 'object' || obj.imports == null) {
-            obj.imports = undefined
-        }
-        if (typeof obj.main !== 'string') {
-            obj.main = undefined
-        }
-        if (typeof obj.name !== 'string') {
-            obj.name = undefined
-        }
-        if (obj.type !== 'module' && obj.type !== 'commonjs') {
-            obj.type = 'none'
-        }
-        const pj = {
-            pjsonURL,
-            exists: true,
-            main: obj.main,
-            name: obj.name,
-            type: obj.type,
-            exports: obj.exports,
-            imports: obj.imports,
-        }
-        fs.jsonCache[pjsonURL.href] = pj
-        return pj
+    const p = fs.read(pjsonURL)
+    const obj = p.exports
+    if (typeof obj.imports !== 'object' || obj.imports == null) {
+        obj.imports = undefined
     }
-    catch (e) {
-        throw new Error('Invalid Package Configuration ' + e + pjsonURL)
+    if (typeof obj.main !== 'string') {
+        obj.main = undefined
     }
+    if (typeof obj.name !== 'string') {
+        obj.name = undefined
+    }
+    if (obj.type !== 'module' && obj.type !== 'commonjs') {
+        obj.type = 'none'
+    }
+    const pj = {
+        pjsonURL,
+        exists: true,
+        main: obj.main,
+        name: obj.name,
+        type: obj.type,
+        exports: obj.exports,
+        imports: obj.imports,
+    }
+    fs.jsonCache[pjsonURL.href] = pj
+    return pj
 }
 export const READ_PACKAGE_SCOPE = async (url: URL, fs: FileURLSystem): Promise<PackageJSON> => {
     let scopeURL = new URL('./package.json', url)
@@ -1196,7 +1220,7 @@ export const isArrayIndex = (key) => {
     if (`${keyNum}` !== key) return false;
     return keyNum >= 0 && keyNum < 0xFFFF_FFFF;
 }
-export const PACKAGE_TARGET_RESOLVE = async (pjsonURL: URL, target, subpath: string, pattern: boolean, internal: boolean, conditions: Set<string>, fs: FileURLSystem): Promise<URL> => {
+export const PACKAGE_TARGET_RESOLVE = async (pjsonURL: URL, target, subpath: string, pattern: boolean, internal: boolean, fs: FileURLSystem): Promise<URL> => {
     if (typeof target == 'string') {
         if (!pattern && subpath && !target.endsWith('/')) {
             throw new Error('Invalid Module Specifier')
@@ -1212,9 +1236,9 @@ export const PACKAGE_TARGET_RESOLVE = async (pjsonURL: URL, target, subpath: str
                     throw new Error('Invalid Package Target')
                 }
                 if (pattern) {
-                    return await PACKAGE_RESOLVE(target.replace(patternRegEx, subpath), pjsonURL, conditions, fs)
+                    return await PACKAGE_RESOLVE(target.replace(patternRegEx, subpath), pjsonURL, fs)
                 }
-                return await PACKAGE_RESOLVE(target + subpath, pjsonURL, conditions, fs)
+                return await PACKAGE_RESOLVE(target + subpath, pjsonURL, fs)
             }
             else {
                 throw new Error('Invalid Package Target')
@@ -1247,7 +1271,7 @@ export const PACKAGE_TARGET_RESOLVE = async (pjsonURL: URL, target, subpath: str
             const targetValue = target[i];
             let resolved;
             try {
-                resolved = await PACKAGE_TARGET_RESOLVE(pjsonURL, targetValue, subpath, pattern, internal, conditions, fs);
+                resolved = await PACKAGE_TARGET_RESOLVE(pjsonURL, targetValue, subpath, pattern, internal, fs);
             } catch (e) {
                 lastException = e;
                 if (e.message === 'Invalid Package Target')
@@ -1272,9 +1296,9 @@ export const PACKAGE_TARGET_RESOLVE = async (pjsonURL: URL, target, subpath: str
             throw new Error('Invalid Package Configuration')
         }
         for (let key of keys) {
-            if (key === 'default' || conditions.has(key)) {
+            if (key === 'default' || (fs.conditions || defaultConditions).has(key)) {
                 const targetValue = target[key];
-                const resolved = await PACKAGE_TARGET_RESOLVE(pjsonURL, targetValue, subpath, pattern, internal, conditions, fs)
+                const resolved = await PACKAGE_TARGET_RESOLVE(pjsonURL, targetValue, subpath, pattern, internal, fs)
                 if (resolved === undefined)
                     continue;
                 return resolved;
@@ -1287,7 +1311,7 @@ export const PACKAGE_TARGET_RESOLVE = async (pjsonURL: URL, target, subpath: str
     }
     throw new Error('Invalid Package Target')
 }
-export const PACKAGE_TARGET_RESOLVE_Sync = (pjsonURL: URL, target, subpath: string, pattern: boolean, internal: boolean, conditions: Set<string>, fs: FileURLSystemSync): URL => {
+export const PACKAGE_TARGET_RESOLVE_Sync = (pjsonURL: URL, target, subpath: string, pattern: boolean, internal: boolean, fs: FileURLSystemSync): URL => {
     if (typeof target == 'string') {
         if (!pattern && subpath && !target.endsWith('/')) {
             throw new Error('Invalid Module Specifier')
@@ -1303,9 +1327,9 @@ export const PACKAGE_TARGET_RESOLVE_Sync = (pjsonURL: URL, target, subpath: stri
                     throw new Error('Invalid Package Target')
                 }
                 if (pattern) {
-                    return PACKAGE_RESOLVE_Sync(target.replace(patternRegEx, subpath), pjsonURL, conditions, fs)
+                    return PACKAGE_RESOLVE_Sync(target.replace(patternRegEx, subpath), pjsonURL, fs)
                 }
-                return PACKAGE_RESOLVE_Sync(target + subpath, pjsonURL, conditions, fs)
+                return PACKAGE_RESOLVE_Sync(target + subpath, pjsonURL, fs)
             }
             else {
                 throw new Error('Invalid Package Target')
@@ -1338,7 +1362,7 @@ export const PACKAGE_TARGET_RESOLVE_Sync = (pjsonURL: URL, target, subpath: stri
             const targetValue = target[i];
             let resolved;
             try {
-                resolved = PACKAGE_TARGET_RESOLVE_Sync(pjsonURL, targetValue, subpath, pattern, internal, conditions, fs);
+                resolved = PACKAGE_TARGET_RESOLVE_Sync(pjsonURL, targetValue, subpath, pattern, internal, fs);
             } catch (e) {
                 lastException = e;
                 if (e.message === 'Invalid Package Target')
@@ -1363,9 +1387,9 @@ export const PACKAGE_TARGET_RESOLVE_Sync = (pjsonURL: URL, target, subpath: stri
             throw new Error('Invalid Package Configuration')
         }
         for (let key of keys) {
-            if (key === 'default' || conditions.has(key)) {
+            if (key === 'default' || (fs.conditions || defaultConditionsSync).has(key)) {
                 const targetValue = target[key];
-                const resolved = PACKAGE_TARGET_RESOLVE_Sync(pjsonURL, targetValue, subpath, pattern, internal, conditions, fs)
+                const resolved = PACKAGE_TARGET_RESOLVE_Sync(pjsonURL, targetValue, subpath, pattern, internal, fs)
                 if (resolved === undefined)
                     continue;
                 return resolved;
@@ -1391,10 +1415,10 @@ function patternKeyCompare(a: string, b: string) {
     if (b.length > a.length) return 1;
     return 0;
 }
-export const PACKAGE_IMPORTS_EXPORTS_RESOLVE = async (matchKey: string, matchObj: Object, pjsonURL: URL, isImports, conditions: Set<string>, fs: FileURLSystem): Promise<{ resolved: URL, exact: boolean }> => {
+export const PACKAGE_IMPORTS_EXPORTS_RESOLVE = async (matchKey: string, matchObj: Object, pjsonURL: URL, isImports, fs: FileURLSystem): Promise<{ resolved: URL, exact: boolean }> => {
     if (matchObj.hasOwnProperty(matchKey) && !matchKey.endsWith('/') && !matchKey.includes('*')) {
         const target = matchObj[matchKey]
-        const resolved = await PACKAGE_TARGET_RESOLVE(pjsonURL, target, '', false, isImports, conditions, fs)
+        const resolved = await PACKAGE_TARGET_RESOLVE(pjsonURL, target, '', false, isImports, fs)
         return { resolved, exact: true }
     }
     const expansionKeys = Object.keys(matchObj).filter(x => x.endsWith('/') || (x.indexOf('*') !== -1 && x.indexOf('*') === x.lastIndexOf('*'))).sort(patternKeyCompare)
@@ -1409,23 +1433,23 @@ export const PACKAGE_IMPORTS_EXPORTS_RESOLVE = async (matchKey: string, matchObj
             if (!patternTrailer || (matchKey.endsWith(patternTrailer) && matchKey.length >= expansionKey.length)) {
                 const target = matchObj[expansionKey]
                 const subpath = matchKey.slice(patternBase.length, -patternTrailer.length)
-                const resolved = await PACKAGE_TARGET_RESOLVE(pjsonURL, target, subpath, true, isImports, conditions, fs)
+                const resolved = await PACKAGE_TARGET_RESOLVE(pjsonURL, target, subpath, true, isImports, fs)
                 return { resolved, exact: true }
             }
         }
         if (!patternBase && matchKey.startsWith(expansionKey)) {
             const target = matchObj[expansionKey]
             const subpath = matchKey.slice(expansionKey.length)
-            const resolved = await PACKAGE_TARGET_RESOLVE(pjsonURL, target, subpath, false, isImports, conditions, fs)
+            const resolved = await PACKAGE_TARGET_RESOLVE(pjsonURL, target, subpath, false, isImports, fs)
             return { resolved, exact: false }
         }
     }
     return { resolved: null, exact: true }
 }
-export const PACKAGE_IMPORTS_EXPORTS_RESOLVE_Sync = (matchKey: string, matchObj: Object, pjsonURL: URL, isImports, conditions: Set<string>, fs: FileURLSystemSync): { resolved: URL, exact: boolean } => {
+export const PACKAGE_IMPORTS_EXPORTS_RESOLVE_Sync = (matchKey: string, matchObj: Object, pjsonURL: URL, isImports, fs: FileURLSystemSync): { resolved: URL, exact: boolean } => {
     if (matchObj.hasOwnProperty(matchKey) && !matchKey.endsWith('/') && !matchKey.includes('*')) {
         const target = matchObj[matchKey]
-        const resolved = PACKAGE_TARGET_RESOLVE_Sync(pjsonURL, target, '', false, isImports, conditions, fs)
+        const resolved = PACKAGE_TARGET_RESOLVE_Sync(pjsonURL, target, '', false, isImports, fs)
         return { resolved, exact: true }
     }
     const expansionKeys = Object.keys(matchObj).filter(x => x.endsWith('/') || (x.indexOf('*') !== -1 && x.indexOf('*') === x.lastIndexOf('*'))).sort(patternKeyCompare)
@@ -1440,19 +1464,19 @@ export const PACKAGE_IMPORTS_EXPORTS_RESOLVE_Sync = (matchKey: string, matchObj:
             if (!patternTrailer || (matchKey.endsWith(patternTrailer) && matchKey.length >= expansionKey.length)) {
                 const target = matchObj[expansionKey]
                 const subpath = matchKey.slice(patternBase.length, -patternTrailer.length)
-                const resolved = PACKAGE_TARGET_RESOLVE_Sync(pjsonURL, target, subpath, true, isImports, conditions, fs)
+                const resolved = PACKAGE_TARGET_RESOLVE_Sync(pjsonURL, target, subpath, true, isImports, fs)
                 return { resolved, exact: true }
             }
         }
         if (!patternBase && matchKey.startsWith(expansionKey)) {
             const target = matchObj[expansionKey]
             const subpath = matchKey.slice(expansionKey.length)
-            const resolved = PACKAGE_TARGET_RESOLVE_Sync(pjsonURL, target, subpath, false, isImports, conditions, fs)
+            const resolved = PACKAGE_TARGET_RESOLVE_Sync(pjsonURL, target, subpath, false, isImports, fs)
             return { resolved, exact: false }
         }
     }
 }
-export const PACKAGE_IMPORTS_RESOLVE = async (specifier: string, parentURL: URL, conditions: Set<string>, fs: FileURLSystem) => {
+export const PACKAGE_IMPORTS_RESOLVE = async (specifier: string, parentURL: URL, fs: FileURLSystem) => {
     if (!specifier.startsWith('#')) {
         throw new Error('Assert starts with #')
     }
@@ -1462,7 +1486,7 @@ export const PACKAGE_IMPORTS_RESOLVE = async (specifier: string, parentURL: URL,
     const pjson = await READ_PACKAGE_SCOPE(parentURL, fs)
     if (pjson.exists) {
         if (pjson.imports) {
-            const resolvedMatch = await PACKAGE_IMPORTS_EXPORTS_RESOLVE(specifier, pjson.imports, pjson.pjsonURL, true, conditions, fs)
+            const resolvedMatch = await PACKAGE_IMPORTS_EXPORTS_RESOLVE(specifier, pjson.imports, pjson.pjsonURL, true, fs)
             if (resolvedMatch.resolved) {
                 return resolvedMatch
             }
@@ -1470,7 +1494,7 @@ export const PACKAGE_IMPORTS_RESOLVE = async (specifier: string, parentURL: URL,
     }
     throw new Error('Package Import Not Defined')
 }
-export const PACKAGE_IMPORTS_RESOLVE_Sync = (specifier: string, parentURL: URL, conditions: Set<string>, fs: FileURLSystemSync) => {
+export const PACKAGE_IMPORTS_RESOLVE_Sync = (specifier: string, parentURL: URL, fs: FileURLSystemSync) => {
     if (!specifier.startsWith('#')) {
         throw new Error('Assert starts with #')
     }
@@ -1480,7 +1504,7 @@ export const PACKAGE_IMPORTS_RESOLVE_Sync = (specifier: string, parentURL: URL, 
     const pjson = READ_PACKAGE_SCOPE_Sync(parentURL, fs)
     if (pjson.exists) {
         if (pjson.imports) {
-            const resolvedMatch = PACKAGE_IMPORTS_EXPORTS_RESOLVE_Sync(specifier, pjson.imports, pjson.pjsonURL, true, conditions, fs)
+            const resolvedMatch = PACKAGE_IMPORTS_EXPORTS_RESOLVE_Sync(specifier, pjson.imports, pjson.pjsonURL, true, fs)
             if (resolvedMatch.resolved) {
                 return resolvedMatch
             }
@@ -1506,62 +1530,62 @@ function isConditionalSugar(exports) {
     }
     return isConditionalSugar
 }
-export const PACKAGE_EXPORTS_RESOLVE = async (pjsonURL: URL, subpath: string, exports, conditions: Set<string>, fs: FileURLSystem): Promise<{ resolved: URL, exact: boolean }> => {
+export const PACKAGE_EXPORTS_RESOLVE = async (pjsonURL: URL, subpath: string, exports, fs: FileURLSystem): Promise<{ resolved: URL, exact: boolean }> => {
     if (isConditionalSugar(exports)) {
         exports = { '.': exports }
     }
     if (subpath === '.' && exports[subpath]) {
-        const resolved = await PACKAGE_TARGET_RESOLVE(pjsonURL, exports[subpath], '', false, false, conditions, fs)
+        const resolved = await PACKAGE_TARGET_RESOLVE(pjsonURL, exports[subpath], '', false, false, fs)
         if (resolved) {
             return { resolved, exact: true }
         }
     }
     else {
-        const matchKey = './' + subpath
-        const resolvedMatch = await PACKAGE_IMPORTS_EXPORTS_RESOLVE(matchKey, exports, pjsonURL, false, conditions, fs)
+        const matchKey = subpath
+        const resolvedMatch = await PACKAGE_IMPORTS_EXPORTS_RESOLVE(matchKey, exports, pjsonURL, false, fs)
+        if (resolvedMatch.resolved) {
+            return resolvedMatch
+        }
+    }
+    throw new Error('Package Path Not Exported ' + pjsonURL.href + ' ' + subpath)
+}
+export const PACKAGE_EXPORTS_RESOLVE_Sync = (pjsonURL: URL, subpath: string, exports, fs: FileURLSystemSync): { resolved: URL, exact: boolean } => {
+    if (isConditionalSugar(exports)) {
+        exports = { '.': exports }
+    }
+    if (subpath === '.' && exports[subpath]) {
+        const resolved = PACKAGE_TARGET_RESOLVE_Sync(pjsonURL, exports[subpath], '', false, false, fs)
+        if (resolved) {
+            return { resolved, exact: true }
+        }
+    }
+    else {
+        const matchKey = subpath
+        const resolvedMatch = PACKAGE_IMPORTS_EXPORTS_RESOLVE_Sync(matchKey, exports, pjsonURL, false, fs)
         if (resolvedMatch.resolved) {
             return resolvedMatch
         }
     }
     throw new Error('Package Path Not Exported')
 }
-export const PACKAGE_EXPORTS_RESOLVE_Sync = (pjsonURL: URL, subpath: string, exports, conditions: Set<string>, fs: FileURLSystemSync): { resolved: URL, exact: boolean } => {
-    if (isConditionalSugar(exports)) {
-        exports = { '.': exports }
-    }
-    if (subpath === '.' && exports[subpath]) {
-        const resolved = PACKAGE_TARGET_RESOLVE_Sync(pjsonURL, exports[subpath], '', false, false, conditions, fs)
-        if (resolved) {
-            return { resolved, exact: true }
-        }
-    }
-    else {
-        const matchKey = './' + subpath
-        const resolvedMatch = PACKAGE_IMPORTS_EXPORTS_RESOLVE_Sync(matchKey, exports, pjsonURL, false, conditions, fs)
-        if (resolvedMatch.resolved) {
-            return resolvedMatch
-        }
-    }
-    throw new Error('Package Path Not Exported')
-}
-export const PACKAGE_SELF_RESOLVE = async (packageName: string, packageSubpath: string, parentURL: URL, conditions: Set<string>, fs: FileURLSystem) => {
+export const PACKAGE_SELF_RESOLVE = async (packageName: string, packageSubpath: string, parentURL: URL, fs: FileURLSystem) => {
     const pjson = await READ_PACKAGE_SCOPE(parentURL, fs)
     if (!pjson.exists || !pjson.exports) {
         return undefined
     }
     if (pjson.name === packageName) {
-        const { resolved } = await PACKAGE_EXPORTS_RESOLVE(pjson.pjsonURL, packageSubpath, pjson.exports, conditions, fs)
+        const { resolved } = await PACKAGE_EXPORTS_RESOLVE(pjson.pjsonURL, packageSubpath, pjson.exports, fs)
         return resolved
     }
     return undefined
 }
-export const PACKAGE_SELF_RESOLVE_Sync = (packageName: string, packageSubpath: string, parentURL: URL, conditions: Set<string>, fs: FileURLSystemSync) => {
+export const PACKAGE_SELF_RESOLVE_Sync = (packageName: string, packageSubpath: string, parentURL: URL, fs: FileURLSystemSync) => {
     const pjson = READ_PACKAGE_SCOPE_Sync(parentURL, fs)
     if (!pjson.exists || !pjson.exports) {
         return undefined
     }
     if (pjson.name === packageName) {
-        const match = PACKAGE_EXPORTS_RESOLVE_Sync(pjson.pjsonURL, packageSubpath, pjson.exports, conditions, fs)
+        const match = PACKAGE_EXPORTS_RESOLVE_Sync(pjson.pjsonURL, packageSubpath, pjson.exports, fs)
         return RESOLVE_ESM_MATCH(match, fs)
     }
     return undefined
@@ -1595,9 +1619,9 @@ function parsePackageName(specifier: string) {
     const packageSubpath = '.' + (separatorIndex === -1 ? '' : specifier.slice(separatorIndex))
     return { packageName, packageSubpath, isScoped };
 }
-export const PACKAGE_RESOLVE = async (packageSpecifier: string, parentURL: URL, conditions: Set<string>, fs: FileURLSystem): Promise<URL> => {
+export const PACKAGE_RESOLVE = async (packageSpecifier: string, parentURL: URL, fs: FileURLSystem): Promise<URL> => {
     const { packageName, packageSubpath, isScoped } = parsePackageName(packageSpecifier)
-    const selfURL = await PACKAGE_SELF_RESOLVE(packageName, packageSubpath, parentURL, conditions, fs)
+    const selfURL = await PACKAGE_SELF_RESOLVE(packageName, packageSubpath, parentURL, fs)
     if (selfURL) {
         return selfURL
     }
@@ -1608,7 +1632,7 @@ export const PACKAGE_RESOLVE = async (packageSpecifier: string, parentURL: URL, 
         const pjson = await READ_PACKAGE_JSON(pjsonURL, fs)
         if (pjson.exists) {
             if (pjson.exports) {
-                const { resolved } = await PACKAGE_EXPORTS_RESOLVE(pjsonURL, packageSubpath, pjson.exports, conditions, fs)
+                const { resolved } = await PACKAGE_EXPORTS_RESOLVE(pjsonURL, packageSubpath, pjson.exports, fs)
                 result = resolved
             }
             else if (packageSubpath === '.') {
@@ -1628,9 +1652,9 @@ export const PACKAGE_RESOLVE = async (packageSpecifier: string, parentURL: URL, 
     }
     throw new Error('Module Not Found ' + packageSpecifier + ' ' + parentURL)
 }
-export const PACKAGE_RESOLVE_Sync = (packageSpecifier: string, parentURL: URL, conditions: Set<string>, fs: FileURLSystemSync): URL => {
+export const PACKAGE_RESOLVE_Sync = (packageSpecifier: string, parentURL: URL, fs: FileURLSystemSync): URL => {
     const { packageName, packageSubpath, isScoped } = parsePackageName(packageSpecifier)
-    const selfURL = PACKAGE_SELF_RESOLVE_Sync(packageName, packageSubpath, parentURL, conditions, fs)
+    const selfURL = PACKAGE_SELF_RESOLVE_Sync(packageName, packageSubpath, parentURL, fs)
     if (selfURL) {
         return selfURL
     }
@@ -1641,7 +1665,7 @@ export const PACKAGE_RESOLVE_Sync = (packageSpecifier: string, parentURL: URL, c
         const pjson = READ_PACKAGE_JSON_Sync(pjsonURL, fs)
         if (pjson.exists) {
             if (pjson.exports) {
-                const { resolved } = PACKAGE_EXPORTS_RESOLVE_Sync(pjsonURL, packageSubpath, pjson.exports, conditions, fs)
+                const { resolved } = PACKAGE_EXPORTS_RESOLVE_Sync(pjsonURL, packageSubpath, pjson.exports, fs)
                 result = resolved
             }
             else if (packageSubpath === '.') {
@@ -1786,17 +1810,17 @@ function shouldBeTreatedAsRelativeOrAbsolutePath(specifier) {
     return isRelativeSpecifier(specifier);
 }
 export const encodedSepRegEx = /%2F|%2C/i; //TODO should be %5C in node repo also
-export const ESM_RESOLVE = async (specifier: string, parentURL: URL, conditions: Set<string>, fs: FileURLSystem): Promise<URL> => {
+export const ESM_RESOLVE = async (specifier: string, parentURL: URL, fs: FileURLSystem): Promise<URL> => {
     let resolved;
     if (shouldBeTreatedAsRelativeOrAbsolutePath(specifier)) {
         resolved = new URL(specifier, parentURL);
     } else if (specifier[0] === '#') {
-        ({ resolved } = await PACKAGE_IMPORTS_RESOLVE(specifier, parentURL, conditions, fs));
+        ({ resolved } = await PACKAGE_IMPORTS_RESOLVE(specifier, parentURL, fs));
     } else {
         try {
             resolved = new URL(specifier);
         } catch {
-            resolved = await PACKAGE_RESOLVE(specifier, parentURL, conditions, fs)
+            resolved = await PACKAGE_RESOLVE(specifier, parentURL, fs)
         }
     }
     if (encodedSepRegEx.test(resolved.pathname)) {
@@ -1807,7 +1831,8 @@ export const ESM_RESOLVE = async (specifier: string, parentURL: URL, conditions:
     // }
     return resolved
 }
-export const cjsRegister = (f, k: string, cjsFunctions: { [k: string]: Function }, cjsModules: { [k: string]: CJS_MODULE }) => {
+export const cjsRegister = (f, k: string, state: State) => {
+    const { cjsFunctions, cjsModules } = state
     if (typeof f == 'function') {
         cjsFunctions[k] = f
     }
@@ -1818,12 +1843,14 @@ export const cjsRegister = (f, k: string, cjsFunctions: { [k: string]: Function 
     }
 }
 export type CJS_MODULE = { exports }
-export const cjsExec = (k: string, cjsFunctions: { [k: string]: Function }, cjsModules: { [k: string]: CJS_MODULE }) => {
+export type State = { cjsFunctions: { [k: string]: Function }, cjsModules: { [k: string]: CJS_MODULE }, fs: FileURLSystemSync }
+export const cjsExec = (k: string, state: State) => {
+    const { cjsFunctions, cjsModules, fs } = state
     if (!cjsModules.hasOwnProperty(k)) {
         if (cjsFunctions[k]) {
             const require = (specifier: string) => {
-                const mURL = CJS_RESOLVE(specifier, new URL(k), null, null)
-                const m = cjsExec(mURL.href, cjsFunctions, cjsModules)
+                const mURL = CJS_RESOLVE(specifier, new URL(k), fs)
+                const m = cjsExec(mURL.href, state)
                 return m.exports
             }
             const module: CJS_MODULE = { exports: {} }
@@ -1835,11 +1862,6 @@ export const cjsExec = (k: string, cjsFunctions: { [k: string]: Function }, cjsM
         }
     }
     return cjsModules[k]
-}
-export const createRequire = (url: URL, cjsFunctions: { [k: string]: Function }, cjsModules: { [k: string]: CJS_MODULE }) => {
-    return (specifier: string) => {
-        //const m = cjsExec(url.href,)
-    }
 }
 export const RESOLVE_ESM_MATCH = (match: { resolved: URL, exact: boolean }, fs: FileURLSystemSync) => {
     if (match.exact) {
@@ -1855,27 +1877,27 @@ export const RESOLVE_ESM_MATCH = (match: { resolved: URL, exact: boolean }, fs: 
     }
     throw new Error('Module Not Found')
 }
-export const LOAD_PACKAGE_EXPORTS = (packageSpecifier: string, parentURL: URL, conditions: Set<string>, fs: FileURLSystemSync) => {
+export const LOAD_PACKAGE_EXPORTS = (packageSpecifier: string, parentURL: URL, fs: FileURLSystemSync) => {
     const { packageSubpath } = parsePackageName(packageSpecifier)
     const pjson = READ_PACKAGE_JSON_Sync(new URL('./package.json', parentURL), fs)
     if (pjson.exists && pjson.exports) {
-        const match = PACKAGE_EXPORTS_RESOLVE_Sync(pjson.pjsonURL, packageSubpath, pjson.exports, conditions, fs)
+        const match = PACKAGE_EXPORTS_RESOLVE_Sync(pjson.pjsonURL, packageSubpath, pjson.exports, fs)
         return RESOLVE_ESM_MATCH(match, fs)
     }
 }
-export const LOAD_PACKAGE_IMPORTS = (packageSpecifier: string, parentURL: URL, conditions: Set<string>, fs: FileURLSystemSync) => {
+export const LOAD_PACKAGE_IMPORTS = (packageSpecifier: string, parentURL: URL, fs: FileURLSystemSync) => {
     const pjson = READ_PACKAGE_JSON_Sync(new URL('./package.json', parentURL), fs)
     if (pjson.exists && pjson.imports) {
-        const match = PACKAGE_IMPORTS_RESOLVE_Sync(packageSpecifier, pjson.pjsonURL, conditions, fs)
+        const match = PACKAGE_IMPORTS_RESOLVE_Sync(packageSpecifier, pjson.pjsonURL, fs)
         return RESOLVE_ESM_MATCH(match, fs)
     }
 }
-export const LOAD_NODE_MODULES = (packageSpecifier: string, dirURL: URL, conditions: Set<string>, fs: FileURLSystemSync): URL => {
+export const LOAD_NODE_MODULES = (packageSpecifier: string, dirURL: URL, fs: FileURLSystemSync): URL => {
     const { packageName, packageSubpath, isScoped } = parsePackageName(packageSpecifier)
     dirURL = new URL('./node_modules/' + packageName, dirURL)
     let last
     do {
-        const r = LOAD_PACKAGE_EXPORTS(packageSpecifier, dirURL, conditions, fs)
+        const r = LOAD_PACKAGE_EXPORTS(packageSpecifier, dirURL, fs)
         if (r) {
             return r
         }
@@ -1892,7 +1914,7 @@ export const LOAD_NODE_MODULES = (packageSpecifier: string, dirURL: URL, conditi
     }
     while (dirURL.pathname !== last.pathname)
 }
-export const CJS_RESOLVE = (packageSpecifier: string, parentURL: URL, conditions: Set<string>, fs: FileURLSystemSync): URL => {
+export const CJS_RESOLVE = (packageSpecifier: string, parentURL: URL, fs: FileURLSystemSync): URL => {
     //TODO core modules
     if (packageSpecifier.startsWith('/')) {
         throw new Error('specifier must not start with "/" ' + packageSpecifier)
@@ -1906,22 +1928,22 @@ export const CJS_RESOLVE = (packageSpecifier: string, parentURL: URL, conditions
         if (rd) {
             return rd
         }
-        throw new Error('Module Not Found ' + packageSpecifier + ' ' + parentURL)
+        throw new Error('Module Not Found "' + packageSpecifier + '" in "' + parentURL + '"')
     }
     if (packageSpecifier.startsWith('#')) {
-        const rf = LOAD_PACKAGE_IMPORTS(packageSpecifier, parentURL, conditions, fs)
+        const rf = LOAD_PACKAGE_IMPORTS(packageSpecifier, parentURL, fs)
         if (rf) {
             return rf
         }
     }
     const { packageName, packageSubpath, isScoped } = parsePackageName(packageSpecifier)
-    const rs = PACKAGE_SELF_RESOLVE_Sync(packageName, packageSubpath, parentURL, conditions, fs)
+    const rs = PACKAGE_SELF_RESOLVE_Sync(packageName, packageSubpath, parentURL, fs)
     if (rs) {
         return rs
     }
-    const rm = LOAD_NODE_MODULES(packageSpecifier, parentURL, conditions, fs)
+    const rm = LOAD_NODE_MODULES(packageSpecifier, parentURL, fs)
     if (rm) {
         return rm
     }
-    throw new Error('Module Not Found ' + packageSpecifier + ' ' + parentURL)
+    throw new Error('Module Not Found "' + packageSpecifier + '" in "' + parentURL + '"')
 }
