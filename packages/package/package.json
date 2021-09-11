@@ -6,7 +6,10 @@
   "publishConfig": {
     "access": "public"
   },
-  "exports": "./index.js",
+  "exports": {
+    ".": "./index.js",
+    "./globals/globalThis": "./globals/globalThis.js"
+  },
   "types": "./index.d.ts",
   "license": "Apache-2.0 WITH LLVM-exception",
   "repository": {

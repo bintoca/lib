@@ -1,5 +1,4 @@
 import * as acorn from 'acorn'
-import glo from 'acorn-globals'
 import * as walk from 'acorn-walk'
 import { Encoder, Decoder } from '@bintoca/cbor'
 import { defaultTypeMap, EncoderState, binaryItem, tagItem, tags, bufferSourceToDataView, DecoderState, decodeCount, bufferSourceToUint8Array, decodeSkip } from '@bintoca/cbor/core'
@@ -7,15 +6,15 @@ import * as cjsLexer from 'cjs-module-lexer'
 const TD = new TextDecoder()
 const TE = new TextEncoder()
 
+export const metaURL = import.meta.url
 export const internalBase = '/x/a/'
-export const internalCJSPath = '/x/ac'
 export const globalBase = '/x/g/'
 export const reloadBase = '/x/h/'
 export const importBase = '/x/i/'
 export const packageBase = '/x/p/'
 export const packageCJSPath = '/x/pc'
-export const thisPath = '/x/t'
 export const undefinedPath = '/x/u'
+export const controlledGlobalsSet = new Set(['Buffer', 'document', 'Function', 'globalThis', 'process', 'self', 'setInterval', 'setTimeout', 'WebAssembly', 'window'])
 export const escapeDoubleQuote = (s: string) => s.replace(/"/g, '\\"')
 export function getSubstituteIdCore(count: number, length: number, prefix: string) {
     const b64alpha = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789_$"
@@ -40,7 +39,8 @@ export const enum ParseFilesError {
     importSubstitute = 2,
     thisSubstitute = 3,
     packageJSON = 4,
-    invalidSpecifier = 5
+    invalidSpecifier = 5,
+    evalSubstitute = 6
 }
 export const thisScopes = ['FunctionDeclaration', 'FunctionExpression', 'ClassDeclaration', 'ClassExpression']
 export const isSpecifierInvalid = (file: string, specifier: string): boolean => (specifier.startsWith('.') && !specifier.startsWith('./') && !specifier.startsWith('../')) || !new URL(specifier, 'http://x/x/' + file).href.startsWith('http://x/x/') || !new URL(specifier, 'http://y/y/' + file).href.startsWith('http://y/y/')
@@ -68,6 +68,7 @@ export const parseFile = (k: string, b: BufferSource): Map<number, any> => {
             text = TD.decode(b)
             ast = acorn.parse(text, { ecmaVersion: 2022, sourceType: 'module', allowHashBang: true })
             //console.log(JSON.stringify(ast))
+            //console.log(JSON.stringify(acorn.parse('const ev=2', { ecmaVersion: 2022, sourceType: 'module' })))
         }
         catch (e) {
             return new Map<number, any>([[1, FileType.error], [2, ParseFilesError.syntax], [3, e.message]])
@@ -95,9 +96,15 @@ export const parseFile = (k: string, b: BufferSource): Map<number, any> => {
                 removeNodes.push(n)
             },
             Identifier(n) {
+                if (n['name'] == 'eval') {
+                    removeNodes.push(n)
+                }
                 isSuspectId(n['name'])
             },
             VariablePattern(n) {
+                if (n['name'] == 'eval') {
+                    removeNodes.push(n)
+                }
                 isSuspectId(n['name'])
             },
             ImportSpecifier(n) {
@@ -140,6 +147,7 @@ export const parseFile = (k: string, b: BufferSource): Map<number, any> => {
         const exports: Map<number, any>[] = []
         let importSubstitute
         let thisSubstitute
+        let evalSubstitute
         removeNodes.sort((a, b) => a.start - b.start)
         let body = ''
         for (let n of removeNodes) {
@@ -168,11 +176,24 @@ export const parseFile = (k: string, b: BufferSource): Map<number, any> => {
             else if (n.type == 'ThisExpression') {
                 if (!thisSubstitute) {
                     thisSubstitute = getSubstituteId(thisSuspectIds, 3, '$')
+                    isSuspectId(thisSubstitute)
                 }
                 if (!thisSubstitute) {
                     return new Map<number, any>([[1, FileType.error], [2, ParseFilesError.thisSubstitute], [3, k]])
                 }
                 body += thisSubstitute
+            }
+            else if (n.type == 'Identifier' || n.type == 'VariablePattern') {
+                if (n.name == 'eval') {
+                    if (!evalSubstitute) {
+                        evalSubstitute = getSubstituteId(thisSuspectIds, 3, '$')
+                        isSuspectId(evalSubstitute)
+                    }
+                    if (!evalSubstitute) {
+                        return new Map<number, any>([[1, FileType.error], [2, ParseFilesError.evalSubstitute], [3, k]])
+                    }
+                    body += evalSubstitute
+                }
             }
             else if (n.type == 'ExportNamedDeclaration') {
                 if (n.declaration) {
@@ -214,9 +235,6 @@ export const parseFile = (k: string, b: BufferSource): Map<number, any> => {
                     return new Map<number, any>([[1, FileType.error], [2, ParseFilesError.invalidSpecifier], [3, specifier]])
                 }
                 exports.push(new Map([[2, text.substring(n.start, n.source.start)], [3, specifier]]))
-            }
-            else if (n.type == 'MetaProperty' && n.meta.name == 'import') {
-
             }
         }
         body += text.substring(position)
@@ -380,13 +398,12 @@ export const parseFile = (k: string, b: BufferSource): Map<number, any> => {
                 return { name: name, nodes: groupedGlobals[name] };
             });
         }
-        glob = glob.filter(x => x.name != 'this').map(x => x.name)
+        glob = glob.filter(x => x.name != 'this' && x.name != 'eval').map(x => x.name)
         const sizeEstimate = imports.map(x => TE.encode(x.get(1)).length + TE.encode(x.get(2)).length + 100)
             .concat(exports.map(x => TE.encode(x.get(1) || '').length + TE.encode(x.get(2) || '').length + TE.encode(x.get(3) || '').length + TE.encode(x.get(4) || '').length + 100))
             .concat(glob.map(x => TE.encode(x).length * 2 + 50)).reduce((a, b) => a + b, 0)
-            + (importSubstitute ? 50 : 0) + (thisSubstitute ? 50 : 0) + body.length
-        const m = new Map<number, any>([[1, FileType.js], [2, sizeEstimate], [3, body], [4, glob], [5, imports], [6, importSubstitute], [7, thisSubstitute], [8, exports]])
-
+            + (importSubstitute ? 50 : 0) + (thisSubstitute ? 50 : 0) + (evalSubstitute ? 50 : 0) + body.length
+        const m = new Map<number, any>([[1, FileType.js], [2, sizeEstimate], [3, body], [4, glob], [5, imports], [6, importSubstitute], [7, thisSubstitute], [8, exports], [9, evalSubstitute]])
         for (let x of m) {
             if (x[1] === undefined || (Array.isArray(x[1]) && x[1].length == 0)) {
                 m.delete(x[0])
@@ -433,6 +450,12 @@ export const encodeFile = (p: Map<number, any>): Uint8Array => {
 export const decodePackage = (b: BufferSource): Map<number, any> => {
     const dec = new Decoder({ byteStringNoCopy: true })
     return dec.decode(b)
+}
+const logUndefinedGlobal = (g:string, parentURL)=>{
+    const a = new Set(['define'])
+    if(!a.has(g)){
+        console.log('undefined global', g, parentURL)
+    }
 }
 export const cjsHiddenVariable = 's3jY8Nt5dO3xokuh194BF'
 export const cjsModuleGlobals = ['module', 'exports', 'require', '__dirname', '__filename', cjsHiddenVariable]
@@ -511,6 +534,10 @@ export const decodeFile = async (b: BufferSource, freeGlobals: DataView, control
                 const cjsHeader = TE.encode('import{cjsRegister as ' + cjsHiddenVariable + '}from"' + internalBase + escapeDoubleQuote(fs.stateURL) + '";' + cjsHiddenVariable + '((function (' + cjsModuleGlobals.join() + '){')
                 u.set(cjsHeader, len)
                 len += cjsHeader.byteLength
+                if (dv.getUint8(state.position) == 35 && dv.getUint8(state.position + 1) == 33) {//#!
+                    u[len++] = 47
+                    u[len++] = 47
+                }
                 if (bodySize > 100) {
                     u.set(new Uint8Array(dv.buffer, dv.byteOffset + state.position, bodySize), len)
                 }
@@ -521,7 +548,7 @@ export const decodeFile = async (b: BufferSource, freeGlobals: DataView, control
                 }
                 state.position += bodySize
                 len += bodySize
-                const cjsFooter = TE.encode('}),"' + escapeDoubleQuote(parentURL.href) + '");')
+                const cjsFooter = TE.encode('}),"' + escapeDoubleQuote(parentURL.href.replace(packageCJSPath + '/', packageBase)) + '");')
                 u.set(cjsFooter, len)
                 len += cjsFooter.byteLength
                 if (dv.byteLength > state.position && dv.getUint8(state.position) == 4) {
@@ -530,7 +557,7 @@ export const decodeFile = async (b: BufferSource, freeGlobals: DataView, control
                     for (let i = 0; i < globalCount; i++) {
                         const size = decodeCount(dv, state)
                         const s = TD.decode(bufferSourceToUint8Array(dv, state.position, size))
-                        if (!cjsModuleGlobals.includes(s) && !exists(freeGlobals, dv, state.position, size)) {
+                        if (!cjsModuleGlobals.includes(s) && !lookupExists(freeGlobals, dv, state.position, size)) {
                             u[len++] = 10
                             u[len++] = 105
                             u[len++] = 109
@@ -552,16 +579,20 @@ export const decodeFile = async (b: BufferSource, freeGlobals: DataView, control
                             u[len++] = 47
                             u[len++] = 120
                             u[len++] = 47
-                            if (exists(controlledGlobals, dv, state.position, size)) {
+                            if (lookupExists(controlledGlobals, dv, state.position, size)) {
                                 u[len++] = 103
                                 u[len++] = 47
                                 for (let j = 0; j < size; j++) {
                                     u[len + j] = dv.getUint8(state.position + j)
                                 }
                                 len += size
+                                u[len++] = 46
+                                u[len++] = 106
+                                u[len++] = 115
                             }
                             else {
                                 u[len++] = 117
+                                logUndefinedGlobal(TD.decode(new Uint8Array(dv.buffer, dv.byteOffset + state.position, size)), parentURL.href)
                             }
                             u[len++] = 34
                         }
@@ -630,12 +661,54 @@ export const decodeFile = async (b: BufferSource, freeGlobals: DataView, control
                     u[len++] = 47
                     u[len++] = 120
                     u[len++] = 47
-                    u[len++] = 116
+                    u[len++] = 103
+                    u[len++] = 47
+                    u[len++] = 103
+                    u[len++] = 108
+                    u[len++] = 111
+                    u[len++] = 98
+                    u[len++] = 97
+                    u[len++] = 108
+                    u[len++] = 84
+                    u[len++] = 104
+                    u[len++] = 105
+                    u[len++] = 115
+                    u[len++] = 46
+                    u[len++] = 106
+                    u[len++] = 115
                     u[len++] = 34
                 }
                 if (dv.byteLength > state.position && dv.getUint8(state.position) == 8) {
                     state.position++
                     decodeSkip(dv, state)
+                }
+                if (dv.byteLength > state.position && dv.getUint8(state.position) == 9) {
+                    state.position++
+                    const size = decodeCount(dv, state)
+                    u[len++] = 10
+                    u[len++] = 105
+                    u[len++] = 109
+                    u[len++] = 112
+                    u[len++] = 111
+                    u[len++] = 114
+                    u[len++] = 116
+                    u[len++] = 32
+                    for (let j = 0; j < size; j++) {
+                        u[len + j] = dv.getUint8(state.position + j)
+                    }
+                    len += size
+                    state.position += size
+                    u[len++] = 32
+                    u[len++] = 102
+                    u[len++] = 114
+                    u[len++] = 111
+                    u[len++] = 109
+                    u[len++] = 34
+                    u[len++] = 47
+                    u[len++] = 120
+                    u[len++] = 47
+                    u[len++] = 117
+                    u[len++] = 34
                 }
                 if (len >= u.byteLength) {
                     loop = true
@@ -659,7 +732,7 @@ export const decodeFile = async (b: BufferSource, freeGlobals: DataView, control
                     const globalCount = decodeCount(dv, state)
                     for (let i = 0; i < globalCount; i++) {
                         const size = decodeCount(dv, state)
-                        if (!exists(freeGlobals, dv, state.position, size)) {
+                        if (!lookupExists(freeGlobals, dv, state.position, size)) {
                             u[len++] = 10
                             u[len++] = 105
                             u[len++] = 109
@@ -681,16 +754,20 @@ export const decodeFile = async (b: BufferSource, freeGlobals: DataView, control
                             u[len++] = 47
                             u[len++] = 120
                             u[len++] = 47
-                            if (exists(controlledGlobals, dv, state.position, size)) {
+                            if (lookupExists(controlledGlobals, dv, state.position, size)) {
                                 u[len++] = 103
                                 u[len++] = 47
                                 for (let j = 0; j < size; j++) {
                                     u[len + j] = dv.getUint8(state.position + j)
                                 }
                                 len += size
+                                u[len++] = 46
+                                u[len++] = 106
+                                u[len++] = 115
                             }
                             else {
                                 u[len++] = 117
+                                logUndefinedGlobal(TD.decode(new Uint8Array(dv.buffer, dv.byteOffset + state.position, size)), parentURL.href)
                             }
                             u[len++] = 34
                         }
@@ -780,7 +857,21 @@ export const decodeFile = async (b: BufferSource, freeGlobals: DataView, control
                     u[len++] = 47
                     u[len++] = 120
                     u[len++] = 47
-                    u[len++] = 116
+                    u[len++] = 103
+                    u[len++] = 47
+                    u[len++] = 103
+                    u[len++] = 108
+                    u[len++] = 111
+                    u[len++] = 98
+                    u[len++] = 97
+                    u[len++] = 108
+                    u[len++] = 84
+                    u[len++] = 104
+                    u[len++] = 105
+                    u[len++] = 115
+                    u[len++] = 46
+                    u[len++] = 106
+                    u[len++] = 115
                     u[len++] = 34
                 }
                 if (dv.byteLength > state.position && dv.getUint8(state.position) == 8) {
@@ -856,6 +947,34 @@ export const decodeFile = async (b: BufferSource, freeGlobals: DataView, control
                             }
                         }
                     }
+                }
+                if (dv.byteLength > state.position && dv.getUint8(state.position) == 9) {
+                    state.position++
+                    const size = decodeCount(dv, state)
+                    u[len++] = 10
+                    u[len++] = 105
+                    u[len++] = 109
+                    u[len++] = 112
+                    u[len++] = 111
+                    u[len++] = 114
+                    u[len++] = 116
+                    u[len++] = 32
+                    for (let j = 0; j < size; j++) {
+                        u[len + j] = dv.getUint8(state.position + j)
+                    }
+                    len += size
+                    state.position += size
+                    u[len++] = 32
+                    u[len++] = 102
+                    u[len++] = 114
+                    u[len++] = 111
+                    u[len++] = 109
+                    u[len++] = 34
+                    u[len++] = 47
+                    u[len++] = 120
+                    u[len++] = 47
+                    u[len++] = 117
+                    u[len++] = 34
                 }
             }
         }
@@ -952,9 +1071,9 @@ const importResolve = async (u: Uint8Array, len: number, dv: DataView, state: De
     u.set(spb, len)
     return spb.byteLength
 }
-export const createLookup = (s: string[]): DataView => {
+export const createLookup = (s: Set<string>): DataView => {
     const TE = new TextEncoder()
-    const b = s.sort().map(x => TE.encode(x))
+    const b = Array.from(s).sort().map(x => TE.encode(x))
     const m = new Map()
     for (let x of b) {
         if (!m.get(x[0])) {
@@ -983,7 +1102,7 @@ export const createLookup = (s: string[]): DataView => {
     }
     return dv
 }
-export const exists = (lookup: DataView, dv: DataView, position: number, length: number): boolean => {
+export const lookupExists = (lookup: DataView, dv: DataView, position: number, length: number): boolean => {
     const headerSize = lookup.getUint32(0)
     for (let i = 0; i < headerSize; i++) {
         const key = lookup.getUint8(i * 4 + 4)
@@ -1566,7 +1685,7 @@ export const PACKAGE_EXPORTS_RESOLVE_Sync = (pjsonURL: URL, subpath: string, exp
             return resolvedMatch
         }
     }
-    throw new Error('Package Path Not Exported')
+    throw new Error('Package Path Not Exported ' + pjsonURL.href + ' ' + subpath)
 }
 export const PACKAGE_SELF_RESOLVE = async (packageName: string, packageSubpath: string, parentURL: URL, fs: FileURLSystem) => {
     const pjson = await READ_PACKAGE_SCOPE(parentURL, fs)
@@ -1853,9 +1972,21 @@ export const cjsExec = (k: string, state: State) => {
                 const m = cjsExec(mURL.href, state)
                 return m.exports
             }
+            const rp = new Proxy(require, {
+                get(target, property, receiver) {
+                    if (property in target) {
+                        return target[property]
+                    }
+                    console.log('require unknown property get ' + property.toString(), k)
+                },
+                set(target, property, value, receiver) {
+                    console.log('require unknown property set ' + property.toString(), k)
+                    return false
+                }
+            })
             const module: CJS_MODULE = { exports: {} }
             cjsModules[k] = module
-            cjsFunctions[k](module, module.exports, require, new URL('./', k).href, k)
+            cjsFunctions[k](module, module.exports, rp, new URL('./', k).href, k)
         }
         else {
             throw new Error('cjs function not found ' + k)
@@ -1894,7 +2025,7 @@ export const LOAD_PACKAGE_IMPORTS = (packageSpecifier: string, parentURL: URL, f
 }
 export const LOAD_NODE_MODULES = (packageSpecifier: string, dirURL: URL, fs: FileURLSystemSync): URL => {
     const { packageName, packageSubpath, isScoped } = parsePackageName(packageSpecifier)
-    dirURL = new URL('./node_modules/' + packageName, dirURL)
+    dirURL = new URL('./node_modules/' + packageName + '/package.json', dirURL)
     let last
     do {
         const r = LOAD_PACKAGE_EXPORTS(packageSpecifier, dirURL, fs)
@@ -1910,7 +2041,7 @@ export const LOAD_NODE_MODULES = (packageSpecifier: string, dirURL: URL, fs: Fil
             return rd
         }
         last = dirURL
-        dirURL = new URL((isScoped ? '../../../node_modules/' : '../../node_modules/') + packageName, dirURL)
+        dirURL = new URL((isScoped ? '../../../../node_modules/' : '../../../node_modules/') + packageName+ '/package.json', dirURL)
     }
     while (dirURL.pathname !== last.pathname)
 }

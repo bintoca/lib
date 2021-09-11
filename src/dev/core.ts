@@ -5,8 +5,10 @@ import open from 'open'
 import { cwd } from 'process';
 import {
     parseFiles, parseFile, ParseFilesError, getShrinkwrapURLs, encodePackage, encodeFile, decodePackage, decodeFile, createLookup, FileType, READ_PACKAGE_JSON, ESM_RESOLVE, getCacheKey,
-    getShrinkwrapResolved, ShrinkwrapPackageDescription, importBase, getDynamicImportModule, reloadBase, packageBase, internalBase, Update, FileURLSystem, getManifest, undefinedPath, FileURLSystemSync, CJS_MODULE, packageCJSPath, getAllCJSModule, getCJSFiles, READ_PACKAGE_JSON_Sync
+    getShrinkwrapResolved, ShrinkwrapPackageDescription, importBase, getDynamicImportModule, reloadBase, packageBase, internalBase, Update, FileURLSystem, getManifest, undefinedPath, CJS_MODULE,
+    packageCJSPath, getAllCJSModule, getCJSFiles, controlledGlobalsSet, globalBase, metaURL as packageMetaURL
 } from '@bintoca/package'
+import { freeGlobals as fg } from '@bintoca/package/globals/globalThis'
 import { url as stateURL } from '@bintoca/dev/state'
 import * as chokidar from 'chokidar'
 import { server as wss } from 'websocket'
@@ -28,8 +30,8 @@ export const defaultConfig: Config = {
     watch: true,
     configFile: './bintoca.dev.js'
 }
-export const freeGlobals = createLookup(['window', 'document', 'console', 'Array', 'BigInt', 'Infinity', 'Object', 'RegExp', 'String', 'Symbol', 'SyntaxError', 'parseFloat', 'parseInt'])
-export const controlledGlobals = createLookup([])
+export const freeGlobals = createLookup(new Set(fg))
+export const controlledGlobals = createLookup(controlledGlobalsSet)
 export const resetCache = (state: State) => {
     state.urlCache = {}
     state.cjsCache = null
@@ -204,14 +206,20 @@ export const httpHandler = async (req: http.IncomingMessage, res: http.ServerRes
                     res.end()
                 }
             }
+            else if (req.url == packageCJSPath) {
+                res.setHeader('Content-Type', 'text/javascript')
+                res.end(getAllCJSModule(state.cjsCache))
+            }
             else if (state.urlCache[req.url]) {
                 const u = state.urlCache[req.url]
                 res.setHeader('Content-Type', u.type)
                 res.end(Buffer.from(u.data))
             }
-            else if (req.url == packageCJSPath) {
+            else if (req.url.startsWith(globalBase)) {
                 res.setHeader('Content-Type', 'text/javascript')
-                res.end(getAllCJSModule(state.cjsCache))
+                const d = fs.readFileSync(new URL('./globals/' + req.url.slice(globalBase.length), packageMetaURL) as any)
+                state.urlCache[req.url] = { data: d, type: 'text/javascript' }
+                res.end(d)
             }
             else if (await state.fileURLSystem.exists(new URL(req.url, getRootURL(state)))) {
                 const u = await decodeFile(await state.fileURLSystem.read(new URL(req.url, getRootURL(state)), false), freeGlobals, controlledGlobals, new URL(req.url, getRootURL(state)), state.fileURLSystem)

@@ -6,6 +6,8 @@ const ar = () => this
 const $ddddd = Number.EPSILON + Number.MAX_SAFE_INTEGER
 import('ss' + import.meta.url)
 export function f($vvvvv) {
+    (0, eval)();
+    (0, this.b)();
     return this
 }
 export class c {
