@@ -1,2 +1,6 @@
-import gt from './globalThis.js'
-export default gt.setInterval
+export default typeof setInterval === 'undefined' ? undefined : function (h, t, ...a) {
+    if (typeof h !== 'function') {
+        throw new TypeError('first argument is not a function')
+    }
+    return setInterval(h, t, ...a)
+}

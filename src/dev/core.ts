@@ -4,11 +4,13 @@ import * as path from 'path'
 import open from 'open'
 import { cwd } from 'process';
 import {
-    parseFiles, parseFile, ParseFilesError, getShrinkwrapURLs, encodePackage, encodeFile, decodePackage, decodeFile, createLookup, FileType, READ_PACKAGE_JSON, ESM_RESOLVE, getCacheKey,
-    getShrinkwrapResolved, ShrinkwrapPackageDescription, importBase, getDynamicImportModule, reloadBase, packageBase, internalBase, Update, FileURLSystem, getManifest, undefinedPath, CJS_MODULE,
-    packageCJSPath, getAllCJSModule, getCJSFiles, controlledGlobalsSet, globalBase, metaURL as packageMetaURL
+    READ_PACKAGE_JSON, ESM_RESOLVE, FileURLSystem, CJS_MODULE
 } from '@bintoca/package'
-import { freeGlobals as fg } from '@bintoca/package/globals/globalThis'
+import {
+    parseFiles, parseFile, ParseFilesError, getShrinkwrapURLs, encodePackage, encodeFile, decodePackage, decodeFile, createLookup, FileType, getCacheKey,
+    getShrinkwrapResolved, ShrinkwrapPackageDescription, importBase, getDynamicImportModule, reloadBase, packageBase, internalBase, Update, getManifest, undefinedPath,
+    packageCJSPath, getAllCJSModule, getCJSFiles, controlledGlobalsSet, globalBase, metaURL as packageMetaURL, getGlobalModule, freeGlobals as fg
+} from '@bintoca/package/server'
 import { url as stateURL } from '@bintoca/dev/state'
 import * as chokidar from 'chokidar'
 import { server as wss } from 'websocket'
@@ -217,7 +219,9 @@ export const httpHandler = async (req: http.IncomingMessage, res: http.ServerRes
             }
             else if (req.url.startsWith(globalBase)) {
                 res.setHeader('Content-Type', 'text/javascript')
-                const d = fs.readFileSync(new URL('./globals/' + req.url.slice(globalBase.length), packageMetaURL) as any)
+                const g = req.url.slice(globalBase.length)
+                const fn = new URL('./globals/' + g, packageMetaURL)
+                const d = fs.existsSync(fn as any) ? fs.readFileSync(fn as any) : Buffer.from(TE.encode(getGlobalModule(g)))
                 state.urlCache[req.url] = { data: d, type: 'text/javascript' }
                 res.end(d)
             }
@@ -353,7 +357,7 @@ export const update = async (f: Update, state: State) => {
     const notif = {}
     for (let k in f) {
         const url = new URL(packageBase + alignPath(k), getRootURL(state))
-        notif[url.href] = { action: f[k].action }
+        notif[url.href] = { action: f[k].action, error: parsed.files[k].get(1) === FileType.error ? { type: parsed.files[k].get(2), message: parsed.files[k].get(3) } : undefined }
         if (f[k].action == 'remove') {
             state.fileCache[url.pathname] = undefined
             state.urlCache[url.pathname] = undefined
@@ -433,7 +437,7 @@ export const init = async (config?: Config) => {
         log(state, 'Done loading files.')
     }
     catch (e) {
-        log(e)
+        log(state, e)
     }
     const httpServer = http.createServer({}, async (req: http.IncomingMessage, res: http.ServerResponse) => await httpHandler(req, res, state))
     const wsServer = new wss({ httpServer: httpServer })

@@ -8,6 +8,7 @@
   },
   "exports": {
     ".": "./index.js",
+    "./server": "./server.js",
     "./globals/globalThis": "./globals/globalThis.js"
   },
   "types": "./index.d.ts",
@@ -17,8 +18,7 @@
     "url": "git+https://github.com/bintoca/lib.git",
     "directory": "packages/package"
   },
-  "keywords": [
-  ],
+  "keywords": [],
   "files": [
     "index.js",
     "index.d.ts"
