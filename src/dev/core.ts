@@ -2,7 +2,8 @@ import * as http from 'http'
 import * as fs from 'fs'
 import * as path from 'path'
 import open from 'open'
-import { cwd } from 'process';
+import { cwd } from 'process'
+import { url as initURL } from '@bintoca/package/init'
 import {
     READ_PACKAGE_JSON, ESM_RESOLVE, FileURLSystem, CJS_MODULE
 } from '@bintoca/package'
@@ -84,6 +85,7 @@ export const createFileURLSystem = (state: State): FileURLSystem => {
         jsonCache: jc,
         stateURL,
         cjsParseCache: {},
+        conditions: undefined,
         fsSync: {
             exists: (p: URL) => {
                 if (state.cjsCache[p.pathname]) {
@@ -95,7 +97,8 @@ export const createFileURLSystem = (state: State): FileURLSystem => {
                 const m: CJS_MODULE = { exports: f.jsonCache[p.href] }
                 return m
             },
-            jsonCache: jc
+            jsonCache: jc,
+            conditions: undefined
         },
         initCJS: async () => {
             if (!state.cjsCache) {
@@ -182,7 +185,8 @@ export const httpHandler = async (req: http.IncomingMessage, res: http.ServerRes
                 }
                 else {
                     res.setHeader('Content-Type', 'text/html')
-                    res.end('<html><head><meta charset="utf-8"/><meta name="viewport" content="width=device-width, initial-scale=1" /><script src="client.js"></script><script type="module" src="' + mod + '"></script></head><body></body></html>')
+                    res.end('<html><head><meta charset="utf-8"/><meta name="viewport" content="width=device-width, initial-scale=1" /><script src="client.js"></script><script type="module" src="'
+                        + internalBase + initURL + '"></script><script type="module" src="' + mod + '"></script></head><body></body></html>')
                 }
             }
             else if (req.url == '/client.js') {
@@ -226,7 +230,7 @@ export const httpHandler = async (req: http.IncomingMessage, res: http.ServerRes
                 res.end(d)
             }
             else if (await state.fileURLSystem.exists(new URL(req.url, getRootURL(state)))) {
-                const u = await decodeFile(await state.fileURLSystem.read(new URL(req.url, getRootURL(state)), false), freeGlobals, controlledGlobals, new URL(req.url, getRootURL(state)), state.fileURLSystem)
+                const u = await decodeFile(await state.fileURLSystem.read(new URL(req.url, getRootURL(state)), false), req.url.startsWith(internalBase) ? null : freeGlobals, controlledGlobals, new URL(req.url, getRootURL(state)), state.fileURLSystem)
                 state.urlCache[req.url] = u
                 res.setHeader('Content-Type', u.type)
                 res.end(Buffer.from(u.data))

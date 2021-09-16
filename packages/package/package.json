@@ -9,6 +9,7 @@
   "exports": {
     ".": "./index.js",
     "./server": "./server.js",
+    "./init": "./init.js",
     "./globals/globalThis": "./globals/globalThis.js"
   },
   "types": "./index.d.ts",

@@ -18,7 +18,7 @@ export const undefinedPath = '/x/u'
 export const freeGlobals = ['Array', 'ArrayBuffer', 'atob', 'BigInt', 'Blob', 'btoa', 'clearInterval', 'clearTimeout', 'console', 'CryptoKey', 'crypto', 'DataView', 'Date',
     'decodeURIComponent', 'encodeURIComponent', 'Error', 'Infinity', 'isFinite', 'isNaN', 'JSON',
     'Map', 'Math', 'MessageChannel', 'Number', 'Object', 'parseFloat', 'parseInt', 'performance', 'Promise', 'Proxy', 'ReadableStream', 'ReadableStreamBYOBReader', 'Reflect', 'RegExp', 'Set', 'String', 'Symbol', 'SyntaxError',
-    'TextDecoder', 'TextEncoder', 'TypeError', 'Uint16Array', 'Uint8Array', 'URL', 'WeakMap', 'WeakSet', 'WritableStream']
+    'TextDecoder', 'TextEncoder', 'TypeError', 'Uint16Array', 'Uint8Array', 'URL', 'WebAssembly', 'WeakMap', 'WeakSet', 'WritableStream']
 export const controlledGlobalsSet = new Set(['Buffer', 'document', 'Function', 'globalThis', 'location', 'process', 'self', 'setInterval', 'setTimeout', 'window'])
 export const escapeDoubleQuote = (s: string) => s.replace(/"/g, '\\"')
 export function getSubstituteIdCore(count: number, length: number, prefix: string) {
@@ -547,7 +547,7 @@ export const decodeFile = async (b: BufferSource, freeGlobals: DataView, control
                     for (let i = 0; i < globalCount; i++) {
                         const size = decodeCount(dv, state)
                         const s = TD.decode(bufferSourceToUint8Array(dv, state.position, size))
-                        if (!cjsModuleGlobals.includes(s) && !lookupExists(freeGlobals, dv, state.position, size)) {
+                        if (freeGlobals && !cjsModuleGlobals.includes(s) && !lookupExists(freeGlobals, dv, state.position, size)) {
                             u[len++] = 10
                             u[len++] = 105
                             u[len++] = 109
@@ -680,7 +680,7 @@ export const decodeFile = async (b: BufferSource, freeGlobals: DataView, control
                     const globalCount = decodeCount(dv, state)
                     for (let i = 0; i < globalCount; i++) {
                         const size = decodeCount(dv, state)
-                        if (!lookupExists(freeGlobals, dv, state.position, size)) {
+                        if (freeGlobals && !lookupExists(freeGlobals, dv, state.position, size)) {
                             u[len++] = 10
                             u[len++] = 105
                             u[len++] = 109
@@ -933,7 +933,7 @@ export const getManifest = (p: Update): { [k: string]: 1 | { type: string } } =>
 }
 export const getCJSFiles = (manifest: { [k: string]: 1 | { type: string } }): string[] => {
     const a = []
-    const fs: FileURLSystemSync = { exists: (p: URL) => manifest[p.pathname.slice(1)] !== undefined, read: (p: URL): CJS_MODULE => { return { exports: manifest[p.pathname.slice(1)] } }, jsonCache: {} }
+    const fs: FileURLSystemSync = { exists: (p: URL) => manifest[p.pathname.slice(1)] !== undefined, read: (p: URL): CJS_MODULE => { return { exports: manifest[p.pathname.slice(1)] } }, jsonCache: {}, conditions: undefined }
     for (const k in manifest) {
         if (k.endsWith('.cjs') || k.endsWith('.json')) {
             a.push(k)

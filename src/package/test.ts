@@ -1,3 +1,4 @@
+import { url as initURL } from '@bintoca/package/init'
 import {
     ParseFilesError, getSubstituteId, getSubstituteIdCore, parseFile, parseFiles, createLookup, encodePackage, encodeFile, decodePackage, decodeFile,
     lookupExists, getPackageBreakIndex, FileType, Update, packageBase, packageCJSPath, getCJSFiles
@@ -8,6 +9,7 @@ import {
 import { readFileSync } from 'fs'
 const TD = new TextDecoder()
 const TE = new TextEncoder()
+const makeSureInitHappens = initURL
 
 test.each([[0, '$AAAAA'], [1, '$BAAAA'], [63, '$$AAAA'], [64, '$ABAAA'], [4095, '$$$AAA'], [4096, '$AABAA'], [262143, '$$$$AA'], [262144, '$AAABA'], [16777215, '$$$$$A'], [16777216, '$AAAAB'], [1073741823, '$$$$$$']])('getSubstitueIdCore(%i)', (a, e) => {
     expect(getSubstituteIdCore(a, 5, '$')).toEqual(e)
@@ -78,9 +80,10 @@ const fs: FileURLSystem = {
     exists: async (u: URL) => files[u.href] !== undefined,
     read: async (u: URL, decoded: boolean) => encodeFile(parseFile(u.href, TE.encode(files[u.href]))),
     jsonCache: {}, stateURL: import.meta.url,
+    conditions: undefined,
     fsSync: {
         exists: (u: URL) => files[u.href] !== undefined,
-        read: null, jsonCache: {}
+        read: null, jsonCache: {}, conditions: undefined
     }, cjsParseCache: {}, initCJS: () => Promise.resolve()
 }
 test('getCJSFiles', () => {
