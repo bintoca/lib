@@ -1,4 +1,4 @@
-import { url as initURL } from '@bintoca/package/init'
+//import { freeGlobals as fg } from '@bintoca/package/init'
 import {
     ParseFilesError, getSubstituteId, getSubstituteIdCore, parseFile, parseFiles, createLookup, encodePackage, encodeFile, decodePackage, decodeFile,
     lookupExists, getPackageBreakIndex, FileType, Update, packageBase, packageCJSPath, getCJSFiles
@@ -9,7 +9,7 @@ import {
 import { readFileSync } from 'fs'
 const TD = new TextDecoder()
 const TE = new TextEncoder()
-const makeSureInitHappens = initURL
+//const makeSureInitHappens = fg
 
 test.each([[0, '$AAAAA'], [1, '$BAAAA'], [63, '$$AAAA'], [64, '$ABAAA'], [4095, '$$$AAA'], [4096, '$AABAA'], [262143, '$$$$AA'], [262144, '$AAABA'], [16777215, '$$$$$A'], [16777216, '$AAAAB'], [1073741823, '$$$$$$']])('getSubstitueIdCore(%i)', (a, e) => {
     expect(getSubstituteIdCore(a, 5, '$')).toEqual(e)
@@ -72,7 +72,6 @@ test.each([['import a from "/x"', new Map<number, any>([[1, FileType.error], [2,
         expect(m.get(1)).toBe(e.get(1))
     }
 })
-const freeGlobals = createLookup(new Set(['Free']))
 const controlledGlobals = createLookup(new Set(['Math']))
 const parentURL = new URL('file:///a.mjs')
 const files = { 'file:///a.mjs': 'const a=1', 'file:///x/p/b.cjs': 'exports.hey=1' }
@@ -92,24 +91,24 @@ test('getCJSFiles', () => {
 })
 test('decodeFile buffer', async () => {
     const cb = encodeFile(new Map<number, any>([[1, FileType.buffer], [2, new TextEncoder().encode('{"a":2}')]]))
-    expect(TD.decode((await decodeFile(cb, freeGlobals, controlledGlobals, parentURL, fs)).data)).toBe('{"a":2}')
+    expect(TD.decode((await decodeFile(cb, controlledGlobals, parentURL, fs)).data)).toBe('{"a":2}')
 })
 test('decodeFile buffer cjs json', async () => {
     const cb = encodeFile(new Map<number, any>([[1, FileType.buffer], [2, new TextEncoder().encode('{"a":2}')]]))
-    expect(TD.decode((await decodeFile(cb, freeGlobals, controlledGlobals, new URL('file://' + packageCJSPath + '/a.json'), fs)).data))
+    expect(TD.decode((await decodeFile(cb, controlledGlobals, new URL('file://' + packageCJSPath + '/a.json'), fs)).data))
         .toBe('import{cjsRegister}from\"/x/a/' + testPath + '";cjsRegister({"a":2},"file:///x/pc/a.json");')
 })
 const testPath = import.meta.url
 test('decodeFile cjs', async () => {
     const cb = encodeFile(new Map<number, any>([[1, FileType.js], [2, 50], [3, 'const a = 2;module.exports = require("./b.cjs");']]))
-    expect(TD.decode((await decodeFile(cb, freeGlobals, controlledGlobals, new URL('file://' + packageBase + 'a.cjs'), fs)).data))
+    expect(TD.decode((await decodeFile(cb, controlledGlobals, new URL('file://' + packageBase + 'a.cjs'), fs)).data))
         .toBe('import "/x/pc";import{cjsExec}from"/x/a/' + testPath + '";const m=cjsExec("file:///x/p/a.cjs");export default m.exports;export const {hey}=m.exports;')
 })
 test.each([['const w = 4;          const r=5;',
     'import{cjsRegister as s3jY8Nt5dO3xokuh194BF}from"/x/a/' + testPath + '";s3jY8Nt5dO3xokuh194BF((function (module,exports,require,__dirname,__filename,s3jY8Nt5dO3xokuh194BF){const w = 4;          const r=5;}),"file:///a.cjs");'
     , new Map<number, any>([[1, FileType.js], [2, 50], [3, 'const w = 4;          const r=5;']])],
-['const w = 4;          ImporTTHISconst r=5;EvAL\nimport Math from"/x/g/Math.js"\nimport define from"/x/u"\nimport $bbbbb from "bxx"\nexport {b0} from "bxx"\nexport {r}\nexport{r}\nexport default $AA\nimport ImporT from"/x/i/file%3A%2F%2F%2Fa.mjs"\nimport EvAL from"/x/u"',
-    'import{cjsRegister as s3jY8Nt5dO3xokuh194BF}from"/x/a/' + testPath + '";s3jY8Nt5dO3xokuh194BF((function (module,exports,require,__dirname,__filename,s3jY8Nt5dO3xokuh194BF){const w = 4;          ImporTTHISconst r=5;EvAL}),"file:///a.cjs");\nimport Math from"/x/g/Math.js"\nimport define from"/x/u"\nimport ImporT from"/x/i/file%3A%2F%2F%2Fa.cjs"\nimport EvAL from"/x/u"',
+['const w = 4;          ImporTTHISconst r=5;EvAL\nimport Math from"/x/g/Math.js"\nimport $bbbbb from "bxx"\nexport {b0} from "bxx"\nexport {r}\nexport{r}\nexport default $AA\nimport ImporT from"/x/i/file%3A%2F%2F%2Fa.mjs"\nimport EvAL from"/x/u"',
+    'import{cjsRegister as s3jY8Nt5dO3xokuh194BF}from"/x/a/' + testPath + '";s3jY8Nt5dO3xokuh194BF((function (module,exports,require,__dirname,__filename,s3jY8Nt5dO3xokuh194BF){const w = 4;          ImporTTHISconst r=5;EvAL}),"file:///a.cjs");\nimport Math from"/x/g/Math.js"\nimport ImporT from"/x/i/file%3A%2F%2F%2Fa.cjs"\nimport EvAL from"/x/u"',
     new Map<number, any>([[1, FileType.js], [2, 50],
     [3, 'const w = 4;          ImporTTHISconst r=5;EvAL'],
     [4, ['Math', 'define', 'Free']],
@@ -118,8 +117,8 @@ test.each([['const w = 4;          const r=5;',
     [7, 'ImporT'], [8, 'EvAL']
     ])]])('decodeFile js', async (a, c, b) => {
         const cb = encodeFile(b)
-        expect(TD.decode((await decodeFile(cb, freeGlobals, controlledGlobals, parentURL, fs)).data)).toBe(a)
-        expect(TD.decode((await decodeFile(cb, freeGlobals, controlledGlobals, new URL('file:///a.cjs'), fs)).data)).toBe(c)
+        expect(TD.decode((await decodeFile(cb, controlledGlobals, parentURL, fs)).data)).toBe(a)
+        expect(TD.decode((await decodeFile(cb, controlledGlobals, new URL('file:///a.cjs'), fs)).data)).toBe(c)
     })
 test('createLookup', () => {
     expect(new Uint8Array(createLookup(new Set(['hey', 'dude'])).buffer)).toEqual(new Uint8Array([0, 0, 0, 2, 100, 0, 0, 12, 104, 0, 0, 17, 4, 100, 117, 100, 101, 3, 104, 101, 121]))
@@ -148,7 +147,7 @@ const bench = (n, f, d) => {
     }
     console.log(n, Date.now() - c)
 }
-const f = (d) => decodeFile(d, freeGlobals, controlledGlobals, parentURL, fs)
+const f = (d) => decodeFile(d, controlledGlobals, parentURL, fs)
 const doBench = () => {
     bench('a', f, testFile([shortString], [], []))
     bench('b', f, testFile([shortString, longString], [], []))

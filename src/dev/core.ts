@@ -3,16 +3,15 @@ import * as fs from 'fs'
 import * as path from 'path'
 import open from 'open'
 import { cwd } from 'process'
-import { url as initURL } from '@bintoca/package/init'
 import {
     READ_PACKAGE_JSON, ESM_RESOLVE, FileURLSystem, CJS_MODULE
 } from '@bintoca/package'
 import {
     parseFiles, parseFile, ParseFilesError, getShrinkwrapURLs, encodePackage, encodeFile, decodePackage, decodeFile, createLookup, FileType, getCacheKey,
     getShrinkwrapResolved, ShrinkwrapPackageDescription, importBase, getDynamicImportModule, reloadBase, packageBase, internalBase, Update, getManifest, undefinedPath,
-    packageCJSPath, getAllCJSModule, getCJSFiles, controlledGlobalsSet, globalBase, metaURL as packageMetaURL, getGlobalModule, freeGlobals as fg
+    packageCJSPath, getAllCJSModule, getCJSFiles, globalBase, metaURL as packageMetaURL, getGlobalModule
 } from '@bintoca/package/server'
-import { url as stateURL } from '@bintoca/dev/state'
+import { url as stateURL } from '@bintoca/package/state'
 import * as chokidar from 'chokidar'
 import { server as wss } from 'websocket'
 import anymatch from 'anymatch'
@@ -24,6 +23,9 @@ import cachedir from 'cachedir'
 
 const TD = new TextDecoder()
 const TE = new TextEncoder()
+const clientURL = internalBase + new URL('./client.js', packageMetaURL).href
+const initURL = internalBase + new URL('./init.js', packageMetaURL).href
+const configURL = '/x/config'
 export const defaultConfig: Config = {
     hostname: 'localhost',
     port: 3000,
@@ -33,8 +35,6 @@ export const defaultConfig: Config = {
     watch: true,
     configFile: './bintoca.dev.js'
 }
-export const freeGlobals = createLookup(new Set(fg))
-export const controlledGlobals = createLookup(controlledGlobalsSet)
 export const resetCache = (state: State) => {
     state.urlCache = {}
     state.cjsCache = null
@@ -80,7 +80,7 @@ export const createFileURLSystem = (state: State): FileURLSystem => {
                     r = (await cacache.get(cacacheDir, getCacheKey(p.pathname, packageBase, state.shrinkwrap))).data
                 }
             }
-            return decoded ? (await decodeFile(r, null, null, p, null)).data : r
+            return decoded ? (await decodeFile(r, null, p, null)).data : r
         },
         jsonCache: jc,
         stateURL,
@@ -121,7 +121,10 @@ export const createFileURLSystem = (state: State): FileURLSystem => {
     return f
 }
 export type Config = { hostname: string, port: number, ignore, awaitWriteFinish, open: boolean, watch: boolean, configFile }
-export type State = { urlCache, fileCache, cjsCache: { [k: string]: 1 }, fileURLSystem: FileURLSystem, readlineInterface: readline.Interface, shrinkwrap, packageJSON, wsConnections: any[], config: Config }
+export type State = {
+    urlCache, fileCache, cjsCache: { [k: string]: 1 }, fileURLSystem: FileURLSystem, readlineInterface: readline.Interface, shrinkwrap, packageJSON, wsConnections: any[],
+    config: Config, controlledGlobals: Set<string>, controlledGlobalsLookup: DataView
+}
 export const cacacheDir = path.join(cachedir('bintoca'), '_cacache')
 export const parseTar = async (t: NodeJS.ReadableStream): Promise<Update> => {
     return new Promise((resolve, reject) => {
@@ -157,7 +160,6 @@ export const httpHandler = async (req: http.IncomingMessage, res: http.ServerRes
     req.on('end', async () => {
         try {
             if (req.url == '/') {
-                let mod
                 let err
                 if (!state.packageJSON) {
                     err = 'package.json not found or invalid'
@@ -175,9 +177,6 @@ export const httpHandler = async (req: http.IncomingMessage, res: http.ServerRes
                     else if (state.shrinkwrap.lockfileVersion != 2) {
                         err = 'npm-shrinkwrap.json lockfileVersion 2 (npm 7) required'
                     }
-                    else {
-                        mod = await ESM_RESOLVE(state.packageJSON.name, new URL(packageBase, getRootURL(state)), state.fileURLSystem)
-                    }
                 }
                 if (err) {
                     res.statusCode = 500
@@ -185,13 +184,18 @@ export const httpHandler = async (req: http.IncomingMessage, res: http.ServerRes
                 }
                 else {
                     res.setHeader('Content-Type', 'text/html')
-                    res.end('<html><head><meta charset="utf-8"/><meta name="viewport" content="width=device-width, initial-scale=1" /><script src="client.js"></script><script type="module" src="'
-                        + internalBase + initURL + '"></script><script type="module" src="' + mod + '"></script></head><body></body></html>')
+                    res.end('<html><head><meta charset="utf-8"/><meta name="viewport" content="width=device-width, initial-scale=1" /><script>self.configURL="' + configURL
+                        + '"</script><script type="module" src="' + clientURL + '"></script><script type="module" src="' + initURL + '"></script></head><body></body></html>')
                 }
             }
-            else if (req.url == '/client.js') {
-                res.setHeader('Content-Type', 'text/javascript')
-                res.end(fs.readFileSync(new URL('./client.js', import.meta.url) as any))
+            else if (req.url == configURL) {
+                const c = JSON.parse(TD.decode(Buffer.concat(chunks))) as { nonConfigurable: string[] }
+                for (let x of c.nonConfigurable) {
+                    state.controlledGlobals.add(x)
+                }
+                state.controlledGlobalsLookup = createLookup(state.controlledGlobals)
+                res.setHeader('Content-Type', 'application/json')
+                res.end(JSON.stringify({ src: await ESM_RESOLVE(state.packageJSON.name, new URL(packageBase, getRootURL(state)), state.fileURLSystem) }))
             }
             else if (req.url == undefinedPath) {
                 res.setHeader('Content-Type', 'text/javascript')
@@ -199,7 +203,7 @@ export const httpHandler = async (req: http.IncomingMessage, res: http.ServerRes
             }
             else if (req.url.startsWith(importBase)) {
                 res.setHeader('Content-Type', 'text/javascript')
-                res.end(getDynamicImportModule(req.url, true))
+                res.end(getDynamicImportModule(req.url, 'import {metaServer} from "' + clientURL + '";imp.meta.server=metaServer;'))
             }
             else if (req.url.startsWith(reloadBase)) {
                 const u = state.urlCache[packageBase + req.url.slice(req.url.indexOf('/', 5) + 1)]
@@ -224,13 +228,12 @@ export const httpHandler = async (req: http.IncomingMessage, res: http.ServerRes
             else if (req.url.startsWith(globalBase)) {
                 res.setHeader('Content-Type', 'text/javascript')
                 const g = req.url.slice(globalBase.length)
-                const fn = new URL('./globals/' + g, packageMetaURL)
-                const d = fs.existsSync(fn as any) ? fs.readFileSync(fn as any) : Buffer.from(TE.encode(getGlobalModule(g)))
+                const d = Buffer.from(TE.encode(getGlobalModule(g, initURL)))
                 state.urlCache[req.url] = { data: d, type: 'text/javascript' }
                 res.end(d)
             }
             else if (await state.fileURLSystem.exists(new URL(req.url, getRootURL(state)))) {
-                const u = await decodeFile(await state.fileURLSystem.read(new URL(req.url, getRootURL(state)), false), req.url.startsWith(internalBase) ? null : freeGlobals, controlledGlobals, new URL(req.url, getRootURL(state)), state.fileURLSystem)
+                const u = await decodeFile(await state.fileURLSystem.read(new URL(req.url, getRootURL(state)), false), req.url.startsWith(internalBase) ? null : state.controlledGlobalsLookup, new URL(req.url, getRootURL(state)), state.fileURLSystem)
                 state.urlCache[req.url] = u
                 res.setHeader('Content-Type', u.type)
                 res.end(Buffer.from(u.data))
@@ -424,10 +427,10 @@ export const applyConfigFile = async (state: State) => {
     }
 }
 export const init = async (config?: Config) => {
-    const state = {
+    const state: State = {
         urlCache: {}, fileCache: {}, cjsCache: null, fileURLSystem: null, wsConnections: [], shrinkwrap: undefined, packageJSON: undefined,
         readlineInterface: readline.createInterface({ input: process.stdin, output: process.stdout, prompt: 'DEV> ' }),
-        config: config || Object.assign({}, defaultConfig)
+        config: config || Object.assign({}, defaultConfig), controlledGlobals: new Set(), controlledGlobalsLookup: null
     }
     state.fileURLSystem = createFileURLSystem(state)
     if (state.config.configFile) {

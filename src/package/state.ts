@@ -1,6 +1,6 @@
 import { cjsRegister as reg, cjsExec as exec, State } from '@bintoca/package'
-const gt = typeof globalThis !== 'undefined' ? globalThis : typeof self !== 'undefined' ? self : typeof global !== 'undefined' ? global : null
-const { ObjectCreate } = gt['primordials'] as Primordials
+import primordials from '@bintoca/package/primordial'
+const { ObjectCreate } = primordials
 
 export const url = import.meta.url
 export const state: State = { cjsFunctions: ObjectCreate(null), cjsModules: ObjectCreate(null), fs: null }

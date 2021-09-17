@@ -15,11 +15,6 @@ export const importBase = '/x/i/'
 export const packageBase = '/x/p/'
 export const packageCJSPath = '/x/pc'
 export const undefinedPath = '/x/u'
-export const freeGlobals = ['Array', 'ArrayBuffer', 'atob', 'BigInt', 'Blob', 'btoa', 'clearInterval', 'clearTimeout', 'console', 'CryptoKey', 'crypto', 'DataView', 'Date',
-    'decodeURIComponent', 'encodeURIComponent', 'Error', 'Infinity', 'isFinite', 'isNaN', 'JSON',
-    'Map', 'Math', 'MessageChannel', 'Number', 'Object', 'parseFloat', 'parseInt', 'performance', 'Promise', 'Proxy', 'ReadableStream', 'ReadableStreamBYOBReader', 'Reflect', 'RegExp', 'Set', 'String', 'Symbol', 'SyntaxError',
-    'TextDecoder', 'TextEncoder', 'TypeError', 'Uint16Array', 'Uint8Array', 'URL', 'WebAssembly', 'WeakMap', 'WeakSet', 'WritableStream']
-export const controlledGlobalsSet = new Set(['Buffer', 'document', 'Function', 'globalThis', 'location', 'process', 'self', 'setInterval', 'setTimeout', 'window'])
 export const escapeDoubleQuote = (s: string) => s.replace(/"/g, '\\"')
 export function getSubstituteIdCore(count: number, length: number, prefix: string) {
     const b64alpha = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789_$"
@@ -441,15 +436,9 @@ export const decodePackage = (b: BufferSource): Map<number, any> => {
     const dec = new Decoder({ byteStringNoCopy: true })
     return dec.decode(b)
 }
-const logUndefinedGlobal = (g: string, parentURL) => {
-    const a = new Set(['define'])
-    if (!a.has(g)) {
-        console.log('undefined global', g, parentURL)
-    }
-}
 export const cjsHiddenVariable = 's3jY8Nt5dO3xokuh194BF'
 export const cjsModuleGlobals = ['module', 'exports', 'require', '__dirname', '__filename', cjsHiddenVariable]
-export const decodeFile = async (b: BufferSource, freeGlobals: DataView, controlledGlobals: DataView, parentURL: URL, fs: FileURLSystem): Promise<{ type: string, data: Uint8Array }> => {
+export const decodeFile = async (b: BufferSource, controlledGlobals: DataView, parentURL: URL, fs: FileURLSystem): Promise<{ type: string, data: Uint8Array }> => {
     const state = { position: 0 } as DecoderState
     const dv = bufferSourceToDataView(b)
     if (dv.getUint8(0) >> 5 != 5) {
@@ -507,7 +496,7 @@ export const decodeFile = async (b: BufferSource, freeGlobals: DataView, control
                         const r = CJS_RESOLVE(x, parentURL, fs.fsSync)
                         if (r.href.endsWith('.js') || r.href.endsWith('.cjs')) {
                             if (!fs.cjsParseCache[r.href]) {
-                                await decodeFile(await fs.read(r, false), freeGlobals, controlledGlobals, r, fs)
+                                await decodeFile(await fs.read(r, false), controlledGlobals, r, fs)
                             }
                             if (!fs.cjsParseCache[r.href]) {
                                 throw new Error('cjs parse cache not found: ' + r.href)
@@ -547,7 +536,7 @@ export const decodeFile = async (b: BufferSource, freeGlobals: DataView, control
                     for (let i = 0; i < globalCount; i++) {
                         const size = decodeCount(dv, state)
                         const s = TD.decode(bufferSourceToUint8Array(dv, state.position, size))
-                        if (freeGlobals && !cjsModuleGlobals.includes(s) && !lookupExists(freeGlobals, dv, state.position, size)) {
+                        if (controlledGlobals && !cjsModuleGlobals.includes(s) && lookupExists(controlledGlobals, dv, state.position, size)) {
                             u[len++] = 10
                             u[len++] = 105
                             u[len++] = 109
@@ -569,21 +558,15 @@ export const decodeFile = async (b: BufferSource, freeGlobals: DataView, control
                             u[len++] = 47
                             u[len++] = 120
                             u[len++] = 47
-                            if (lookupExists(controlledGlobals, dv, state.position, size)) {
-                                u[len++] = 103
-                                u[len++] = 47
-                                for (let j = 0; j < size; j++) {
-                                    u[len + j] = dv.getUint8(state.position + j)
-                                }
-                                len += size
-                                u[len++] = 46
-                                u[len++] = 106
-                                u[len++] = 115
+                            u[len++] = 103
+                            u[len++] = 47
+                            for (let j = 0; j < size; j++) {
+                                u[len + j] = dv.getUint8(state.position + j)
                             }
-                            else {
-                                u[len++] = 117
-                                logUndefinedGlobal(TD.decode(new Uint8Array(dv.buffer, dv.byteOffset + state.position, size)), parentURL.href)
-                            }
+                            len += size
+                            u[len++] = 46
+                            u[len++] = 106
+                            u[len++] = 115
                             u[len++] = 34
                         }
                         state.position += size
@@ -680,7 +663,7 @@ export const decodeFile = async (b: BufferSource, freeGlobals: DataView, control
                     const globalCount = decodeCount(dv, state)
                     for (let i = 0; i < globalCount; i++) {
                         const size = decodeCount(dv, state)
-                        if (freeGlobals && !lookupExists(freeGlobals, dv, state.position, size)) {
+                        if (controlledGlobals && lookupExists(controlledGlobals, dv, state.position, size)) {
                             u[len++] = 10
                             u[len++] = 105
                             u[len++] = 109
@@ -702,21 +685,15 @@ export const decodeFile = async (b: BufferSource, freeGlobals: DataView, control
                             u[len++] = 47
                             u[len++] = 120
                             u[len++] = 47
-                            if (lookupExists(controlledGlobals, dv, state.position, size)) {
-                                u[len++] = 103
-                                u[len++] = 47
-                                for (let j = 0; j < size; j++) {
-                                    u[len + j] = dv.getUint8(state.position + j)
-                                }
-                                len += size
-                                u[len++] = 46
-                                u[len++] = 106
-                                u[len++] = 115
+                            u[len++] = 103
+                            u[len++] = 47
+                            for (let j = 0; j < size; j++) {
+                                u[len + j] = dv.getUint8(state.position + j)
                             }
-                            else {
-                                u[len++] = 117
-                                logUndefinedGlobal(TD.decode(new Uint8Array(dv.buffer, dv.byteOffset + state.position, size)), parentURL.href)
-                            }
+                            len += size
+                            u[len++] = 46
+                            u[len++] = 106
+                            u[len++] = 115
                             u[len++] = 34
                         }
                         state.position += size
@@ -947,14 +924,14 @@ export const getCJSFiles = (manifest: { [k: string]: 1 | { type: string } }): st
     }
     return a
 }
-export const getDynamicImportModule = (urlpath: string, hot: boolean): string => {
+export const getDynamicImportModule = (urlpath: string, hot: string): string => {
     const url = escapeDoubleQuote(decodeURIComponent(urlpath.slice(importBase.length)))
     const meta = 'imp.meta.url="' + url + '";' +
-        (hot ? 'imp.meta.server=self.metaServer;' : '')
+        (hot ? hot : '')
     return 'function imp(){};imp.meta=Object.create(null);' + meta + ';export default imp'
 }
 export const getAllCJSModule = (u: { [k: string]: 1 }) => Object.keys(u).map(x => 'import "' + x.replace(packageBase, packageCJSPath + '/') + '"').join(';')
-export const getGlobalModule = (p: string) => 'import gt from "./globalThis.js";export default gt.' + p.slice(0, -3)
+export const getGlobalModule = (p: string, initURL) => 'import gt from "' + initURL + '";export default gt.' + p.slice(0, -3)
 export type Update = { [k: string]: { action: UpdateActions, buffer: Buffer } }
 export type UpdateActions = 'add' | 'change' | 'remove'
 const importResolve = async (u: Uint8Array, len: number, dv: DataView, state: DecoderState, size: number, parentURL: URL, fs: FileURLSystem): Promise<number> => {

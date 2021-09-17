@@ -1,6 +1,6 @@
-const gt = typeof globalThis !== 'undefined' ? globalThis : typeof self !== 'undefined' ? self : typeof global !== 'undefined' ? global : null
+import primordials from '@bintoca/package/primordial'
 const { Set, JSONParse, TextDecoderDecode, URL, Error, StringEndsWith, StringStartsWith, StringReplace, StringSlice, RegExpTest, ArrayIsArray,
-    ObjectGetOwnPropertyNames, ObjectHasOwnProperty, StringIndexOf, StringLastIndexOf, ArrayFilter, ArraySort, ReflectApply } = gt['primordials'] as Primordials
+    ObjectGetOwnPropertyNames, ObjectHasOwnProperty, StringIndexOf, StringLastIndexOf, ArrayFilter, ArraySort, ReflectApply } = primordials
 
 export type FileURLSystem = {
     exists: (path: URL) => Promise<boolean>, read: (path: URL, decoded: boolean) => Promise<Uint8Array>, jsonCache: { [k: string]: PackageJSON }, stateURL: string, conditions: Set<string>,
@@ -367,7 +367,7 @@ function patternKeyCompare(a: string, b: string) {
     return 0;
 }
 export const PACKAGE_IMPORTS_EXPORTS_RESOLVE = async (matchKey: string, matchObj: Object, pjsonURL: URL, isImports, fs: FileURLSystem): Promise<{ resolved: URL, exact: boolean }> => {
-    if (ObjectHasOwnProperty(matchObj, matchKey) && !StringEndsWith(matchKey, '/') && StringIndexOf(matchKey, '*') !== -1) {
+    if (ObjectHasOwnProperty(matchObj, matchKey) && !StringEndsWith(matchKey, '/') && StringIndexOf(matchKey, '*') === -1) {
         const target = matchObj[matchKey]
         const resolved = await PACKAGE_TARGET_RESOLVE(pjsonURL, target, '', false, isImports, fs)
         return { resolved, exact: true }
@@ -399,7 +399,7 @@ export const PACKAGE_IMPORTS_EXPORTS_RESOLVE = async (matchKey: string, matchObj
     return { resolved: null, exact: true }
 }
 export const PACKAGE_IMPORTS_EXPORTS_RESOLVE_Sync = (matchKey: string, matchObj: Object, pjsonURL: URL, isImports, fs: FileURLSystemSync): { resolved: URL, exact: boolean } => {
-    if (ObjectHasOwnProperty(matchObj, matchKey) && !StringEndsWith(matchKey, '/') && StringIndexOf(matchKey, '*') !== -1) {
+    if (ObjectHasOwnProperty(matchObj, matchKey) && !StringEndsWith(matchKey, '/') && StringIndexOf(matchKey, '*') === -1) {
         const target = matchObj[matchKey]
         const resolved = PACKAGE_TARGET_RESOLVE_Sync(pjsonURL, target, '', false, isImports, fs)
         return { resolved, exact: true }
