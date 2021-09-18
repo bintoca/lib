@@ -21,7 +21,7 @@ export { ar }
 export { c1 } from 'c1'
 export * from 'd1'
 export * as d2 from 'd2'
-export * as d3 from 'd3'
+export * as d3 from "d3"
 export default {}
 const cc = class { #v = this }
 const fe = function () { return this }

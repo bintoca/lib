@@ -3,9 +3,9 @@ const { Set, ObjectCreate } = primordials
 const fetchFunc = fetch
 
 export const freeGlobals = ['Array', 'ArrayBuffer', 'addEventListener', 'atob', 'BigInt', 'Blob', 'btoa', 'CryptoKey', 'clearInterval', 'clearTimeout', 'console', 'constructor', 'crypto', 'DataView', 'Date',
-    'decodeURIComponent', 'dispatchEvent', 'encodeURIComponent', 'Error', 'Function', 'Infinity', 'isFinite', 'isNaN', 'JSON',
+    'decodeURIComponent', 'dispatchEvent', 'encodeURIComponent', 'Error', 'Function', 'globalThis', 'Infinity', 'isFinite', 'isNaN', 'JSON',
     'Map', 'Math', 'MessageChannel', 'NaN', 'Number', 'Object', 'parseFloat', 'parseInt', 'performance', 'Promise', 'Proxy', 'ReadableStream', 'ReadableStreamBYOBReader', 'Reflect', 'RegExp', 'removeEventListener',
-    'Set', 'String', 'Symbol', 'SyntaxError', 'setInterval', 'setTimeout',
+    'Set', 'String', 'Symbol', 'SyntaxError', 'self', 'setInterval', 'setTimeout',
     'TextDecoder', 'TextEncoder', 'TypeError', 'Uint16Array', 'Uint8Array', 'URL', 'undefined', 'WebAssembly', 'WeakMap', 'WeakSet', 'WritableStream', Symbol.toStringTag]
 const freeSet = new Set(freeGlobals)
 const gt = typeof globalThis !== 'undefined' ? globalThis : typeof self !== 'undefined' ? self : null
@@ -173,7 +173,6 @@ const selfProxy = new Proxy(gt, {
                 if (nonConfigurable.has(property)) {
                     return undefined
                 }
-                console.log('get', property)
                 return gt[property]
         }
     },
@@ -181,7 +180,6 @@ const selfProxy = new Proxy(gt, {
         if (nonConfigurable.has(property)) {
             return false
         }
-        console.log('set', property)
         gt[property] = value
         return true
     },

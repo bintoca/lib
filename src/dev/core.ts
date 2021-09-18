@@ -4,12 +4,12 @@ import * as path from 'path'
 import open from 'open'
 import { cwd } from 'process'
 import {
-    READ_PACKAGE_JSON, ESM_RESOLVE, FileURLSystem, CJS_MODULE
+    FileURLSystem, CJS_MODULE
 } from '@bintoca/package'
 import {
     parseFiles, parseFile, ParseFilesError, getShrinkwrapURLs, encodePackage, encodeFile, decodePackage, decodeFile, createLookup, FileType, getCacheKey,
     getShrinkwrapResolved, ShrinkwrapPackageDescription, importBase, getDynamicImportModule, reloadBase, packageBase, internalBase, Update, getManifest, undefinedPath,
-    packageCJSPath, getAllCJSModule, getCJSFiles, globalBase, metaURL as packageMetaURL, getGlobalModule
+    packageCJSPath, getAllCJSModule, getCJSFiles, globalBase, metaURL as packageMetaURL, getGlobalModule, READ_PACKAGE_JSON, ESM_RESOLVE
 } from '@bintoca/package/server'
 import { url as stateURL } from '@bintoca/package/state'
 import * as chokidar from 'chokidar'

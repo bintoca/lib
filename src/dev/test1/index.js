@@ -14,48 +14,42 @@ import.meta.server.addEventListener('update', (ev) => {
     location.reload()
 })
 
-//Proxy = null
-//Array = null
-//window.addEventListener('load', () => {
-    //console.log('win proto',Object.getPrototypeOf(window),Object.getPrototypeOf(Object.getPrototypeOf(window)), Object.getOwnPropertyNames(Object.getPrototypeOf(window)).map(x => { return { x, d: Object.getOwnPropertyDescriptor(Object.getPrototypeOf(window), x) } }))
-    console.log('configurable', Object.getOwnPropertyNames(window).map(x => { return { x, d: Object.getOwnPropertyDescriptor(window, x) } }).filter(x => x.d.configurable))
-    console.log('not configurable', Object.getOwnPropertyNames(window).map(x => { return { x, d: Object.getOwnPropertyDescriptor(window, x) } }).filter(x => !x.d.configurable))
-    console.log('enum', Object.getOwnPropertyNames(window).map(x => { return { x, d: Object.getOwnPropertyDescriptor(window, x) } }).filter(x => x.d.enumerable))
-    console.log('not enum', Object.getOwnPropertyNames(window).map(x => { return { x, d: Object.getOwnPropertyDescriptor(window, x) } }).filter(x => !x.d.enumerable))
-    console.log('writeable', Object.getOwnPropertyNames(window).map(x => { return { x, d: Object.getOwnPropertyDescriptor(window, x) } }).filter(x => x.d.writable || x.d.set))
-    console.log('not writeable', Object.getOwnPropertyNames(window).map(x => { return { x, d: Object.getOwnPropertyDescriptor(window, x) } }).filter(x => !x.d.writable && !x.d.set))
-    //Object.defineProperty(window, 'crypto', {configurable:true,writable:true, enumerable:true})
-    //self = {}
-    //console.log('configurable', Object.getOwnPropertyNames(window).map(x => { return { x, d: Object.getOwnPropertyDescriptor(window, x) } }).filter(x => x.d.configurable), top)
-    for (let k of []) {
-        try {
-            if (k == 'eval') {
-                console.warn(k)
-            }
-            if (k == 'location') {
-
-            }
-            else {
-                window[k] = 1
-                console.log('suc', k)
-            }
+console.log('configurable', Object.getOwnPropertyNames(window).map(x => { return { x, d: Object.getOwnPropertyDescriptor(window, x) } }).filter(x => x.d.configurable))
+console.log('not configurable', Object.getOwnPropertyNames(window).map(x => { return { x, d: Object.getOwnPropertyDescriptor(window, x) } }).filter(x => !x.d.configurable))
+console.log('enum', Object.getOwnPropertyNames(window).map(x => { return { x, d: Object.getOwnPropertyDescriptor(window, x) } }).filter(x => x.d.enumerable))
+console.log('not enum', Object.getOwnPropertyNames(window).map(x => { return { x, d: Object.getOwnPropertyDescriptor(window, x) } }).filter(x => !x.d.enumerable))
+console.log('writeable', Object.getOwnPropertyNames(window).map(x => { return { x, d: Object.getOwnPropertyDescriptor(window, x) } }).filter(x => x.d.writable || x.d.set))
+console.log('not writeable', Object.getOwnPropertyNames(window).map(x => { return { x, d: Object.getOwnPropertyDescriptor(window, x) } }).filter(x => !x.d.writable && !x.d.set))
+//Object.defineProperty(window, 'crypto', {configurable:true,writable:true, enumerable:true})
+//self = {}
+//console.log('configurable', Object.getOwnPropertyNames(window).map(x => { return { x, d: Object.getOwnPropertyDescriptor(window, x) } }).filter(x => x.d.configurable), top)
+for (let k of []) {
+    try {
+        if (k == 'eval') {
+            console.warn(k)
         }
-        catch (e) {
-            console.error('er', k, e)
+        if (k == 'location') {
+
+        }
+        else {
+            window[k] = 1
+            console.log('suc', k)
         }
     }
-    //indexedDB
-    URL.prototype.constructor = () => { }
-    console.log(Object.getOwnPropertyDescriptors(URL.prototype))
-    Object.defineProperty(URL.prototype, 'href', {
-        value: 42,
-        writable: false
-    })
+    catch (e) {
+        console.error('er', k, e)
+    }
+}
+//indexedDB
+URL.prototype.constructor = () => { }
+console.log(Object.getOwnPropertyDescriptors(URL.prototype))
+Object.defineProperty(URL.prototype, 'href', {
+    value: 42,
+    writable: false
+})
 
-    console.log(new URL('http://s.com'), Set.prototype.constructor, Set, Set.prototype)
-    //const fr = Function('console.log("qasw")')
-    //fr()
-    //console.log('sy', Object.getOwnPropertySymbols(document.body), document.body[Object.getOwnPropertySymbols(document.body)[0]])
-    document.body.textContent = 'hey123456' + w.t.st + import.meta.url
-
-//})
+console.log(new URL('http://s.com'), Set.prototype.constructor, Set, Set.prototype)
+//const fr = Function('console.log("qasw")')
+//fr()
+//console.log('sy', Object.getOwnPropertySymbols(document.body), document.body[Object.getOwnPropertySymbols(document.body)[0]])
+document.body.textContent = 'hey123456' + w.t.st + import.meta.url

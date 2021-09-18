@@ -2,10 +2,13 @@ import * as acorn from 'acorn'
 import * as walk from 'acorn-walk'
 import { Encoder, Decoder } from '@bintoca/cbor'
 import { defaultTypeMap, EncoderState, binaryItem, tagItem, tags, bufferSourceToDataView, DecoderState, decodeCount, bufferSourceToUint8Array, decodeSkip } from '@bintoca/cbor/core'
-import { FileURLSystem, FileURLSystemSync, ESM_RESOLVE, READ_PACKAGE_SCOPE_Sync, CJS_MODULE, READ_PACKAGE_SCOPE, CJS_RESOLVE } from '@bintoca/package'
+import { FileURLSystem, FileURLSystemSync, PackageJSON, READ_PACKAGE_SCOPE_Sync, CJS_MODULE, CJS_RESOLVE, patternRegEx, invalidSegmentRegEx, isArrayIndex, parsePackageName, patternKeyCompare, isConditionalSugar } from '@bintoca/package'
 import * as cjsLexer from 'cjs-module-lexer'
 const TD = new TextDecoder()
 const TE = new TextEncoder()
+import primordials from '@bintoca/package/primordial'
+const { Set, JSONParse, TextDecoderDecode, URL, Error, StringEndsWith, StringStartsWith, StringReplace, StringSlice, RegExpTest, ArrayIsArray,
+    ObjectGetOwnPropertyNames, ObjectHasOwnProperty, StringIndexOf, StringLastIndexOf, ArrayFilter, ArraySort } = primordials
 
 export const metaURL = import.meta.url
 export const internalBase = '/x/a/'
@@ -42,6 +45,11 @@ export const enum ParseFilesError {
     invalidSpecifier = 5,
     evalSubstitute = 6
 }
+export const enum ImportExportType {
+    regular = 1,
+    exportName = 2,
+    exportDefault = 3
+}
 export const thisScopes = ['FunctionDeclaration', 'FunctionExpression', 'ClassDeclaration', 'ClassExpression']
 export const isSpecifierInvalid = (file: string, specifier: string): boolean => (specifier.startsWith('.') && !specifier.startsWith('./') && !specifier.startsWith('../')) || !new URL(specifier, 'http://x/x/' + file).href.startsWith('http://x/x/') || !new URL(specifier, 'http://y/y/' + file).href.startsWith('http://y/y/')
 export const parseFiles = (files: Update): { files: { [k: string]: Map<number, any> } } => {
@@ -60,6 +68,7 @@ export const placeholderString = (size: number) => {
     }
     return s
 }
+export const fileError = (p: ParseFilesError, message: string): Map<number, string> => new Map<number, any>([[1, FileType.error], [2, p], [3, message]])
 export const parseFile = (k: string, b: BufferSource): Map<number, any> => {
     if (k.endsWith('.js') || k.endsWith('.cjs') || k.endsWith('.mjs')) {
         let ast//: acorn.Node
@@ -71,18 +80,14 @@ export const parseFile = (k: string, b: BufferSource): Map<number, any> => {
             //console.log(JSON.stringify(acorn.parse('const ev=2', { ecmaVersion: 2022, sourceType: 'module' })))
         }
         catch (e) {
-            return new Map<number, any>([[1, FileType.error], [2, ParseFilesError.syntax], [3, e.message]])
+            return fileError(ParseFilesError.syntax, e.message)
         }
         const removeNodes = []
         const importSuspectIds = {}
-        const evalSuspectIds = {}
         const exportDefaultSuspectIds = {}
         function isSuspectId(s: string) {
             if (s.length == 6 && s.startsWith('$')) {
                 importSuspectIds[s] = 1
-            }
-            else if (s.length == 4 && s.startsWith('$')) {
-                evalSuspectIds[s] = 1
             }
             else if (s.length == 9 && s.startsWith('$')) {
                 exportDefaultSuspectIds[s] = 1
@@ -96,15 +101,9 @@ export const parseFile = (k: string, b: BufferSource): Map<number, any> => {
                 removeNodes.push(n)
             },
             Identifier(n) {
-                if (n['name'] == 'eval') {
-                    removeNodes.push(n)
-                }
                 isSuspectId(n['name'])
             },
             VariablePattern(n) {
-                if (n['name'] == 'eval') {
-                    removeNodes.push(n)
-                }
                 isSuspectId(n['name'])
             },
             ImportSpecifier(n) {
@@ -138,10 +137,9 @@ export const parseFile = (k: string, b: BufferSource): Map<number, any> => {
             }
         })
         let position = 0
-        const imports: Map<number, any>[] = []
-        const exports: Map<number, any>[] = []
+        const importExports: Map<number, any>[] = []
         let importSubstitute
-        let evalSubstitute
+        const importSubstituteOffsets = []
         removeNodes.sort((a, b) => a.start - b.start)
         let body = ''
         for (let n of removeNodes) {
@@ -153,9 +151,9 @@ export const parseFile = (k: string, b: BufferSource): Map<number, any> => {
                 body += placeholderString(n.end - n.start)
                 const specifier = n.source.value
                 if (isSpecifierInvalid(k, specifier)) {
-                    return new Map<number, any>([[1, FileType.error], [2, ParseFilesError.invalidSpecifier], [3, specifier]])
+                    return fileError(ParseFilesError.invalidSpecifier, specifier)
                 }
-                imports.push(new Map([[1, text.substring(n.start, n.source.start)], [2, specifier]]))
+                importExports.push(new Map([[1, ImportExportType.regular], [2, n.start], [3, text.substring(n.start, n.source.start + 1)], [4, specifier]]))
             }
             else if (n.type == 'ImportExpression' || (n.type == 'MetaProperty' && n.meta.name == 'import')) {
                 position = n.start + 6
@@ -163,32 +161,21 @@ export const parseFile = (k: string, b: BufferSource): Map<number, any> => {
                     importSubstitute = getSubstituteId(importSuspectIds, 5, '$')
                 }
                 if (!importSubstitute) {
-                    return new Map<number, any>([[1, FileType.error], [2, ParseFilesError.importSubstitute], [3, k]])
+                    return fileError(ParseFilesError.importSubstitute, k)
                 }
+                importSubstituteOffsets.push(n.start)
                 body += importSubstitute
-            }
-            else if (n.type == 'Identifier' || n.type == 'VariablePattern') {
-                if (n.name == 'eval') {
-                    if (!evalSubstitute) {
-                        evalSubstitute = getSubstituteId(evalSuspectIds, 3, '$')
-                        isSuspectId(evalSubstitute)
-                    }
-                    if (!evalSubstitute) {
-                        return new Map<number, any>([[1, FileType.error], [2, ParseFilesError.evalSubstitute], [3, k]])
-                    }
-                    body += evalSubstitute
-                }
             }
             else if (n.type == 'ExportNamedDeclaration') {
                 if (n.declaration) {
                     position = n.start + 6
                     body += placeholderString(6)
                     if (n.declaration.type == 'FunctionDeclaration' || n.declaration.type == 'ClassDeclaration') {
-                        exports.push(new Map([[1, n.declaration.id.name]]))
+                        importExports.push(new Map([[1, ImportExportType.exportName], [2, n.start], [3, n.declaration.id.name]]))
                     }
                     else if (n.declaration.type == 'VariableDeclaration') {
                         for (let x of n.declaration.declarations) {
-                            exports.push(new Map([[1, x.id.name]]))
+                            importExports.push(new Map([[1, ImportExportType.exportName], [2, n.start], [3, x.id.name]]))
                         }
                     }
                 }
@@ -197,12 +184,12 @@ export const parseFile = (k: string, b: BufferSource): Map<number, any> => {
                     if (n.source) {
                         const specifier = n.source.value
                         if (isSpecifierInvalid(k, specifier)) {
-                            return new Map<number, any>([[1, FileType.error], [2, ParseFilesError.invalidSpecifier], [3, specifier]])
+                            return fileError(ParseFilesError.invalidSpecifier, specifier)
                         }
-                        exports.push(new Map([[2, text.substring(n.start, n.source.start)], [3, specifier]]))
+                        importExports.push(new Map([[1, ImportExportType.regular], [2, n.start], [3, text.substring(n.start, n.source.start + 1)], [4, specifier]]))
                     }
                     else {
-                        exports.push(new Map([[2, text.substring(n.start, n.end)]]))
+                        importExports.push(new Map<number, any>([[1, ImportExportType.regular], [2, n.start], [3, text.substring(n.start, n.end)]]))
                     }
                 }
             }
@@ -210,15 +197,15 @@ export const parseFile = (k: string, b: BufferSource): Map<number, any> => {
                 position = n.start + 14
                 const sub = getSubstituteId(exportDefaultSuspectIds, 8, '$')
                 body += 'var ' + sub + '='
-                exports.push(new Map([[4, sub]]))
+                importExports.push(new Map<number, any>([[1, ImportExportType.exportDefault], [2, n.start], [3, sub]]))
             }
             else if (n.type == 'ExportAllDeclaration') {
                 body += placeholderString(n.end - n.start)
                 const specifier = n.source.value
                 if (isSpecifierInvalid(k, specifier)) {
-                    return new Map<number, any>([[1, FileType.error], [2, ParseFilesError.invalidSpecifier], [3, specifier]])
+                    return fileError(ParseFilesError.invalidSpecifier, specifier)
                 }
-                exports.push(new Map([[2, text.substring(n.start, n.source.start)], [3, specifier]]))
+                importExports.push(new Map([[1, ImportExportType.regular], [2, n.start], [3, text.substring(n.start, n.source.start + 1)], [4, specifier]]))
             }
         }
         body += text.substring(position)
@@ -382,12 +369,11 @@ export const parseFile = (k: string, b: BufferSource): Map<number, any> => {
                 return { name: name, nodes: groupedGlobals[name] };
             });
         }
-        glob = glob.filter(x => x.name != 'this' && x.name != 'eval').map(x => x.name)
-        const sizeEstimate = imports.map(x => TE.encode(x.get(1)).length + TE.encode(x.get(2)).length + 100)
-            .concat(exports.map(x => TE.encode(x.get(1) || '').length + TE.encode(x.get(2) || '').length + TE.encode(x.get(3) || '').length + TE.encode(x.get(4) || '').length + 100))
+        glob = glob.map(x => x.name)
+        const sizeEstimate = importExports.map(x => TE.encode(x.get(3) || '').length + TE.encode(x.get(4) || '').length + 100)
             .concat(glob.map(x => TE.encode(x).length * 2 + 50)).reduce((a, b) => a + b, 0)
-            + (importSubstitute ? 50 : 0) + (evalSubstitute ? 50 : 0) + body.length
-        const m = new Map<number, any>([[1, FileType.js], [2, sizeEstimate], [3, body], [4, glob], [5, imports], [6, exports], [7, importSubstitute], [8, evalSubstitute]])
+            + (importSubstitute ? 50 : 0) + body.length
+        const m = new Map<number, any>([[1, FileType.js], [2, sizeEstimate], [3, body], [4, glob], [5, importExports], [6, importSubstitute], [7, importSubstituteOffsets]])
         for (let x of m) {
             if (x[1] === undefined || (Array.isArray(x[1]) && x[1].length == 0)) {
                 m.delete(x[0])
@@ -438,6 +424,55 @@ export const decodePackage = (b: BufferSource): Map<number, any> => {
 }
 export const cjsHiddenVariable = 's3jY8Nt5dO3xokuh194BF'
 export const cjsModuleGlobals = ['module', 'exports', 'require', '__dirname', '__filename', cjsHiddenVariable]
+export const decodeFileToOriginal = (b: BufferSource) => {
+    const dec = new Decoder()
+    const m = dec.decode(b) as Map<number, any>
+    if (m.get(1) == FileType.buffer) {
+        return m.get(2) as BufferSource
+    }
+    if (m.get(1) == FileType.js) {
+        const body = m.get(3) as string
+        const importExports = m.get(5) as Map<number, any>[]
+        const importSubOffsets = m.get(7) as number[]
+        const chunks: { text: string, offset: number }[] = []
+        for (let x of importExports) {
+            switch (x.get(1)) {
+                case ImportExportType.regular: {
+                    let text = x.get(3) as string
+                    if (x.get(4)) {
+                        text += x.get(4) + text.slice(-1)
+                    }
+                    chunks.push({ offset: x.get(2), text })
+                    break
+                }
+                case ImportExportType.exportName: {
+                    chunks.push({ offset: x.get(2), text: 'export' })
+                    break
+                }
+                case ImportExportType.exportDefault: {
+                    chunks.push({ offset: x.get(2), text: 'export default' })
+                    break
+                }
+                default:
+                    throw new Error('ImportExportType not implemented ' + x.get(1))
+            }
+        }
+        for (let x of importSubOffsets) {
+            chunks.push({ offset: x, text: 'import' })
+        }
+        chunks.sort((a, b) => a.offset - b.offset)
+        let s = ''
+        let offset = 0
+        for (let x of chunks) {
+            s += body.slice(offset, x.offset)
+            s += x.text
+            offset = x.offset + x.text.length
+        }
+        s += body.slice(offset)
+        return s
+    }
+    throw new Error('FileType not implemented ' + m.get(1))
+}
 export const decodeFile = async (b: BufferSource, controlledGlobals: DataView, parentURL: URL, fs: FileURLSystem): Promise<{ type: string, data: Uint8Array }> => {
     const state = { position: 0 } as DecoderState
     const dv = bufferSourceToDataView(b)
@@ -578,11 +613,7 @@ export const decodeFile = async (b: BufferSource, controlledGlobals: DataView, p
                 }
                 if (dv.byteLength > state.position && dv.getUint8(state.position) == 6) {
                     state.position++
-                    decodeSkip(dv, state)
-                }
-                if (dv.byteLength > state.position && dv.getUint8(state.position) == 7) {
-                    state.position++
-                    const size = decodeCount(dv, state)
+                    const importSubSize = decodeCount(dv, state)
                     u[len++] = 10
                     u[len++] = 105
                     u[len++] = 109
@@ -591,11 +622,11 @@ export const decodeFile = async (b: BufferSource, controlledGlobals: DataView, p
                     u[len++] = 114
                     u[len++] = 116
                     u[len++] = 32
-                    for (let j = 0; j < size; j++) {
+                    for (let j = 0; j < importSubSize; j++) {
                         u[len + j] = dv.getUint8(state.position + j)
                     }
-                    len += size
-                    state.position += size
+                    len += importSubSize
+                    state.position += importSubSize
                     u[len++] = 32
                     u[len++] = 102
                     u[len++] = 114
@@ -613,33 +644,9 @@ export const decodeFile = async (b: BufferSource, controlledGlobals: DataView, p
                     len += parentURLencoded.length
                     u[len++] = 34
                 }
-                if (dv.byteLength > state.position && dv.getUint8(state.position) == 8) {
+                if (dv.byteLength > state.position && dv.getUint8(state.position) == 7) {
                     state.position++
-                    const size = decodeCount(dv, state)
-                    u[len++] = 10
-                    u[len++] = 105
-                    u[len++] = 109
-                    u[len++] = 112
-                    u[len++] = 111
-                    u[len++] = 114
-                    u[len++] = 116
-                    u[len++] = 32
-                    for (let j = 0; j < size; j++) {
-                        u[len + j] = dv.getUint8(state.position + j)
-                    }
-                    len += size
-                    state.position += size
-                    u[len++] = 32
-                    u[len++] = 102
-                    u[len++] = 114
-                    u[len++] = 111
-                    u[len++] = 109
-                    u[len++] = 34
-                    u[len++] = 47
-                    u[len++] = 120
-                    u[len++] = 47
-                    u[len++] = 117
-                    u[len++] = 34
+                    decodeSkip(dv, state)
                 }
                 if (len >= u.byteLength) {
                     loop = true
@@ -701,39 +708,16 @@ export const decodeFile = async (b: BufferSource, controlledGlobals: DataView, p
                 }
                 if (dv.byteLength > state.position && dv.getUint8(state.position) == 5) {
                     state.position++
-                    const importCount = decodeCount(dv, state)
-                    for (let i = 0; i < importCount; i++) {
-                        state.position += 2
-                        const size = decodeCount(dv, state)
-                        u[len++] = 10
-                        for (let j = 0; j < size; j++) {
-                            u[len + j] = dv.getUint8(state.position + j)
-                        }
-                        len += size
-                        state.position += size + 1
-                        u[len++] = 34
-                        const specifierSize = decodeCount(dv, state)
-                        const rCount = await importResolve(u, len, dv, state, specifierSize, parentURL, fs)
-                        if (rCount == -1) {
-                            loop = true
-                            sizeEstimate = sizeEstimate * 2
-                            continue loop1
-                        }
-                        len += rCount
-                        u[len++] = 34
-                        state.position += specifierSize
-                    }
-                }
-                if (dv.byteLength > state.position && dv.getUint8(state.position) == 6) {
-                    state.position++
                     const exportCount = decodeCount(dv, state)
                     for (let i = 0; i < exportCount; i++) {
                         const mapCount = dv.getUint8(state.position) & 31
-                        state.position++
+                        state.position += 2
                         const type = dv.getUint8(state.position)
+                        state.position += 2
+                        const originalPosition = decodeCount(dv, state)
                         state.position++
-                        if (type == 1) {
-                            const size = decodeCount(dv, state)
+                        const size = decodeCount(dv, state)
+                        if (type == ImportExportType.exportName) {
                             u[len++] = 10
                             u[len++] = 101
                             u[len++] = 120
@@ -749,8 +733,7 @@ export const decodeFile = async (b: BufferSource, controlledGlobals: DataView, p
                             state.position += size
                             u[len++] = 125
                         }
-                        else if (type == 4) {
-                            const size = decodeCount(dv, state)
+                        else if (type == ImportExportType.exportDefault) {
                             u[len++] = 10
                             u[len++] = 101
                             u[len++] = 120
@@ -773,17 +756,16 @@ export const decodeFile = async (b: BufferSource, controlledGlobals: DataView, p
                             len += size
                             state.position += size
                         }
-                        else {
-                            const size = decodeCount(dv, state)
+                        else if (type == ImportExportType.regular) {
                             u[len++] = 10
                             for (let j = 0; j < size; j++) {
                                 u[len + j] = dv.getUint8(state.position + j)
                             }
                             len += size
                             state.position += size
-                            if (mapCount == 2) {
+                            if (mapCount == 4) {
+                                const quote = u[len - 1]
                                 state.position++
-                                u[len++] = 34
                                 const specifierSize = decodeCount(dv, state)
                                 const rCount = await importResolve(u, len, dv, state, specifierSize, parentURL, fs)
                                 if (rCount == -1) {
@@ -792,15 +774,15 @@ export const decodeFile = async (b: BufferSource, controlledGlobals: DataView, p
                                     continue loop1
                                 }
                                 len += rCount
-                                u[len++] = 34
+                                u[len++] = quote
                                 state.position += specifierSize
                             }
                         }
                     }
                 }
-                if (dv.byteLength > state.position && dv.getUint8(state.position) == 7) {
+                if (dv.byteLength > state.position && dv.getUint8(state.position) == 6) {
                     state.position++
-                    const size = decodeCount(dv, state)
+                    const importSubSize = decodeCount(dv, state)
                     u[len++] = 10
                     u[len++] = 105
                     u[len++] = 109
@@ -809,11 +791,11 @@ export const decodeFile = async (b: BufferSource, controlledGlobals: DataView, p
                     u[len++] = 114
                     u[len++] = 116
                     u[len++] = 32
-                    for (let j = 0; j < size; j++) {
+                    for (let j = 0; j < importSubSize; j++) {
                         u[len + j] = dv.getUint8(state.position + j)
                     }
-                    len += size
-                    state.position += size
+                    len += importSubSize
+                    state.position += importSubSize
                     u[len++] = 32
                     u[len++] = 102
                     u[len++] = 114
@@ -831,33 +813,9 @@ export const decodeFile = async (b: BufferSource, controlledGlobals: DataView, p
                     len += parentURLencoded.length
                     u[len++] = 34
                 }
-                if (dv.byteLength > state.position && dv.getUint8(state.position) == 8) {
+                if (dv.byteLength > state.position && dv.getUint8(state.position) == 7) {
                     state.position++
-                    const size = decodeCount(dv, state)
-                    u[len++] = 10
-                    u[len++] = 105
-                    u[len++] = 109
-                    u[len++] = 112
-                    u[len++] = 111
-                    u[len++] = 114
-                    u[len++] = 116
-                    u[len++] = 32
-                    for (let j = 0; j < size; j++) {
-                        u[len + j] = dv.getUint8(state.position + j)
-                    }
-                    len += size
-                    state.position += size
-                    u[len++] = 32
-                    u[len++] = 102
-                    u[len++] = 114
-                    u[len++] = 111
-                    u[len++] = 109
-                    u[len++] = 34
-                    u[len++] = 47
-                    u[len++] = 120
-                    u[len++] = 47
-                    u[len++] = 117
-                    u[len++] = 34
+                    decodeSkip(dv, state)
                 }
             }
         }
@@ -932,7 +890,7 @@ export const getDynamicImportModule = (urlpath: string, hot: string): string => 
 }
 export const getAllCJSModule = (u: { [k: string]: 1 }) => Object.keys(u).map(x => 'import "' + x.replace(packageBase, packageCJSPath + '/') + '"').join(';')
 export const getGlobalModule = (p: string, initURL) => 'import gt from "' + initURL + '";export default gt.' + p.slice(0, -3)
-export type Update = { [k: string]: { action: UpdateActions, buffer: Buffer } }
+export type Update = { [k: string]: { action: UpdateActions, buffer: BufferSource } }
 export type UpdateActions = 'add' | 'change' | 'remove'
 const importResolve = async (u: Uint8Array, len: number, dv: DataView, state: DecoderState, size: number, parentURL: URL, fs: FileURLSystem): Promise<number> => {
     const s = TD.decode(bufferSourceToUint8Array(dv, state.position, size))
@@ -1063,4 +1021,424 @@ export const getShrinkwrapResolved = (urlpath: string, base: string, shrinkwrap)
     }
     const shrinkwrapPath = urlpath.slice(base.length, index)
     return shrinkwrap.packages[shrinkwrapPath]
+}
+
+export const defaultConditions = new Set()
+defaultConditions.add('node')
+defaultConditions.add('import')
+//https://github.com/nodejs/node/blob/master/doc/api/esm.md
+export const READ_PACKAGE_JSON = async (pjsonURL: URL, fs: FileURLSystem): Promise<PackageJSON> => {
+    if (fs.jsonCache[pjsonURL.href]) {
+        return fs.jsonCache[pjsonURL.href]
+    }
+    if (!await fs.exists(pjsonURL)) {
+        const pj = {
+            pjsonURL,
+            exists: false,
+            main: undefined,
+            name: undefined,
+            type: 'none',
+            exports: undefined,
+            imports: undefined,
+        }
+        fs.jsonCache[pjsonURL.href] = pj
+        return pj
+    }
+    const p = await fs.read(pjsonURL, true)
+    try {
+        const obj = JSONParse(TextDecoderDecode(p))
+        if (typeof obj.imports !== 'object' || obj.imports == null) {
+            obj.imports = undefined
+        }
+        if (typeof obj.main !== 'string') {
+            obj.main = undefined
+        }
+        if (typeof obj.name !== 'string') {
+            obj.name = undefined
+        }
+        if (obj.type !== 'module' && obj.type !== 'commonjs') {
+            obj.type = 'none'
+        }
+        const pj = {
+            pjsonURL,
+            exists: true,
+            main: obj.main,
+            name: obj.name,
+            type: obj.type,
+            exports: obj.exports,
+            imports: obj.imports,
+        }
+        fs.jsonCache[pjsonURL.href] = pj
+        return pj
+    }
+    catch (e) {
+        throw new Error('Invalid Package Configuration ' + e + pjsonURL)
+    }
+}
+export const READ_PACKAGE_JSON_Sync = (pjsonURL: URL, fs: FileURLSystemSync): PackageJSON => {
+    if (fs.jsonCache[pjsonURL.href]) {
+        return fs.jsonCache[pjsonURL.href]
+    }
+    if (!fs.exists(pjsonURL)) {
+        const pj = {
+            pjsonURL,
+            exists: false,
+            main: undefined,
+            name: undefined,
+            type: 'none',
+            exports: undefined,
+            imports: undefined,
+        }
+        fs.jsonCache[pjsonURL.href] = pj
+        return pj
+    }
+    const p = fs.read(pjsonURL)
+    const obj = p.exports
+    if (typeof obj.imports !== 'object' || obj.imports == null) {
+        obj.imports = undefined
+    }
+    if (typeof obj.main !== 'string') {
+        obj.main = undefined
+    }
+    if (typeof obj.name !== 'string') {
+        obj.name = undefined
+    }
+    if (obj.type !== 'module' && obj.type !== 'commonjs') {
+        obj.type = 'none'
+    }
+    const pj = {
+        pjsonURL,
+        exists: true,
+        main: obj.main,
+        name: obj.name,
+        type: obj.type,
+        exports: obj.exports,
+        imports: obj.imports,
+    }
+    fs.jsonCache[pjsonURL.href] = pj
+    return pj
+}
+export const READ_PACKAGE_SCOPE = async (url: URL, fs: FileURLSystem): Promise<PackageJSON> => {
+    let scopeURL = new URL('./package.json', url)
+    while (true) {
+        if (StringEndsWith(scopeURL.pathname, 'node_modules/package.json')) {
+            break
+        }
+        const pjson = await READ_PACKAGE_JSON(scopeURL, fs)
+        if (pjson.exists) {
+            return pjson
+        }
+        const last = scopeURL;
+        scopeURL = new URL('../package.json', scopeURL)
+        if (scopeURL.pathname === last.pathname) {
+            break
+        }
+    }
+    return {
+        pjsonURL: scopeURL,
+        exists: false,
+        main: undefined,
+        name: undefined,
+        type: 'none',
+        exports: undefined,
+        imports: undefined,
+    }
+}
+export const PACKAGE_TARGET_RESOLVE = async (pjsonURL: URL, target, subpath: string, pattern: boolean, internal: boolean, fs: FileURLSystem): Promise<URL> => {
+    if (typeof target == 'string') {
+        if (!pattern && subpath && !StringEndsWith(target, '/')) {
+            throw new Error('Invalid Module Specifier')
+        }
+        if (!StringStartsWith(target, './')) {
+            if (internal && !StringStartsWith(target, '../') && !StringStartsWith(target, '/')) {
+                let validURL = false
+                try {
+                    new URL(target)
+                    validURL = true
+                } catch { }
+                if (validURL) {
+                    throw new Error('Invalid Package Target')
+                }
+                if (pattern) {
+                    return await PACKAGE_RESOLVE(StringReplace(target, patternRegEx, subpath), pjsonURL, fs)
+                }
+                return await PACKAGE_RESOLVE(target + subpath, pjsonURL, fs)
+            }
+            else {
+                throw new Error('Invalid Package Target')
+            }
+        }
+        if (RegExpTest(invalidSegmentRegEx, StringSlice(target, 2))) {
+            throw new Error('Invalid Package Target')
+        }
+        const resolvedTarget = new URL(target, pjsonURL)
+        if (!StringStartsWith(resolvedTarget.pathname, new URL('.', pjsonURL).pathname)) {
+            throw new Error('Invalid Package Target')
+        }
+        if (subpath === '') {
+            return resolvedTarget
+        }
+        if (RegExpTest(invalidSegmentRegEx, subpath)) {
+            throw new Error('Invalid Module Specifier')
+        }
+        if (pattern) {
+            return new URL(StringReplace(resolvedTarget.href, patternRegEx, subpath))
+        }
+        return new URL(subpath, resolvedTarget)
+    }
+    else if (ArrayIsArray(target)) {
+        if (target.length == 0) {
+            return null
+        }
+        let lastException;
+        for (let i = 0; i < target.length; i++) {
+            const targetValue = target[i];
+            let resolved;
+            try {
+                resolved = await PACKAGE_TARGET_RESOLVE(pjsonURL, targetValue, subpath, pattern, internal, fs);
+            } catch (e) {
+                lastException = e;
+                if (e.message === 'Invalid Package Target')
+                    continue;
+                throw e;
+            }
+            if (resolved === undefined)
+                continue;
+            if (resolved === null) {
+                lastException = null;
+                continue;
+            }
+            return resolved;
+        }
+        if (lastException === undefined || lastException === null)
+            return lastException;
+        throw lastException;
+    }
+    else if (typeof target === 'object' && target !== null) {
+        const keys = ObjectGetOwnPropertyNames(target)
+        for (let i = 0; i < keys.length; i++) {
+            if (isArrayIndex(keys[i])) {
+                throw new Error('Invalid Package Configuration')
+            }
+        }
+        for (let i = 0; i < keys.length; i++) {
+            const key = keys[i];
+            if (key === 'default' || (fs.conditions || defaultConditions).has(key)) {
+                const targetValue = target[key];
+                const resolved = await PACKAGE_TARGET_RESOLVE(pjsonURL, targetValue, subpath, pattern, internal, fs)
+                if (resolved === undefined)
+                    continue;
+                return resolved;
+            }
+        }
+        return undefined
+    }
+    else if (target === null) {
+        return null;
+    }
+    throw new Error('Invalid Package Target')
+}
+export const PACKAGE_IMPORTS_EXPORTS_RESOLVE = async (matchKey: string, matchObj: Object, pjsonURL: URL, isImports, fs: FileURLSystem): Promise<{ resolved: URL, exact: boolean }> => {
+    if (ObjectHasOwnProperty(matchObj, matchKey) && !StringEndsWith(matchKey, '/') && StringIndexOf(matchKey, '*') === -1) {
+        const target = matchObj[matchKey]
+        const resolved = await PACKAGE_TARGET_RESOLVE(pjsonURL, target, '', false, isImports, fs)
+        return { resolved, exact: true }
+    }
+    const expansionKeys = ArraySort(ArrayFilter(ObjectGetOwnPropertyNames(matchObj), x => StringEndsWith(x, '/') || (StringIndexOf(x, '*') !== -1 && StringIndexOf(x, '*') === StringLastIndexOf(x, '*'))), patternKeyCompare)
+    for (let i = 0; i < expansionKeys.length; i++) {
+        const expansionKey = expansionKeys[i]
+        let patternBase: string
+        const patternIndex = StringIndexOf(expansionKey, '*')
+        if (patternIndex >= 0) {
+            patternBase = StringSlice(expansionKey, 0, patternIndex)
+        }
+        if (patternBase && StringStartsWith(matchKey, patternBase) && matchKey !== patternBase) {
+            const patternTrailer = StringSlice(expansionKey, patternIndex + 1)
+            if (!patternTrailer || (StringEndsWith(matchKey, patternTrailer) && matchKey.length >= expansionKey.length)) {
+                const target = matchObj[expansionKey]
+                const subpath = StringSlice(matchKey, patternBase.length, -patternTrailer.length)
+                const resolved = await PACKAGE_TARGET_RESOLVE(pjsonURL, target, subpath, true, isImports, fs)
+                return { resolved, exact: true }
+            }
+        }
+        if (!patternBase && StringStartsWith(matchKey, expansionKey)) {
+            const target = matchObj[expansionKey]
+            const subpath = StringSlice(matchKey, expansionKey.length)
+            const resolved = await PACKAGE_TARGET_RESOLVE(pjsonURL, target, subpath, false, isImports, fs)
+            return { resolved, exact: false }
+        }
+    }
+    return { resolved: null, exact: true }
+}
+export const PACKAGE_IMPORTS_RESOLVE = async (specifier: string, parentURL: URL, fs: FileURLSystem) => {
+    if (!StringStartsWith(specifier, '#')) {
+        throw new Error('Assert starts with #')
+    }
+    if (specifier === '#' || StringStartsWith(specifier, '#/')) {
+        throw new Error('Invalid Module Specifier')
+    }
+    const pjson = await READ_PACKAGE_SCOPE(parentURL, fs)
+    if (pjson.exists) {
+        if (pjson.imports) {
+            const resolvedMatch = await PACKAGE_IMPORTS_EXPORTS_RESOLVE(specifier, pjson.imports, pjson.pjsonURL, true, fs)
+            if (resolvedMatch.resolved) {
+                return resolvedMatch
+            }
+        }
+    }
+    throw new Error('Package Import Not Defined')
+}
+export const PACKAGE_EXPORTS_RESOLVE = async (pjsonURL: URL, subpath: string, exports, fs: FileURLSystem): Promise<{ resolved: URL, exact: boolean }> => {
+    if (isConditionalSugar(exports)) {
+        exports = { '.': exports }
+    }
+    if (subpath === '.' && exports[subpath]) {
+        const resolved = await PACKAGE_TARGET_RESOLVE(pjsonURL, exports[subpath], '', false, false, fs)
+        if (resolved) {
+            return { resolved, exact: true }
+        }
+    }
+    else {
+        const matchKey = subpath
+        const resolvedMatch = await PACKAGE_IMPORTS_EXPORTS_RESOLVE(matchKey, exports, pjsonURL, false, fs)
+        if (resolvedMatch.resolved) {
+            return resolvedMatch
+        }
+    }
+    throw new Error('Package Path Not Exported ' + pjsonURL.href + ' ' + subpath)
+}
+export const PACKAGE_SELF_RESOLVE = async (packageName: string, packageSubpath: string, parentURL: URL, fs: FileURLSystem) => {
+    const pjson = await READ_PACKAGE_SCOPE(parentURL, fs)
+    if (!pjson.exists || !pjson.exports) {
+        return undefined
+    }
+    if (pjson.name === packageName) {
+        const { resolved } = await PACKAGE_EXPORTS_RESOLVE(pjson.pjsonURL, packageSubpath, pjson.exports, fs)
+        return resolved
+    }
+    return undefined
+}
+export const PACKAGE_RESOLVE = async (packageSpecifier: string, parentURL: URL, fs: FileURLSystem): Promise<URL> => {
+    const { packageName, packageSubpath, isScoped } = parsePackageName(packageSpecifier)
+    const selfURL = await PACKAGE_SELF_RESOLVE(packageName, packageSubpath, parentURL, fs)
+    if (selfURL) {
+        return selfURL
+    }
+    let pjsonURL = new URL('./node_modules/' + packageName + '/package.json', parentURL)
+    let last
+    let result
+    do {
+        const pjson = await READ_PACKAGE_JSON(pjsonURL, fs)
+        if (pjson.exists) {
+            if (pjson.exports) {
+                const { resolved } = await PACKAGE_EXPORTS_RESOLVE(pjsonURL, packageSubpath, pjson.exports, fs)
+                result = resolved
+            }
+            else if (packageSubpath === '.') {
+                result = await LOAD_AS_DIRECTORY(pjson, fs)
+            }
+            else {
+                result = new URL(packageSubpath, pjsonURL)
+            }
+            break
+        }
+        last = pjsonURL
+        pjsonURL = new URL((isScoped ? '../../../../node_modules/' : '../../../node_modules/') + packageName + '/package.json', pjsonURL);
+    }
+    while (pjsonURL.pathname !== last.pathname)
+    if (result) {
+        return result
+    }
+    throw new Error('Module Not Found ' + packageSpecifier + ' ' + parentURL)
+}
+export const LOAD_AS_DIRECTORY = async (pjson: PackageJSON, fs: FileURLSystem): Promise<URL> => {
+    if (pjson.exists) {
+        if (pjson.main) {
+            const m = new URL(`./${pjson.main}`, pjson.pjsonURL)
+            const f = await LOAD_AS_FILE(m, fs)
+            if (f) {
+                return f
+            }
+            const i = await LOAD_INDEX(m, fs)
+            if (i) {
+                return i
+            }
+            const ix = await LOAD_INDEX(pjson.pjsonURL, fs)
+            if (ix) {
+                return ix
+            }
+            throw new Error('Module Not Found')
+        }
+    }
+    const ix = await LOAD_INDEX(pjson.pjsonURL, fs)
+    if (ix) {
+        return ix
+    }
+}
+export const LOAD_AS_FILE = async (url: URL, fs: FileURLSystem): Promise<URL> => {
+    if (await fs.exists(url)) {
+        return url
+    }
+    let u = new URL(url.href + '.js')
+    if (await fs.exists(u)) {
+        return u
+    }
+    u = new URL(url.href + '.json')
+    if (await fs.exists(u)) {
+        return u
+    }
+    u = new URL(url.href + '.node')
+    if (await fs.exists(u)) {
+        return u
+    }
+}
+export const LOAD_INDEX = async (url: URL, fs: FileURLSystem): Promise<URL> => {
+    let u = new URL('./index.js', url)
+    if (await fs.exists(u)) {
+        return u
+    }
+    u = new URL('./index.json', url)
+    if (await fs.exists(u)) {
+        return u
+    }
+    u = new URL('./index.node', url)
+    if (await fs.exists(u)) {
+        return u
+    }
+}
+function isRelativeSpecifier(specifier) {
+    if (specifier[0] === '.') {
+        if (specifier.length === 1 || specifier[1] === '/') return true;
+        if (specifier[1] === '.') {
+            if (specifier.length === 2 || specifier[2] === '/') return true;
+        }
+    }
+    return false;
+}
+function shouldBeTreatedAsRelativeOrAbsolutePath(specifier) {
+    if (specifier === '') return false;
+    if (specifier[0] === '/') return true;
+    return isRelativeSpecifier(specifier);
+}
+export const encodedSepRegEx = /%2F|%2C/i; //TODO should be %5C in node repo also
+export const ESM_RESOLVE = async (specifier: string, parentURL: URL, fs: FileURLSystem): Promise<URL> => {
+    let resolved;
+    if (shouldBeTreatedAsRelativeOrAbsolutePath(specifier)) {
+        resolved = new URL(specifier, parentURL);
+    } else if (specifier[0] === '#') {
+        ({ resolved } = await PACKAGE_IMPORTS_RESOLVE(specifier, parentURL, fs));
+    } else {
+        try {
+            resolved = new URL(specifier);
+        } catch {
+            resolved = await PACKAGE_RESOLVE(specifier, parentURL, fs)
+        }
+    }
+    if (RegExpTest(encodedSepRegEx, resolved.pathname)) {
+        throw new Error('Invalid Module Specifier')
+    }
+    // if (!await fs.exists(resolved)) {
+    //     throw new Error('Module Not Found')
+    // }
+    return resolved
 }

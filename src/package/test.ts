@@ -1,7 +1,6 @@
-//import { freeGlobals as fg } from '@bintoca/package/init'
 import {
     ParseFilesError, getSubstituteId, getSubstituteIdCore, parseFile, parseFiles, createLookup, encodePackage, encodeFile, decodePackage, decodeFile,
-    lookupExists, getPackageBreakIndex, FileType, Update, packageBase, packageCJSPath, getCJSFiles
+    lookupExists, getPackageBreakIndex, FileType, Update, packageBase, packageCJSPath, getCJSFiles, ImportExportType, decodeFileToOriginal
 } from '@bintoca/package/server'
 import {
     FileURLSystem
@@ -9,7 +8,7 @@ import {
 import { readFileSync } from 'fs'
 const TD = new TextDecoder()
 const TE = new TextEncoder()
-//const makeSureInitHappens = fg
+const distIndex = new Uint8Array(readFileSync(new URL('./pack1/dist/index.js', import.meta.url) as any))
 
 test.each([[0, '$AAAAA'], [1, '$BAAAA'], [63, '$$AAAA'], [64, '$ABAAA'], [4095, '$$$AAA'], [4096, '$AABAA'], [262143, '$$$$AA'], [262144, '$AAABA'], [16777215, '$$$$$A'], [16777216, '$AAAAB'], [1073741823, '$$$$$$']])('getSubstitueIdCore(%i)', (a, e) => {
     expect(getSubstituteIdCore(a, 5, '$')).toEqual(e)
@@ -18,13 +17,16 @@ test.each([[{}, '$AAAAA'], [{ '$AAAAA': 1, '$BAAAA': 1, }, '$CAAAA']])('getSubst
     expect(getSubstituteId(a, 5, '$')).toEqual(e)
 })
 test('parseFiles', async () => {
-    const files: Update = { 'dist/index.js': { action: 'add', buffer: readFileSync(new URL('./pack1/dist/index.js', import.meta.url) as any) } }
+    const files: Update = { 'dist/index.js': { action: 'add', buffer: distIndex } }
     const r = parseFiles(files)
-    expect(r.files['dist/index.js']).toEqual(new Map<number, any>([[1, FileType.js], [2, 2291],
-    [4, ['Math', 'Number', 'd2']], [7, "$BAAAA"], [8, "$BAA"],
-    [5, [new Map<number, any>([[1, "import * as $eeeee from "], [2, 'es😀d']]), new Map<number, any>([[1, "import { $AAAAA } from "], [2, 'a1']]), new Map<number, any>([[1, "import $bbbbb from "], [2, 'b1']])]],
-    [6, [new Map<number, any>([[1, "$AAA"]]), new Map<number, any>([[1, "f"]]), new Map<number, any>([[1, "c"]]), new Map<number, any>([[2, "export { ar }"]]), new Map<number, any>([[2, "export { c1 } from "], [3, 'c1']]),
-    new Map<number, any>([[2, "export * from "], [3, 'd1']]), new Map<number, any>([[2, "export * as d2 from "], [3, 'd2']]), new Map<number, any>([[2, "export * as d3 from "], [3, 'd3']]), new Map<number, any>([[4, "$AAAAAAAA"]])]],
+    expect(r.files['dist/index.js']).toEqual(new Map<number, any>([[1, FileType.js], [2, 2364],
+    [4, ['Math', 'Number', 'd2', 'eval', 'this']], [6, "$BAAAA"], [7, [187, 201]],
+    [5, [new Map<number, any>([[1, ImportExportType.regular], [2, 0], [3, "import * as $eeeee from '"], [4, 'es😀d']]), new Map<number, any>([[1, ImportExportType.regular], [2, 32], [3, "import { $AAAAA } from '"], [4, 'a1']]),
+    new Map<number, any>([[1, ImportExportType.regular], [2, 60], [3, "import $bbbbb from '"], [4, 'b1']]), new Map<number, any>([[1, ImportExportType.exportName], [2, 84], [3, "$AAA"]]),
+    new Map<number, any>([[1, ImportExportType.exportName], [2, 218], [3, "f"]]), new Map<number, any>([[1, ImportExportType.exportName], [2, 300], [3, "c"]]),
+    new Map<number, any>([[1, ImportExportType.regular], [2, 437], [3, "export { ar }"]]), new Map<number, any>([[1, ImportExportType.regular], [2, 451], [3, "export { c1 } from '"], [4, 'c1']]),
+    new Map<number, any>([[1, ImportExportType.regular], [2, 475], [3, "export * from '"], [4, 'd1']]), new Map<number, any>([[1, ImportExportType.regular], [2, 494], [3, "export * as d2 from '"], [4, 'd2']]),
+    new Map<number, any>([[1, ImportExportType.regular], [2, 519], [3, "export * as d3 from \""], [4, 'd3']]), new Map<number, any>([[1, ImportExportType.exportDefault], [2, 544], [3, "$AAAAAAAA"]])]],
     [3, `                               
                            
                        
@@ -33,7 +35,7 @@ const ar = () => this
 const $ddddd = Number.EPSILON + Number.MAX_SAFE_INTEGER
 $BAAAA('ss' + $BAAAA.meta.url)
        function f($vvvvv) {
-    (0, $BAA)();
+    (0, eval)();
     (0, this.b)();
     return this
 }
@@ -107,19 +109,24 @@ test('decodeFile cjs', async () => {
 test.each([['const w = 4;          const r=5;',
     'import{cjsRegister as s3jY8Nt5dO3xokuh194BF}from"/x/a/' + testPath + '";s3jY8Nt5dO3xokuh194BF((function (module,exports,require,__dirname,__filename,s3jY8Nt5dO3xokuh194BF){const w = 4;          const r=5;}),"file:///a.cjs");'
     , new Map<number, any>([[1, FileType.js], [2, 50], [3, 'const w = 4;          const r=5;']])],
-['const w = 4;          ImporTTHISconst r=5;EvAL\nimport Math from"/x/g/Math.js"\nimport $bbbbb from "bxx"\nexport {b0} from "bxx"\nexport {r}\nexport{r}\nexport default $AA\nimport ImporT from"/x/i/file%3A%2F%2F%2Fa.mjs"\nimport EvAL from"/x/u"',
-    'import{cjsRegister as s3jY8Nt5dO3xokuh194BF}from"/x/a/' + testPath + '";s3jY8Nt5dO3xokuh194BF((function (module,exports,require,__dirname,__filename,s3jY8Nt5dO3xokuh194BF){const w = 4;          ImporTTHISconst r=5;EvAL}),"file:///a.cjs");\nimport Math from"/x/g/Math.js"\nimport ImporT from"/x/i/file%3A%2F%2F%2Fa.cjs"\nimport EvAL from"/x/u"',
+['const w = 4;          ImporT;const r=5;\nimport Math from"/x/g/Math.js"\nimport $bbbbb from "bxx"\nexport {b0} from "bxx"\nexport {r}\nexport{r}\nexport default $AA\nimport ImporT from"/x/i/file%3A%2F%2F%2Fa.mjs"',
+    'import{cjsRegister as s3jY8Nt5dO3xokuh194BF}from"/x/a/' + testPath + '";s3jY8Nt5dO3xokuh194BF((function (module,exports,require,__dirname,__filename,s3jY8Nt5dO3xokuh194BF){const w = 4;          ImporT;const r=5;}),"file:///a.cjs");\nimport Math from"/x/g/Math.js"\nimport ImporT from"/x/i/file%3A%2F%2F%2Fa.cjs"',
     new Map<number, any>([[1, FileType.js], [2, 50],
-    [3, 'const w = 4;          ImporTTHISconst r=5;EvAL'],
+    [3, 'const w = 4;          ImporT;const r=5;'],
     [4, ['Math', 'define', 'Free']],
-    [5, [new Map<number, any>([[1, "import $bbbbb from "], [2, 'b1']])]],
-    [6, [new Map<number, any>([[2, "export {b0} from "], [3, 'b1']]), new Map<number, any>([[2, "export {r}"]]), new Map<number, any>([[1, "r"]]), new Map<number, any>([[4, "$AA"]])]],
-    [7, 'ImporT'], [8, 'EvAL']
+    [5, [new Map<number, any>([[1, ImportExportType.regular], [2, 60], [3, "import $bbbbb from \""], [4, 'b1']]),
+    new Map<number, any>([[1, ImportExportType.regular], [2, 60], [3, "export {b0} from \""], [4, 'b1']]), new Map<number, any>([[1, ImportExportType.regular], [2, 60], [3, "export {r}"]]),
+    new Map<number, any>([[1, ImportExportType.exportName], [2, 60], [3, "r"]]), new Map<number, any>([[1, ImportExportType.exportDefault], [2, 60], [3, "$AA"]])]],
+    [6, 'ImporT'], [7, [2]]
     ])]])('decodeFile js', async (a, c, b) => {
         const cb = encodeFile(b)
         expect(TD.decode((await decodeFile(cb, controlledGlobals, parentURL, fs)).data)).toBe(a)
         expect(TD.decode((await decodeFile(cb, controlledGlobals, new URL('file:///a.cjs'), fs)).data)).toBe(c)
     })
+test.each([distIndex])('decodeFileToOriginal', (a) => {
+    expect(decodeFileToOriginal(encodeFile(parseFile('a.txt', a)))).toEqual(a)
+    expect(decodeFileToOriginal(encodeFile(parseFile('a.js', a)))).toEqual(TD.decode(a))
+})
 test('createLookup', () => {
     expect(new Uint8Array(createLookup(new Set(['hey', 'dude'])).buffer)).toEqual(new Uint8Array([0, 0, 0, 2, 100, 0, 0, 12, 104, 0, 0, 17, 4, 100, 117, 100, 101, 3, 104, 101, 121]))
 })
