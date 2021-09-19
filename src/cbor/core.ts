@@ -2,6 +2,8 @@ const TE = new TextEncoder()
 export const TD = new TextDecoder('utf-8', { fatal: true })
 export const sharedRefSymbol = Symbol.for('https://github.com/bintoca/lib/cbor/sharedRef')
 export const promiseRefSymbol = Symbol.for('https://github.com/bintoca/lib/cbor/promiseRef')
+export const tagSymbol = Symbol.for('https://github.com/bintoca/lib/cbor/tag')
+export const absentSymbol = Symbol.for('https://github.com/bintoca/lib/cbor/absent')
 export const defaultBufferSize = 4096
 export const defaultMinViewSize = 512
 export type MajorTypes = 0 | 1 | 2 | 3 | 4 | 5 | 6 | 7 | -1
@@ -292,10 +294,27 @@ export const objectItem = (a: Object, state: EncoderState) => {
     }
     const typ = state.typeMap.get(a.constructor || NullConstructor)
     if (typ) {
+        encodeTagSymbol(a, state)
         typ(a, state)
     }
     else {
         throw new Error('type mapping not found: ' + a.constructor?.name)
+    }
+}
+export const encodeTagSymbol = (a: Object, state: EncoderState) => {
+    const t = a[tagSymbol]
+    if (t !== undefined) {
+        if (typeof t == 'number') {
+            tagItem(t, state)
+        }
+        else if (Array.isArray(t) && t.every(x => typeof x == 'number')) {
+            for (let i = 0; i < t.length; i++) {
+                tagItem(t[i], state)
+            }
+        }
+        else {
+            throw new Error('invalid tag')
+        }
     }
 }
 export const encodeItem = (a, state: EncoderState) => {
@@ -465,14 +484,14 @@ export const detectShared = (value, state: EncoderState) => {
         state.sharedSet = new WeakSet()
     }
 }
-export const concat = (buffers: Uint8Array[]): Uint8Array => {
+export const concat = (buffers: BufferSource[]): Uint8Array => {
     if (buffers.length == 1) {
-        return buffers[0]
+        return buffers[0] instanceof Uint8Array ? buffers[0] : bufferSourceToUint8Array(buffers[0])
     }
     const u = new Uint8Array(buffers.reduce((a, b) => a + b.byteLength, 0))
     let offset = 0
     for (let b of buffers) {
-        u.set(b, offset)
+        u.set(b instanceof Uint8Array ? b : bufferSourceToUint8Array(b), offset)
         offset += b.byteLength
     }
     return u
@@ -482,7 +501,7 @@ export type DecoderState = {
     position: number, stack: DecodeStackItem[], decodeItemFunc: (major: number, additionalInformation: number, dv: DataView, src: DecoderState) => any, decodeSharedFunc: (value, state: DecoderState) => void,
     finishItemFunc: (state: DecoderState) => any, stopPosition?: number, decodeMainFunc: (dv: DataView, state: DecoderState) => any, tagMap: Map<number | bigint, (v, state: DecoderState) => any>, shared: any[], queue: BufferSource[],
     tempBuffer: Uint8Array, nonStringKeysToObject?: boolean, maxBytesPerItem?: number, currentItemByteCount: number, hasSharedRef?: boolean, promises: Promise<any>[], namedConstructorMap: Map<string, (v, state: DecoderState) => any>,
-    decodeUTF8Func: (dv: DataView, length: number, state: DecoderState) => string, byteStringNoCopy?: boolean
+    decodeUTF8Func: (dv: DataView, length: number, state: DecoderState) => string, byteStringNoCopy?: boolean, tagSymbols?: boolean
 }
 export const getFloat16 = (dv: DataView, offset: number, littleEndian?: boolean): number => {
     const leadByte = dv.getUint8(offset + (littleEndian ? 1 : 0))
@@ -1048,7 +1067,15 @@ export const finishItem = (state: DecoderState) => {
         case 3:
             return TD.decode(concat(head.temp))
         case 4:
-            return parent?.tag == tags.Set ? new Set(head.temp) : head.temp
+            if (parent?.tag == tags.Set) {
+                return new Set(head.temp)
+            }
+            for (let i = 0; i < head.temp.length; i++) {
+                if (head.temp[i] === absentSymbol) {
+                    delete head.temp[i]
+                }
+            }
+            return head.temp
         case 5:
             if (parent?.tag == tags.Map || (!state.nonStringKeysToObject && head.temp.filter((x, i) => i % 2 == 0).some(x => typeof x != 'string'))) {
                 const m = new Map()
@@ -1074,6 +1101,18 @@ export const finishItem = (state: DecoderState) => {
                 }
                 state.hasSharedRef = true
                 return { [sharedRefSymbol]: v }
+            }
+            if (state.tagSymbols && typeof v == 'object') {
+                const t = v[tagSymbol]
+                if (typeof t == 'undefined') {
+                    v[tagSymbol] = head.tag
+                }
+                else if (typeof t == 'number') {
+                    v[tagSymbol] = [head.tag, t]
+                }
+                else {
+                    (t as Array<any>).unshift(head.tag)
+                }
             }
             const tagFunc = state.tagMap.get(head.tag)
             return tagFunc ? tagFunc(v, state) : v
@@ -1136,6 +1175,7 @@ export const enum tags {
     typeConstructor = 27,
     shareable = 28,
     sharedRef = 29,
+    absent = 31,
     uint8 = 64,
     uint16BE = 65,
     uint32BE = 66,
@@ -1160,6 +1200,12 @@ export const enum tags {
     WTF8 = 273,
 
     extendedTime = 1001,
+    ecmaScript = 33000,
+    wasm = 33001,
+    json = 33002,
+
+    selfDescribedCBOR = 55799,
+    selfDescribedCBORSequence = 55800
 }
 export type EncoderOptions = Partial<Omit<EncoderState, 'sharedMap' | 'sharedSet' | 'buffers'>>
 export const setupEncoder = (op: EncoderOptions = {}): EncoderState => {
@@ -1201,7 +1247,13 @@ export const defaultTypeMap = new Map<Function, (a, state: EncoderState) => void
 [Array, (a: any[], state: EncoderState) => {
     arrayItem(a.length, state)
     for (let i = a.length - 1; i >= 0; i--) {
-        state.stack.push(a[i])
+        if (i in a) {
+            state.stack.push(a[i])
+        }
+        else {
+            state.stack.push(undefined)
+            state.stack.push(new TagHelper(tags.absent))
+        }
     }
 }],
 [Map, (a: Map<any, any>, state: EncoderState) => {
@@ -1286,6 +1338,7 @@ export const defaultTagMap = new Map<number | bigint, (v, state: DecoderState) =
     throw new Error('invalid Set tag')
 }],
 [tags.uint8, (v) => new Uint8Array(v)],
+[tags.absent, (v) => absentSymbol],
 [tags.typeConstructor, (v: any[], state) => {
     const c = state.namedConstructorMap.get(v[0])
     if (c) {

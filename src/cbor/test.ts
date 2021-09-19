@@ -1,6 +1,6 @@
 import {
     integerItem, binaryItem, stringItem, numberItem, bigintItem, arrayItem, mapItem, tagItem, encodeSync, hasBadSurrogates, encodeItem, EncoderState, DecoderState, TagHelper, tags,
-    defaultTypeMap, defaultNamedConstructorMap, setupEncoder, setupDecoder, indefiniteBinaryBegin, indefiniteStringBegin, indefiniteArrayBegin, indefiniteMapBegin, indefiniteEnd, decodeLoop, decodeSync, promiseRefSymbol, defaultTagMap, decodeSkip, bufferSourceToDataView
+    defaultTypeMap, defaultNamedConstructorMap, setupEncoder, setupDecoder, indefiniteBinaryBegin, indefiniteStringBegin, indefiniteArrayBegin, indefiniteMapBegin, indefiniteEnd, decodeLoop, decodeSync, promiseRefSymbol, defaultTagMap, decodeSkip, bufferSourceToDataView, tagSymbol
 } from '@bintoca/cbor/core'
 import * as node from '@bintoca/cbor/node'
 import wtf8 from 'wtf-8'
@@ -133,6 +133,8 @@ test.each([[{ a: 1, b: [2, 3] }, [new Uint8Array([162, 97, 97, 1, 97, 98, 130, 2
 [[new ArrayBuffer(4100)], [new Uint8Array([129, 89, 16, 4].concat(Array(4092))), new Uint8Array(Array(8))]], //resumeBuffer
 [[new ArrayBuffer(4100), new ArrayBuffer(4100)], [new Uint8Array([130, 89, 16, 4].concat(Array(4092))), new Uint8Array(Array(8).concat([89, 16, 4].concat(Array(4085)))), new Uint8Array(Array(15))]], //resumeBuffer 2
 [[new ArrayBuffer(9000)], [new Uint8Array([129, 89, 35, 40].concat(Array(4092))), new Uint8Array(4096), new Uint8Array(Array(812))]], //resumeBuffer large
+[{ a: [1, , 2], [tagSymbol]: [5, 6] }, [new Uint8Array([197, 198, 161, 97, 97, 131, 1, 216, 31, 247, 2])]],
+[{ a: 1, [tagSymbol]: 5 }, [new Uint8Array([197, 161, 97, 97, 1])]]
 ])('encodeSync(%#)', (a, e) => {
     const r = encodeSync(a, setupEncoder())
     expect(r.length).toBe(e.length)
@@ -246,10 +248,19 @@ test.each([[[0], 0, 1], [[24, 50], 50, 2], [[25, 1, 0], 256, 3], [[26, 1, 0, 0, 
 [[249, 62, 0], 1.5, 3], [[250, 71, 128, 0, 64], 2 ** 16 + 0.5, 5], [[251, 65, 240, 0, 0, 0, 8, 0, 0], 2 ** 32 + 0.5, 9], [[249, 128, 0], -0, 3], [[249, 126, 0], NaN, 3], [[249, 124, 0], Infinity, 3], [[249, 252, 0], -Infinity, 3],
 [[216, 64, 67, 1, 2, 3], new Uint8Array([1, 2, 3]), 6], [[101, 104, 101, 108, 108, 111], 'hello', 6], [[130, 1, 2], [1, 2], 3], [[161, 97, 104, 1], { h: 1 }, 4], [[246], null, 1], [[247], undefined, 1], [[244], false, 1], [[245], true, 1],
 [[194, 66, 4, 210], BigInt(1234), 4], [[195, 66, 4, 209], BigInt(-1234), 4], [[217, 1, 3, 160], new Map(), 4], [[217, 1, 2, 128], new Set(), 4], [[217, 3, 233, 162, 1, 1, 34, 24, 234], new Date(1234), 9], [[193, 2], new Date(2000), 2],
-[[192, 100, 50, 48, 48, 48], new Date('2000'), 6], [[216, 28, 162, 97, 97, 216, 29, 0, 97, 98, 130, 216, 28, 160, 216, 29, 1], cycle1, 17]])('decodeLoop(%i,%s)', (a, e, p) => {
-    const state = setupDecoder({ queue: [new Uint8Array(a)] })
+[[192, 100, 50, 48, 48, 48], new Date('2000'), 6], [[216, 28, 162, 97, 97, 216, 29, 0, 97, 98, 130, 216, 28, 160, 216, 29, 1], cycle1, 17],
+[[197, 161, 97, 97, 1], { a: 1, [tagSymbol]: 5 }, 5], [[197, 198, 199, 161, 97, 97, 131, 1, 216, 31, 247, 2], { a: [1, , 2], [tagSymbol]: [5, 6, 7] }, 12]
+])('decodeLoop(%i,%s)', (a, e, p) => {
+    const state = setupDecoder({ queue: [new Uint8Array(a)], tagSymbols: true })
     expect(decodeLoop(state)).toEqual(e)
     expect(state.position).toBe(p)
+})
+test('decodeLoop absent', () => {
+    const state = setupDecoder({ queue: [new Uint8Array([131, 1, 216, 31, 247, 2])], tagSymbols: true })
+    const a = decodeLoop(state)
+    expect(0 in a).toBe(true)
+    expect(1 in a).toBe(false)
+    expect(2 in a).toBe(true)
 })
 test('decodeLoop_Chunked', () => {
     const state = setupDecoder()

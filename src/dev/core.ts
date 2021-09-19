@@ -7,9 +7,9 @@ import {
     FileURLSystem, CJS_MODULE
 } from '@bintoca/package'
 import {
-    parseFiles, parseFile, ParseFilesError, getShrinkwrapURLs, encodePackage, encodeFile, decodePackage, decodeFile, createLookup, FileType, getCacheKey,
+    parseFiles, parseFile, ParseFilesError, getShrinkwrapURLs, encodePackage, encodeFile, decodeFile, createLookup, FileType, getCacheKey,
     getShrinkwrapResolved, ShrinkwrapPackageDescription, importBase, getDynamicImportModule, reloadBase, packageBase, internalBase, Update, getManifest, undefinedPath,
-    packageCJSPath, getAllCJSModule, getCJSFiles, globalBase, metaURL as packageMetaURL, getGlobalModule, READ_PACKAGE_JSON, ESM_RESOLVE
+    packageCJSPath, getAllCJSModule, getCJSFiles, globalBase, metaURL as packageMetaURL, getGlobalModule, READ_PACKAGE_JSON, ESM_RESOLVE, configURL, FileParse
 } from '@bintoca/package/server'
 import { url as stateURL } from '@bintoca/package/state'
 import * as chokidar from 'chokidar'
@@ -20,12 +20,13 @@ import pacote from 'pacote'
 import cacache from 'cacache'
 import tar from 'tar'
 import cachedir from 'cachedir'
+import { EncoderState, setupEncoder } from '@bintoca/cbor/core'
 
 const TD = new TextDecoder()
 const TE = new TextEncoder()
 const clientURL = internalBase + new URL('./client.js', packageMetaURL).href
 const initURL = internalBase + new URL('./init.js', packageMetaURL).href
-const configURL = '/x/config'
+
 export const defaultConfig: Config = {
     hostname: 'localhost',
     port: 3000,
@@ -69,7 +70,7 @@ export const createFileURLSystem = (state: State): FileURLSystem => {
                 r = state.fileCache[p.pathname]
             }
             else if (p.pathname.startsWith(internalBase)) {
-                r = state.fileCache[p.pathname] = encodeFile(parseFile(p.pathname, fs.readFileSync(new URL(p.pathname.slice(internalBase.length)) as any)))
+                r = state.fileCache[p.pathname] = encodeFile(parseFile(p.pathname, fs.readFileSync(new URL(p.pathname.slice(internalBase.length)) as any)), state.encoderState)
             }
             else if (p.pathname.startsWith(packageBase + 'node_modules/')) {
                 try {
@@ -123,7 +124,7 @@ export const createFileURLSystem = (state: State): FileURLSystem => {
 export type Config = { hostname: string, port: number, ignore, awaitWriteFinish, open: boolean, watch: boolean, configFile }
 export type State = {
     urlCache, fileCache, cjsCache: { [k: string]: 1 }, fileURLSystem: FileURLSystem, readlineInterface: readline.Interface, shrinkwrap, packageJSON, wsConnections: any[],
-    config: Config, controlledGlobals: Set<string>, controlledGlobalsLookup: DataView
+    config: Config, controlledGlobals: Set<string>, controlledGlobalsLookup: DataView, encoderState: EncoderState
 }
 export const cacacheDir = path.join(cachedir('bintoca'), '_cacache')
 export const parseTar = async (t: NodeJS.ReadableStream): Promise<Update> => {
@@ -282,24 +283,24 @@ export const notify = (updates, state: State) => {
         x.sendUTF(JSON.stringify({ type: 'update', data: { base: new URL(packageBase, getRootURL(state)).href, baseReload: new URL(reloadBase, getRootURL(state)).href, updates } }))
     }
 }
-export const checkParsed = (parsed: { files: { [k: string]: Map<number, any> } }, prefix: string, state: State): boolean => {
+export const checkParsed = (parsed: { [k: string]: FileParse }, prefix: string, state: State): boolean => {
     if (prefix) {
         prefix += '/'
     }
     let r = true
-    for (let x in parsed.files) {
-        const m = parsed.files[x]
-        if (m.get(1) == FileType.error) {
+    for (let x in parsed) {
+        const m = parsed[x]
+        if (m.type == FileType.error) {
             r = false
-            const type = m.get(2)
+            const type = m.value.type
             if (type == ParseFilesError.syntax) {
-                log(state, 'File: ' + prefix + x, 'Syntax error: ' + m.get(3))
+                log(state, 'File: ' + prefix + x, 'Syntax error: ' + m.value.message)
             }
             else if (type == ParseFilesError.invalidSpecifier) {
-                log(state, 'File: ' + prefix + x, 'Invalid import specifier: ' + m.get(3))
+                log(state, 'File: ' + prefix + x, 'Invalid import specifier: ' + m.value.message)
             }
             else {
-                log(state, 'File: ' + prefix + x, 'Error type: ' + m.get(2), 'Message: ' + m.get(3))
+                log(state, 'File: ' + prefix + x, 'Error type: ' + m.value.message, 'Message: ' + m.value.message)
             }
         }
     }
@@ -312,7 +313,7 @@ export const optimizePackage = async (x: ShrinkwrapPackageDescription, state: St
         const up: Update = await pacote.tarball.stream(x.resolved, parseTar)
         const parsed = parseFiles(up)
         if (checkParsed(parsed, prefix, state)) {
-            const enc = decodePackage(encodePackage(parsed)).get(1)
+            const enc = encodePackage(parsed, state.encoderState)
             for (let k in enc) {
                 await cacache.put(cacacheDir, x.resolved + '/files/' + k, enc[k])
             }
@@ -355,7 +356,7 @@ export const update = async (f: Update, state: State) => {
     }
     const parsed = parseFiles(f)
     checkParsed(parsed, '', state)
-    const enc = decodePackage(encodePackage(parsed)).get(1)
+    const enc = encodePackage(parsed, state.encoderState)
     for (let x in enc) {
         const url = packageBase + alignPath(x)
         state.fileCache[url] = enc[x]
@@ -364,7 +365,7 @@ export const update = async (f: Update, state: State) => {
     const notif = {}
     for (let k in f) {
         const url = new URL(packageBase + alignPath(k), getRootURL(state))
-        notif[url.href] = { action: f[k].action, error: parsed.files[k].get(1) === FileType.error ? { type: parsed.files[k].get(2), message: parsed.files[k].get(3) } : undefined }
+        notif[url.href] = { action: f[k].action, error: parsed[k].type === FileType.error ? parsed[k].value : undefined }
         if (f[k].action == 'remove') {
             state.fileCache[url.pathname] = undefined
             state.urlCache[url.pathname] = undefined
@@ -430,7 +431,7 @@ export const init = async (config?: Config) => {
     const state: State = {
         urlCache: {}, fileCache: {}, cjsCache: null, fileURLSystem: null, wsConnections: [], shrinkwrap: undefined, packageJSON: undefined,
         readlineInterface: readline.createInterface({ input: process.stdin, output: process.stdout, prompt: 'DEV> ' }),
-        config: config || Object.assign({}, defaultConfig), controlledGlobals: new Set(), controlledGlobalsLookup: null
+        config: config || Object.assign({}, defaultConfig), controlledGlobals: new Set(), controlledGlobalsLookup: null, encoderState: setupEncoder({ omitMapTag: true })
     }
     state.fileURLSystem = createFileURLSystem(state)
     if (state.config.configFile) {

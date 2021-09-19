@@ -20,6 +20,7 @@ console.log('enum', Object.getOwnPropertyNames(window).map(x => { return { x, d:
 console.log('not enum', Object.getOwnPropertyNames(window).map(x => { return { x, d: Object.getOwnPropertyDescriptor(window, x) } }).filter(x => !x.d.enumerable))
 console.log('writeable', Object.getOwnPropertyNames(window).map(x => { return { x, d: Object.getOwnPropertyDescriptor(window, x) } }).filter(x => x.d.writable || x.d.set))
 console.log('not writeable', Object.getOwnPropertyNames(window).map(x => { return { x, d: Object.getOwnPropertyDescriptor(window, x) } }).filter(x => !x.d.writable && !x.d.set))
+console.log('\uD800', JSON.parse('{"a":"\uD800"}'))
 //Object.defineProperty(window, 'crypto', {configurable:true,writable:true, enumerable:true})
 //self = {}
 //console.log('configurable', Object.getOwnPropertyNames(window).map(x => { return { x, d: Object.getOwnPropertyDescriptor(window, x) } }).filter(x => x.d.configurable), top)
