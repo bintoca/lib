@@ -9,7 +9,7 @@ import {
 import {
     parseFiles, parseFile, ParseFilesError, getShrinkwrapURLs, encodePackage, encodeFile, decodeFile, createLookup, FileType, getCacheKey,
     getShrinkwrapResolved, ShrinkwrapPackageDescription, importBase, getDynamicImportModule, reloadBase, packageBase, internalBase, Update, getManifest, undefinedPath,
-    packageCJSPath, getAllCJSModule, getCJSFiles, globalBase, metaURL as packageMetaURL, getGlobalModule, READ_PACKAGE_JSON, ESM_RESOLVE, configURL, FileParse
+    packageCJSPath, getAllCJSModule, getCJSFiles, globalBase, metaURL as packageMetaURL, getGlobalModule, READ_PACKAGE_JSON, ESM_RESOLVE, configURL, FileParse, fileError
 } from '@bintoca/package/server'
 import { url as stateURL } from '@bintoca/package/state'
 import * as chokidar from 'chokidar'
@@ -21,6 +21,7 @@ import cacache from 'cacache'
 import tar from 'tar'
 import cachedir from 'cachedir'
 import { EncoderState, setupEncoder } from '@bintoca/cbor/core'
+import { createHash } from 'crypto'
 
 const TD = new TextDecoder()
 const TE = new TextEncoder()
@@ -34,7 +35,7 @@ export const defaultConfig: Config = {
     awaitWriteFinish: { stabilityThreshold: 100, pollInterval: 50 },
     open: true,
     watch: true,
-    configFile: './bintoca.dev.js'
+    configFile: './bintoca.config.js'
 }
 export const resetCache = (state: State) => {
     state.urlCache = {}
@@ -162,23 +163,23 @@ export const httpHandler = async (req: http.IncomingMessage, res: http.ServerRes
         try {
             if (req.url == '/') {
                 let err
-                if (!state.packageJSON) {
-                    err = 'package.json not found or invalid'
-                }
-                else if (!state.shrinkwrap) {
-                    err = 'npm-shrinkwrap.json not found or invalid'
-                }
-                else {
-                    if (state.packageJSON.type != 'module') {
-                        err = 'package type must be module'
-                    }
-                    else if (!state.packageJSON.name) {
-                        err = 'package name required'
-                    }
-                    else if (state.shrinkwrap.lockfileVersion != 2) {
-                        err = 'npm-shrinkwrap.json lockfileVersion 2 (npm 7) required'
-                    }
-                }
+                // if (!state.packageJSON) {
+                //     err = 'package.json not found or invalid'
+                // }
+                // else if (!state.shrinkwrap) {
+                //     err = 'npm-shrinkwrap.json not found or invalid'
+                // }
+                // else {
+                //     if (state.packageJSON.type != 'module') {
+                //         err = 'package type must be module'
+                //     }
+                //     else if (!state.packageJSON.name) {
+                //         err = 'package name required'
+                //     }
+                //     else if (state.shrinkwrap.lockfileVersion != 2) {
+                //         err = 'npm-shrinkwrap.json lockfileVersion 2 (npm 7) required'
+                //     }
+                // }
                 if (err) {
                     res.statusCode = 500
                     res.end(err)
@@ -315,9 +316,9 @@ export const optimizePackage = async (x: ShrinkwrapPackageDescription, state: St
         if (checkParsed(parsed, prefix, state)) {
             const enc = encodePackage(parsed, state.encoderState)
             for (let k in enc) {
-                await cacache.put(cacacheDir, x.resolved + '/files/' + k, enc[k])
+                await cacache.put(cacacheDir, x.resolved + '/files/' + k, enc[k], { algorithms: ['sha256'] })
             }
-            await cacache.put(cacacheDir, x.resolved + '/manifest', TE.encode(JSON.stringify(getManifest(up))))
+            await cacache.put(cacacheDir, x.resolved + '/manifest', TE.encode(JSON.stringify(getManifest(up))), { algorithms: ['sha256'] })
         }
     }
     catch (e) {
@@ -375,6 +376,32 @@ export const update = async (f: Update, state: State) => {
         }
     }
     notify(notif, state)
+}
+export const parse = async (packageSpecifier: string, state: State) => {
+    const parsed = parseFiles(await pacote.tarball.stream(packageSpecifier, parseTar))
+    for (let x in parsed) {
+        const m = parsed[x]
+        if (m.type == FileType.error) {
+            return { parsed }
+        }
+    }
+    const packageJSON = JSON.parse(TD.decode(parsed['package.json'].value))
+    if (packageJSON.type != 'module') {
+        parsed['package.json'] = fileError(ParseFilesError.syntax, 'package type must be module')
+        return { parsed }
+    }
+    else if (!packageJSON.name) {
+        parsed['package.json'] = fileError(ParseFilesError.syntax, 'package name required')
+        return { parsed }
+    }
+    const encoded = encodePackage(parsed, state.encoderState)
+    const manifest: { [k: string]: { integrity: string } } = {}
+    for (let x in encoded) {
+        const sha256 = createHash('sha256')
+        const dig = sha256.update(encoded[x]).digest('base64')
+        manifest[x] = { integrity: 'sha256-' + dig }
+    }
+    return { parsed, encoded, manifest, packageJSON }
 }
 export const alignPath = (s) => s.replace(/\\/g, '/')
 export const readlineHandler = (line, state: State) => {
@@ -441,7 +468,19 @@ export const init = async (config?: Config) => {
     log(state, 'Loading files...')
     //cacache.ls(cacacheDir).then(x => log('ls', x)).catch(x => log('lse', x))
     try {
-        await update(readDir('', cwd(), {}, state), state)
+        const man = await pacote.manifest('file:.')
+        const up = await parse(man._resolved, state)
+        if (up.manifest) {
+            state.packageJSON = up.packageJSON
+            for (let x in up.encoded) {
+                const url = packageBase + x
+                state.fileCache[url] = up.encoded[x]
+            }
+        }
+        else {
+            checkParsed(up.parsed, '', state)
+        }
+        //await update(readDir('', cwd(), {}, state), state)
         log(state, 'Done loading files.')
     }
     catch (e) {
@@ -456,7 +495,7 @@ export const init = async (config?: Config) => {
     }
     state.readlineInterface.on('line', line => readlineHandler(line, state))
     if (state.config.watch) {
-        watch(state)
+        //watch(state)
     }
     return { httpServer, wsServer, state }
 }

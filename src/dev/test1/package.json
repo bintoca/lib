@@ -19,5 +19,10 @@
   },
   "devDependencies": {
     "source-map": "^0.7.3"
-  }
+  },
+  "files": [
+    "index.js",
+    "lib/m1.js",
+    "lib/t1.js"
+  ]
 }
