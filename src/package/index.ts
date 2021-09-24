@@ -6,9 +6,9 @@ export type FileURLSystem = {
     exists: (path: URL) => Promise<boolean>, read: (path: URL, decoded: boolean) => Promise<Uint8Array>, jsonCache: { [k: string]: PackageJSON }, stateURL: string, conditions: Set<string>,
     fsSync: FileURLSystemSync, cjsParseCache: { [k: string]: { exportNames: Set<string> } }, initCJS: () => Promise<void>
 }
-export type FileURLSystemSync = { exists: (path: URL) => boolean, read: (path: URL) => CJS_MODULE, jsonCache: { [k: string]: PackageJSON }, conditions: Set<string> }
+export type FileURLSystemSync = { exists: (path: URL) => boolean, read: (path: URL) => any, jsonCache: { [k: string]: PackageJSON }, conditions: Set<string> }
 export type PackageJSON = { pjsonURL: URL, exists: boolean, main: string, name: string, type: string, exports, imports }
-export const defaultConditionsSync = new Set()
+export const defaultConditionsSync = new Set<string>()
 defaultConditionsSync.add('node')
 defaultConditionsSync.add('require')
 //https://github.com/nodejs/node/blob/master/doc/api/esm.md
@@ -29,8 +29,7 @@ export const READ_PACKAGE_JSON_Sync = (pjsonURL: URL, fs: FileURLSystemSync): Pa
         fs.jsonCache[pjsonURL.href] = pj
         return pj
     }
-    const p = fs.read(pjsonURL)
-    const obj = p.exports
+    const obj = fs.read(pjsonURL)
     if (typeof obj.imports !== 'object' || obj.imports == null) {
         obj.imports = undefined
     }
@@ -410,50 +409,6 @@ export const LOAD_INDEX_Sync = (url: URL, fs: FileURLSystemSync): URL => {
         return u
     }
 }
-export const cjsRegister = (f, k: string, state: State) => {
-    const { cjsFunctions, cjsModules } = state
-    if (typeof f == 'function') {
-        cjsFunctions[k] = f
-    }
-    else {
-        const module: CJS_MODULE = { exports: f }
-        cjsModules[k] = module
-        return module
-    }
-}
-export type CJS_MODULE = { exports }
-export type State = { cjsFunctions: { [k: string]: Function }, cjsModules: { [k: string]: CJS_MODULE }, fs: FileURLSystemSync }
-export const cjsExec = (k: string, state: State) => {
-    const { cjsFunctions, cjsModules, fs } = state
-    if (!ObjectHasOwnProperty(cjsModules, k)) {
-        if (cjsFunctions[k]) {
-            const require = (specifier: string) => {
-                const mURL = CJS_RESOLVE(specifier, new URL(k), fs)
-                const m = cjsExec(mURL.href, state)
-                return m.exports
-            }
-            const rp = new Proxy(require, {
-                get(target, property, receiver) {
-                    if (property in target) {
-                        return target[property]
-                    }
-                    console.log('require unknown property get ' + property.toString(), k)
-                },
-                set(target, property, value, receiver) {
-                    console.log('require unknown property set ' + property.toString(), k)
-                    return false
-                }
-            })
-            const module: CJS_MODULE = { exports: {} }
-            cjsModules[k] = module
-            ReflectApply(cjsFunctions[k], module.exports, [module, module.exports, rp, new URL('./', k).href, k])
-        }
-        else {
-            throw new Error('cjs function not found ' + k)
-        }
-    }
-    return cjsModules[k]
-}
 export const RESOLVE_ESM_MATCH = (match: { resolved: URL, exact: boolean }, fs: FileURLSystemSync) => {
     if (match.exact) {
         return match.resolved
@@ -537,4 +492,40 @@ export const CJS_RESOLVE = (packageSpecifier: string, parentURL: URL, fs: FileUR
         return rm
     }
     throw new Error('Module Not Found "' + packageSpecifier + '" in "' + parentURL + '"')
+}
+function isRelativeSpecifier(specifier) {
+    if (specifier[0] === '.') {
+        if (specifier.length === 1 || specifier[1] === '/') return true;
+        if (specifier[1] === '.') {
+            if (specifier.length === 2 || specifier[2] === '/') return true;
+        }
+    }
+    return false;
+}
+function shouldBeTreatedAsRelativeOrAbsolutePath(specifier) {
+    if (specifier === '') return false;
+    if (specifier[0] === '/') return true;
+    return isRelativeSpecifier(specifier);
+}
+export const encodedSepRegEx = /%2F|%2C/i; //TODO should be %5C in node repo also
+export const ESM_RESOLVE = (specifier: string, parentURL: URL, fs: FileURLSystemSync): URL => {
+    let resolved;
+    if (shouldBeTreatedAsRelativeOrAbsolutePath(specifier)) {
+        resolved = new URL(specifier, parentURL);
+    } else if (specifier[0] === '#') {
+        ({ resolved } = PACKAGE_IMPORTS_RESOLVE_Sync(specifier, parentURL, fs));
+    } else {
+        try {
+            resolved = new URL(specifier);
+        } catch {
+            resolved = PACKAGE_RESOLVE_Sync(specifier, parentURL, fs)
+        }
+    }
+    if (RegExpTest(encodedSepRegEx, resolved.pathname)) {
+        throw new Error('Invalid Module Specifier')
+    }
+    // if (!await fs.exists(resolved)) {
+    //     throw new Error('Module Not Found')
+    // }
+    return resolved
 }

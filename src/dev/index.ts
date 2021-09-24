@@ -1,2 +1,2 @@
-import { init } from '@bintoca/dev/core'
+import { init } from '@bintoca/dev/lib'
 init()

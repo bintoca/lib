@@ -1,5 +1,5 @@
 import * as tar from 'tar'
-import { parseTar } from '@bintoca/dev/core'
+import { parseTar } from '@bintoca/dev/lib'
 
 function tarCreate(folder: string) {
     return tar.create({ gzip: true, prefix: 'package', cwd: './src/dev/' + folder }, ['./'])

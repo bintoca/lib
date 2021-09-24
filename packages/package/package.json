@@ -10,9 +10,9 @@
     ".": "./index.js",
     "./server": "./server.js",
     "./init": "./init.js",
+    "./core": "./core.js",
     "./primordial": "./primordial.js",
-    "./globals/globalThis": "./globals/globalThis.js",
-    "./state": "./state.js"
+    "./globals/globalThis": "./globals/globalThis.js"
   },
   "types": "./index.d.ts",
   "license": "Apache-2.0 WITH LLVM-exception",
