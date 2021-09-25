@@ -4,7 +4,7 @@ import { EncoderState, tags, bufferSourceToDataView, DecoderState, decodeCount, 
 const TD = new TextDecoder()
 const TE = new TextEncoder()
 import primordials from '@bintoca/package/primordial'
-const { Set, JSONParse, TextDecoderDecode, URL, Error, StringEndsWith, StringStartsWith, StringReplace, StringSlice, RegExpTest, ArrayIsArray,
+const { Set, JSONParse, URL, Error, StringEndsWith, StringStartsWith, StringReplace, StringSlice, RegExpTest, ArrayIsArray,
     ObjectGetOwnPropertyNames, ObjectHasOwnProperty, StringIndexOf, StringLastIndexOf, ArrayFilter, ArraySort } = primordials
 
 export const metaURL = import.meta.url
@@ -46,27 +46,45 @@ export const enum FileType {
     json = 3,
     wasm = 4
 }
-export const isSpecifierInvalid = (file: string, specifier: string): boolean => (specifier.startsWith('.') && !specifier.startsWith('./') && !specifier.startsWith('../')) || !new URL(specifier, 'http://x/x/' + file).href.startsWith('http://x/x/') || !new URL(specifier, 'http://y/y/' + file).href.startsWith('http://y/y/')
-export const parseFiles = (files: Update): { [k: string]: FileParse } => {
+export const isSpecifierInvalid = (file: string, specifier: string): boolean => {
+    if (specifier.startsWith('./')) {
+        return false
+    }
+    if (specifier.startsWith('../')) {
+        return !new URL(specifier, 'http://x/x/' + file).href.startsWith('http://x/x/') || !new URL(specifier, 'http://y/y/' + file).href.startsWith('http://y/y/')
+    }
+    return true
+}
+export const parseFiles = async (files: Update): Promise<{ [k: string]: FileParse }> => {
     const r = {}
     for (let k in files) {
         if (files[k].action != 'remove') {
-            r[k] = parseFile(k, files[k].buffer)
+            r[k] = await parseFile(k, files[k].buffer)
         }
     }
     return r
 }
 export type FileParse = { type: FileType, value }
+export const sourceMappingURLRegExp = /sourceMappingURL=(\S+).*/mg
 export const fileError = (p: ParseFilesError, message: string) => { return { type: FileType.error, value: { type: p, message } } }
-export const parseFile = (filename: string, b: BufferSource): FileParse => {
+export const parseFile = async (filename: string, b: BufferSource): Promise<FileParse> => {
     if (filename.endsWith('.js') || filename.endsWith('.cjs') || filename.endsWith('.mjs')) {
         let ast//: acorn.Node
         let text: string
+        const sourceMappingURLs: string[] = []
         try {
             text = TD.decode(b)
-            ast = acorn.parse(text, { ecmaVersion: 2022, sourceType: 'module', allowHashBang: true })
+            ast = acorn.parse(text, {
+                ecmaVersion: 2022, sourceType: 'module', allowHashBang: true, onComment: (block, s, start, end) => {
+                    let a;
+                    while ((a = sourceMappingURLRegExp.exec(s)) !== null) {
+                        console.log(a[1])
+                        sourceMappingURLs.push(a[1])
+                    }
+                }
+            })
             //console.log(JSON.stringify(ast))
-            //console.log(JSON.stringify(acorn.parse('const ev=2', { ecmaVersion: 2022, sourceType: 'module' })))
+            //console.log(JSON.stringify(acorn.parse('const ev=2//@ sourceMappingURL=js.map', { ecmaVersion: 2022, sourceType: 'module', onComment: (block, text, start, end) => { console.log(block, text, start, end) } })))
         }
         catch (e) {
             return fileError(ParseFilesError.syntax, e.message)
@@ -323,6 +341,12 @@ export const parseFile = (filename: string, b: BufferSource): FileParse => {
         return { type: FileType.json, value: b }
     }
     else if (filename.endsWith('.wasm')) {
+        if (!WebAssembly.validate(b)) {
+            return fileError(ParseFilesError.syntax, 'invalid wasm')
+        }
+        const m = await WebAssembly.compile(b)
+        const im = WebAssembly.Module.imports(m)[0].module
+        const sm = WebAssembly.Module.customSections(m, 'sourceMappingURL')
         return { type: FileType.wasm, value: b }
     }
     return { type: FileType.buffer, value: b }

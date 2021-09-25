@@ -151,6 +151,7 @@ export const httpHandler = async (req: http.IncomingMessage, res: http.ServerRes
             }
             else {
                 res.statusCode = 404
+                log(state, 404, req.url)
                 res.end()
             }
         }
@@ -201,7 +202,7 @@ export const checkParsed = (parsed: { [k: string]: FileParse }, prefix: string, 
     return r
 }
 export const parse = async (packageSpecifier: string, state: State) => {
-    const parsed = parseFiles(await pacote.tarball.stream(packageSpecifier, parseTar))
+    const parsed = await parseFiles(await pacote.tarball.stream(packageSpecifier, parseTar))
     for (let x in parsed) {
         const m = parsed[x]
         if (m.type == FileType.error) {

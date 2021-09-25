@@ -10,7 +10,7 @@ export type FileURLSystemSync = { exists: (path: URL) => boolean, read: (path: U
 export type PackageJSON = { pjsonURL: URL, exists: boolean, main: string, name: string, type: string, exports, imports }
 export const defaultConditionsSync = new Set<string>()
 defaultConditionsSync.add('node')
-defaultConditionsSync.add('require')
+defaultConditionsSync.add('import')
 //https://github.com/nodejs/node/blob/master/doc/api/esm.md
 export const READ_PACKAGE_JSON_Sync = (pjsonURL: URL, fs: FileURLSystemSync): PackageJSON => {
     if (fs.jsonCache[pjsonURL.href]) {

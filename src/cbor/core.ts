@@ -1198,12 +1198,7 @@ export const enum tags {
     Set = 258,
     Map = 259,
     WTF8 = 273,
-
     extendedTime = 1001,
-    ecmaScript = 33000,
-    wasm = 33001,
-    json = 33002,
-
     selfDescribedCBOR = 55799,
     selfDescribedCBORSequence = 55800
 }

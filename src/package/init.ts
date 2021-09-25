@@ -6,7 +6,7 @@ export const freeGlobals = ['Array', 'ArrayBuffer', 'addEventListener', 'atob', 
     'decodeURIComponent', 'dispatchEvent', 'encodeURIComponent', 'Error', 'Function', 'globalThis', 'Infinity', 'isFinite', 'isNaN', 'JSON',
     'Map', 'Math', 'MessageChannel', 'NaN', 'Number', 'Object', 'parseFloat', 'parseInt', 'performance', 'Promise', 'Proxy', 'ReadableStream', 'ReadableStreamBYOBReader', 'Reflect', 'RegExp', 'removeEventListener',
     'Set', 'String', 'Symbol', 'SyntaxError', 'self', 'setInterval', 'setTimeout',
-    'TextDecoder', 'TextEncoder', 'TypeError', 'Uint16Array', 'Uint8Array', 'URL', 'undefined', 'WebAssembly', 'WeakMap', 'WeakSet', 'WritableStream', Symbol.toStringTag]
+    'TextDecoder', 'TextEncoder', 'TypeError', 'Uint16Array', 'Uint8Array', 'URL', 'undefined', 'WeakMap', 'WeakSet', 'WritableStream', Symbol.toStringTag]
 const freeSet = new Set(freeGlobals)
 const gt = typeof globalThis !== 'undefined' ? globalThis : typeof self !== 'undefined' ? self : null
 gt.Function = new Proxy(Function, {
