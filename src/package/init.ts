@@ -13,17 +13,19 @@ gt.Function = new Proxy(Function, {
     apply() { throw new Error('not implemented') },
     construct() { throw new Error('not implemented') },
 })
+const internal_setInterval = setInterval
 gt.setInterval = function (h, t, ...a) {
     if (typeof h !== 'function') {
         throw new TypeError('first argument is not a function')
     }
-    return setInterval(h, t, ...a)
+    return internal_setInterval(h, t, ...a)
 } as any
+const internal_setTimeout = setTimeout
 gt.setTimeout = function (h, t, ...a) {
     if (typeof h !== 'function') {
         throw new TypeError('first argument is not a function')
     }
-    return setTimeout(h, t, ...a)
+    return internal_setTimeout(h, t, ...a)
 } as any
 
 export const internalNativeObj = Symbol('internalNativeObj')

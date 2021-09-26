@@ -1,4 +1,5 @@
 export default {
     //ignore: ['stuff']
-    open: false
+    open: false,
+    //path: './lib'
 }

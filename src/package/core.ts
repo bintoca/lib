@@ -1,11 +1,9 @@
 import * as acorn from 'acorn'
 import * as walk from 'acorn-walk'
-import { EncoderState, tags, bufferSourceToDataView, DecoderState, decodeCount, bufferSourceToUint8Array, decodeSkip, tagSymbol, encodeSync, concat as bufConcat, writeItemCore, setupDecoder, setupEncoder, decodeSync } from '@bintoca/cbor/core'
+import { EncoderState, bufferSourceToDataView, DecoderState, decodeCount, bufferSourceToUint8Array, decodeSkip, encodeSync, concat as bufConcat, setupDecoder, setupEncoder, decodeSync } from '@bintoca/cbor/core'
+import { ESM_RESOLVE, defaultConditionsSync } from '@bintoca/package'
 const TD = new TextDecoder()
 const TE = new TextEncoder()
-import primordials from '@bintoca/package/primordial'
-const { Set, JSONParse, URL, Error, StringEndsWith, StringStartsWith, StringReplace, StringSlice, RegExpTest, ArrayIsArray,
-    ObjectGetOwnPropertyNames, ObjectHasOwnProperty, StringIndexOf, StringLastIndexOf, ArrayFilter, ArraySort } = primordials
 
 export const metaURL = import.meta.url
 export const internalBase = '/x/a/'
@@ -14,6 +12,28 @@ export const globalBase = '/x/g/'
 export const reloadBase = '/x/h/'
 export const importBase = '/x/i/'
 export const packageBase = '/x/p/'
+export type FileBundle = { [k: string]: { action: UpdateActions, buffer: BufferSource } }
+export type UpdateActions = 'add' | 'change' | 'remove'
+export type FileParseError = { type: FileType.error, error: ParseFilesError, message: string }
+export type FileParseBuffer = { type: FileType.buffer, value: BufferSource }
+export type FileParseJSON = { type: FileType.json, value: BufferSource, obj: any, main?: string }
+export type FileParseWASM = { type: FileType.wasm, value: BufferSource }
+export type FileParseJS = { type: FileType.js, value: Map<number, any> }
+export type FileParse = FileParseError | FileParseBuffer | FileParseJSON | FileParseWASM | FileParseJS
+export type Manifest = { files: { [k: string]: { integrity: string } }, main: string }
+export const enum ParseFilesError {
+    syntax = 1,
+    importSubstitute = 2,
+    packageJSON = 3,
+    invalidSpecifier = 4
+}
+export const enum FileType {
+    error = 0,
+    buffer = 1,
+    js = 2,
+    json = 3,
+    wasm = 4
+}
 export const escapeDoubleQuote = (s: string) => s.replace(/"/g, '\\"')
 export function getSubstituteIdCore(count: number, length: number, prefix: string) {
     const b64alpha = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789_$"
@@ -33,19 +53,6 @@ export function getSubstituteId(suspects, length: number, prefix: string) {
         count++
     }
 }
-export const enum ParseFilesError {
-    syntax = 1,
-    importSubstitute = 2,
-    packageJSON = 3,
-    invalidSpecifier = 4
-}
-export const enum FileType {
-    error = 0,
-    buffer = 1,
-    js = 2,
-    json = 3,
-    wasm = 4
-}
 export const isSpecifierInvalid = (file: string, specifier: string): boolean => {
     if (specifier.startsWith('./')) {
         return false
@@ -55,7 +62,7 @@ export const isSpecifierInvalid = (file: string, specifier: string): boolean => 
     }
     return true
 }
-export const parseFiles = async (files: Update): Promise<{ [k: string]: FileParse }> => {
+export const parseFiles = async (files: FileBundle): Promise<{ [k: string]: FileParse }> => {
     const r = {}
     for (let k in files) {
         if (files[k].action != 'remove') {
@@ -64,11 +71,10 @@ export const parseFiles = async (files: Update): Promise<{ [k: string]: FilePars
     }
     return r
 }
-export type FileParse = { type: FileType, value }
 export const sourceMappingURLRegExp = /sourceMappingURL=(\S+).*/mg
-export const fileError = (p: ParseFilesError, message: string) => { return { type: FileType.error, value: { type: p, message } } }
+export const fileError = (p: ParseFilesError, message: string): FileParseError => { return { type: FileType.error, error: p, message } }
 export const parseFile = async (filename: string, b: BufferSource): Promise<FileParse> => {
-    if (filename.endsWith('.js') || filename.endsWith('.cjs') || filename.endsWith('.mjs')) {
+    if (filename.endsWith('.js') || filename.endsWith('.mjs')) {
         let ast//: acorn.Node
         let text: string
         const sourceMappingURLs: string[] = []
@@ -78,7 +84,7 @@ export const parseFile = async (filename: string, b: BufferSource): Promise<File
                 ecmaVersion: 2022, sourceType: 'module', allowHashBang: true, onComment: (block, s, start, end) => {
                     let a;
                     while ((a = sourceMappingURLRegExp.exec(s)) !== null) {
-                        console.log(a[1])
+                        //console.log(a[1])
                         sourceMappingURLs.push(a[1])
                     }
                 }
@@ -338,7 +344,14 @@ export const parseFile = async (filename: string, b: BufferSource): Promise<File
         return { type: FileType.js, value: m }
     }
     else if (filename.endsWith('.json')) {
-        return { type: FileType.json, value: b }
+        let obj
+        try {
+            obj = JSON.parse(TD.decode(b))
+        }
+        catch (e) {
+            return fileError(ParseFilesError.syntax, e.message)
+        }
+        return { type: FileType.json, value: b, obj }
     }
     else if (filename.endsWith('.wasm')) {
         if (!WebAssembly.validate(b)) {
@@ -350,6 +363,58 @@ export const parseFile = async (filename: string, b: BufferSource): Promise<File
         return { type: FileType.wasm, value: b }
     }
     return { type: FileType.buffer, value: b }
+}
+export const validatePackageJSON = (parsed: { [k: string]: FileParse }) => {
+    let fp = parsed['package.json']
+    if (!fp) {
+        fp = fileError(ParseFilesError.packageJSON, 'package.json not found')
+    }
+    else if (fp.type == FileType.json) {
+        if (fp.obj.type != 'module') {
+            fp = fileError(ParseFilesError.packageJSON, 'package type must be module')
+        }
+        else if (!fp.obj.name) {
+            fp = fileError(ParseFilesError.packageJSON, 'package name required')
+        }
+        else {
+            try {
+                const u = new URL('file://')
+                fp.main = ESM_RESOLVE(fp.obj.name, u, {
+                    exists: (p: URL) => parsed[p.pathname.slice(1)] !== undefined,
+                    read: (p: URL) => {
+                        const pj = parsed[p.pathname.slice(1)]
+                        if (pj.type == FileType.json) {
+                            return pj.obj
+                        }
+                    }, jsonCache: {}, conditions: defaultConditionsSync
+                }).pathname.slice(1)
+            }
+            catch (e) {
+                fp = fileError(ParseFilesError.packageJSON, e.message)
+            }
+        }
+    }
+    else {
+        throw new Error('incorrect FileType')
+    }
+    parsed['package.json'] = fp
+    return fp
+}
+export const parsePackage = async (files: FileBundle, encoderState: EncoderState, integrityFunc: (u: Uint8Array) => Promise<string>) => {
+    const parsed = await parseFiles(files)
+    const pjson = validatePackageJSON(parsed)
+    for (let x in parsed) {
+        const m = parsed[x]
+        if (m.type == FileType.error) {
+            return { parsed }
+        }
+    }
+    const encoded = encodePackage(parsed, encoderState)
+    const manifest: Manifest = { files: {}, main: (pjson as FileParseJSON).main }
+    for (let x in encoded) {
+        manifest.files[x] = { integrity: await integrityFunc(encoded[x]) }
+    }
+    return { parsed, encoded, manifest }
 }
 export const encodePackage = (p: { [k: string]: FileParse }, state: EncoderState): { [k: string]: Uint8Array } => {
     const q: { [k: string]: Uint8Array } = {}
@@ -364,7 +429,7 @@ export const setupEncoderState = () => {
     return s
 }
 export const encodeFile = (p: FileParse, state: EncoderState): Uint8Array => {
-    const m = new Map([[-1, p.type]])
+    const m = new Map<number, any>([[-1, p.type]])
     switch (p.type) {
         case FileType.error:
             return new Uint8Array()
@@ -381,7 +446,7 @@ export const encodeFile = (p: FileParse, state: EncoderState): Uint8Array => {
             break
         }
         default:
-            throw new Error('FileType not implemented ' + p.type)
+            throw new Error('FileType not implemented')
     }
     return bufConcat(encodeSync(m, state))
 }
@@ -567,8 +632,6 @@ export const getDynamicImportModule = (urlpath: string, hot: string): string => 
     return 'function imp(){};imp.meta=Object.create(null);' + meta + ';export default imp'
 }
 export const getGlobalModule = (p: string, initURL) => 'import gt from "' + initURL + '";export default gt.' + p.slice(0, -3)
-export type Update = { [k: string]: { action: UpdateActions, buffer: BufferSource } }
-export type UpdateActions = 'add' | 'change' | 'remove'
 export const createLookup = (s: Set<string>): DataView => {
     const TE = new TextEncoder()
     const b = Array.from(s).sort().map(x => TE.encode(x))

@@ -1,7 +1,7 @@
 import { bufferSourceToDataView } from '@bintoca/cbor/core'
 import {
-    ParseFilesError, getSubstituteId, getSubstituteIdCore, parseFile, parseFiles, createLookup, encodePackage, encodeFile, decodeFile,
-    lookupExists, FileType, Update, decodeFileToOriginal, setupEncoderState
+    ParseFilesError, getSubstituteId, getSubstituteIdCore, parseFile, parseFiles, createLookup, encodeFile, decodeFile,
+    lookupExists, FileType, FileBundle, decodeFileToOriginal, setupEncoderState, FileParseJS, FileParse
 } from '@bintoca/package/core'
 import { decodeLEB128_U32 } from '@bintoca/package/primordial'
 import { readFileSync } from 'fs'
@@ -17,7 +17,7 @@ test.each([[{}, '$AAAAA'], [{ '$AAAAA': 1, '$BAAAA': 1, }, '$CAAAA']])('getSubst
     expect(getSubstituteId(a, 5, '$')).toEqual(e)
 })
 test('parseFiles', async () => {
-    const files: Update = { 'dist/index.js': { action: 'add', buffer: distIndex } }
+    const files: FileBundle = { 'dist/index.js': { action: 'add', buffer: distIndex } }
     const r = await parseFiles(files)
     expect(r['dist/index.js']).toEqual({
         type: FileType.js, value: new Map<number, any>([
@@ -52,18 +52,18 @@ const cc = class { #v = this }
 const fe = function () { return this }`]])
     })
 })
-test.each([['import a from "/x"', { type: FileType.error, value: { type: ParseFilesError.invalidSpecifier, message: '/x' } }],
-['import a from "/x/a"', { type: FileType.error, value: { type: ParseFilesError.invalidSpecifier, message: '/x/a' } }],
-['import a from ".b"', { type: FileType.error, value: { type: ParseFilesError.invalidSpecifier, message: '.b' } }],
-['import a from "..b"', { type: FileType.error, value: { type: ParseFilesError.invalidSpecifier, message: '..b' } }],
-['import a from "b"', { type: FileType.error, value: { type: ParseFilesError.invalidSpecifier, message: 'b' } }],
-['import a from "https://a.com"', { type: FileType.error, value: { type: ParseFilesError.invalidSpecifier, message: 'https://a.com' } }],
+test.each([['import a from "/x"', { type: FileType.error, error: ParseFilesError.invalidSpecifier, message: '/x' }],
+['import a from "/x/a"', { type: FileType.error, error: ParseFilesError.invalidSpecifier, message: '/x/a' }],
+['import a from ".b"', { type: FileType.error, error: ParseFilesError.invalidSpecifier, message: '.b' }],
+['import a from "..b"', { type: FileType.error, error: ParseFilesError.invalidSpecifier, message: '..b' }],
+['import a from "b"', { type: FileType.error, error: ParseFilesError.invalidSpecifier, message: 'b' }],
+['import a from "https://a.com"', { type: FileType.error, error: ParseFilesError.invalidSpecifier, message: 'https://a.com' }],
 ['import a from "./b"', { type: FileType.js }],
 ['import a from "../b"', { type: FileType.js }],
 ['import a from "../../b"', { type: FileType.js }],
 ['export {a} from "../../b"', { type: FileType.js }],
-['import a from "../../../b"', { type: FileType.error, value: { type: ParseFilesError.invalidSpecifier, message: '../../../b' } }],
-])('parseFile(%s)', async (a, e) => {
+['import a from "../../../b"', { type: FileType.error, error: ParseFilesError.invalidSpecifier, message: '../../../b' }],
+])('parseFile(%s)', async (a, e: FileParse) => {
     const m = await parseFile('lib/lib/a.js', Buffer.from(a))
     if (m.type == FileType.error) {
         expect(m).toEqual(e)
@@ -87,12 +87,11 @@ test.each([['const w = 4;          const r=5;', { type: FileType.js, value: new 
             [4, 'ImporT'], [5, [2]]
         ])
     }]])('decodeFile js', async (a, b) => {
-        const cb = encodeFile(b, encoderState)
+        const cb = encodeFile(b as FileParseJS, encoderState)
         expect(TD.decode((decodeFile(cb, controlledGlobals, parentURL)).data)).toBe(a)
     })
 test.each([distIndex])('decodeFileToOriginal', async (a) => {
     expect(decodeFileToOriginal(encodeFile(await parseFile('a.txt', a), encoderState))).toEqual(a)
-    expect(decodeFileToOriginal(encodeFile(await parseFile('a.json', a), encoderState))).toEqual(a)
     expect(decodeFileToOriginal(encodeFile(await parseFile('a.js', a), encoderState))).toEqual(TD.decode(a))
 })
 test('createLookup', () => {

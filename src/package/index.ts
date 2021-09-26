@@ -1,6 +1,6 @@
 import primordials from '@bintoca/package/primordial'
 const { Set, URL, Error, StringEndsWith, StringStartsWith, StringReplace, StringSlice, RegExpTest, ArrayIsArray,
-    ObjectGetOwnPropertyNames, ObjectHasOwnProperty, StringIndexOf, StringLastIndexOf, ArrayFilter, ArraySort, ReflectApply } = primordials
+    ObjectGetOwnPropertyNames, ObjectHasOwnProperty, StringIndexOf, StringLastIndexOf, ArrayFilter, ArraySort } = primordials
 
 export type FileURLSystem = {
     exists: (path: URL) => Promise<boolean>, read: (path: URL, decoded: boolean) => Promise<Uint8Array>, jsonCache: { [k: string]: PackageJSON }, stateURL: string, conditions: Set<string>,
@@ -524,8 +524,8 @@ export const ESM_RESOLVE = (specifier: string, parentURL: URL, fs: FileURLSystem
     if (RegExpTest(encodedSepRegEx, resolved.pathname)) {
         throw new Error('Invalid Module Specifier')
     }
-    // if (!await fs.exists(resolved)) {
-    //     throw new Error('Module Not Found')
-    // }
+    if (!fs.exists(resolved)) {
+        throw new Error('Module Not Found')
+    }
     return resolved
 }

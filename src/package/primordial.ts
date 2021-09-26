@@ -7,11 +7,12 @@ declare global {
         TD: { decode: (b: BufferSource) => string }
         Set: SetConstructor,
         URL: typeof URL
-        Error: ErrorConstructor,
+        Error: typeof Error,
         Event: typeof Event,
+        EventTarget: typeof EventTarget,
         DataView: typeof DataView,
-        ArrayBuffer: typeof ArrayBuffer,
         WebAssembly: typeof WebAssembly,
+        WebSocket: typeof WebSocket,
         StringEndsWith: (s: string, search: string) => boolean,
         StringStartsWith: (s: string, search: string) => boolean,
         StringReplace: (s: string, search: string | RegExp, replace: string) => string,
@@ -22,7 +23,8 @@ declare global {
         ArrayIsArray: (o) => boolean,
         ArrayFilter: <T>(a: T[], f: Function) => T[],
         ArraySort: <T>(a: T[], f: Function) => T[],
-        ReflectApply: (target: Function, thisArgument: any, argumentsList: ArrayLike<any>) => any
+        ArrayPush: <T>(a: T[], ...items: T[]) => number,
+        setTimeout: typeof setTimeout
     }
 }
 const copyProps = (src, dest) => {
@@ -41,19 +43,21 @@ const copyConstructor = <T extends Function, U extends T>(src: T, dest: U) => {
 const callBind = Function.prototype.bind.bind(Function.prototype.call)
 const wa = copyProps(WebAssembly, Object.create(null)) as unknown as typeof WebAssembly
 wa.Module = copyProps(WebAssembly.Module, Object.create(null)) as unknown as typeof WebAssembly.Module
+const TDe = copyConstructor(TextDecoder, class extends TextDecoder { constructor(i?, o?) { super(i, o); } })
 export const primordials: Primordials = {
     ObjectCreate: Object.create,
     ObjectGetOwnPropertyNames: Object.getOwnPropertyNames,
     ObjectHasOwnProperty: callBind(Object.prototype.hasOwnProperty),
     JSONParse: JSON.parse,
-    TD: new TextDecoder(),
-    Set: copyConstructor(Set, class SetCon extends Set { constructor(i) { super(i); } }),
-    URL: copyConstructor(URL, class URLCon extends URL { constructor(i, base) { super(i, base); } }),
-    Error,
-    Event: typeof Event === 'undefined' ? undefined : Event,
-    DataView,
-    ArrayBuffer,
+    TD: new TDe(),
+    Set: copyConstructor(Set, class extends Set { constructor(i) { super(i); } }),
+    URL: copyConstructor(URL, class extends URL { constructor(i, base) { super(i, base); } }),
+    Error: copyConstructor(Error, class extends Error { constructor(message?: string) { super(message); } } as ErrorConstructor),
+    Event: typeof Event === 'undefined' ? undefined : copyConstructor(Event, class extends Event { constructor(i, d) { super(i, d); } }),
+    EventTarget: typeof EventTarget === 'undefined' ? undefined : copyConstructor(EventTarget, class extends EventTarget { constructor() { super(); } }),
+    DataView: copyConstructor(DataView, class extends DataView { constructor(i, o, l) { super(i, o, l); } }),
     WebAssembly: wa,
+    WebSocket: typeof WebSocket === 'undefined' ? undefined : copyConstructor(WebSocket, class extends WebSocket { constructor(i, d) { super(i, d); } }),
     StringEndsWith: callBind(String.prototype.endsWith),
     StringStartsWith: callBind(String.prototype.startsWith),
     StringReplace: callBind(String.prototype.replace),
@@ -64,9 +68,11 @@ export const primordials: Primordials = {
     ArrayIsArray: Array.isArray,
     ArrayFilter: callBind(Array.prototype.filter),
     ArraySort: callBind(Array.prototype.sort),
-    ReflectApply: Reflect.apply
+    ArrayPush: callBind(Array.prototype.push),
+    setTimeout: setTimeout
 }
 export default primordials
+const { ArrayPush, TD } = primordials
 export const decodeLEB128_U32 = (dv: DataView, state: { position: number }) => {
     let bytes = 0
     let r = 0
@@ -81,9 +87,12 @@ export const decodeLEB128_U32 = (dv: DataView, state: { position: number }) => {
     }
     return -1
 }
-export const bufferSourceToDataView = (b: BufferSource, offset: number = 0, length?: number): DataView => b instanceof primordials.ArrayBuffer ?
-    new primordials.DataView(b, offset, length !== undefined ? length : b.byteLength - offset) :
-    new primordials.DataView(b.buffer, b.byteOffset + offset, length !== undefined ? length : b.byteLength - offset)
+export const bufferSourceToDataView = (b: BufferSource, offset: number = 0, length?: number): DataView => {
+    if ((b as DataView).buffer) {
+        return new primordials.DataView((b as DataView).buffer, (b as DataView).byteOffset + offset, length !== undefined ? length : b.byteLength - offset)
+    }
+    return new primordials.DataView(b as ArrayBuffer, offset, length !== undefined ? length : b.byteLength - offset)
+}
 export const parseWasm = (b: BufferSource) => {
     const state = { position: 8 }
     const dv = bufferSourceToDataView(b)
@@ -104,8 +113,8 @@ export const parseWasm = (b: BufferSource) => {
                 const fieldStart = state.position
                 state.position += fieldLen
                 const kind = decodeLEB128_U32(dv, state)
-                const module = primordials.TD.decode(dv.buffer.slice(modStart, modStart + modLen))
-                importSpecifiers.push(module)
+                const module = TD.decode(bufferSourceToDataView(dv, modStart, modLen))
+                ArrayPush(importSpecifiers, module)
                 switch (kind) {
                     case 0: {
                         const index = decodeLEB128_U32(dv, state)
@@ -136,13 +145,13 @@ export const parseWasm = (b: BufferSource) => {
         }
         else if (secId == 0) {
             const nameLen = decodeLEB128_U32(dv, state)
-            const cname = primordials.TD.decode(dv.buffer.slice(state.position, state.position + nameLen))
-            customNames.push(cname)
+            const cname = TD.decode(bufferSourceToDataView(dv, state.position, nameLen))
+            ArrayPush(customNames, cname)
             state.position += nameLen
             if (cname == 'sourceMappingURL' || cname == 'external_debug_info') {
                 const urlLen = decodeLEB128_U32(dv, state)
-                const url = primordials.TD.decode(dv.buffer.slice(state.position, state.position + urlLen))
-                mapURLs.push(url)
+                const url = TD.decode(bufferSourceToDataView(dv, state.position, urlLen))
+                ArrayPush(mapURLs, url)
             }
         }
         state.position = secStart + secLen
