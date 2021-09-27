@@ -5,7 +5,7 @@ declare global {
         ObjectHasOwnProperty: (o: object, k: PropertyKey) => boolean,
         JSONParse: (s: string) => any,
         TD: { decode: (b: BufferSource) => string }
-        Set: SetConstructor,
+        Set: typeof Set,
         URL: typeof URL
         Error: typeof Error,
         Event: typeof Event,
@@ -42,7 +42,7 @@ const copyConstructor = <T extends Function, U extends T>(src: T, dest: U) => {
 }
 const callBind = Function.prototype.bind.bind(Function.prototype.call)
 const wa = copyProps(WebAssembly, Object.create(null)) as unknown as typeof WebAssembly
-wa.Module = copyProps(WebAssembly.Module, Object.create(null)) as unknown as typeof WebAssembly.Module
+wa.Module = copyConstructor(WebAssembly.Module, class extends WebAssembly.Module { constructor(i) { super(i); } })
 const TDe = copyConstructor(TextDecoder, class extends TextDecoder { constructor(i?, o?) { super(i, o); } })
 export const primordials: Primordials = {
     ObjectCreate: Object.create,
@@ -72,8 +72,8 @@ export const primordials: Primordials = {
     setTimeout: setTimeout
 }
 export default primordials
-const { ArrayPush, TD } = primordials
-export const decodeLEB128_U32 = (dv: DataView, state: { position: number }) => {
+const { ArrayPush, TD, StringStartsWith, StringIndexOf } = primordials
+export const decodeLEB128_U32 = (dv: DataView, state: { position: number }, invalidReturn?) => {
     let bytes = 0
     let r = 0
     while (dv.byteLength > state.position && bytes < 5) {
@@ -85,7 +85,10 @@ export const decodeLEB128_U32 = (dv: DataView, state: { position: number }) => {
         }
         bytes++
     }
-    return -1
+    if (invalidReturn) {
+        return invalidReturn
+    }
+    throw new Error('invalid leb128 u32')
 }
 export const bufferSourceToDataView = (b: BufferSource, offset: number = 0, length?: number): DataView => {
     if ((b as DataView).buffer) {
@@ -93,12 +96,18 @@ export const bufferSourceToDataView = (b: BufferSource, offset: number = 0, leng
     }
     return new primordials.DataView(b as ArrayBuffer, offset, length !== undefined ? length : b.byteLength - offset)
 }
-export const parseWasm = (b: BufferSource) => {
+export const wasmSectionNames = new primordials.Set(['.debug_abbrev', '.debug_aranges', '.debug_frame', '.debug_info', '.debug_line', '.debug_loc', '.debug_macinfo', '.debug_pubnames', '.debug_pubtypes', '.debug_ranges', '.debug_str', 'name', 'sourceMappingURL', 'external_debug_info'])
+export const parseWasm = (filename: string, b: BufferSource) => {
     const state = { position: 8 }
     const dv = bufferSourceToDataView(b)
+    if (dv.getUint32(0) != 0x61736d || dv.getUint32(4, true) != 1) {
+        throw new Error('invalid wasm')
+    }
     const importSpecifiers: string[] = []
     const customNames: string[] = []
-    const mapURLs: string[] = []
+    const sourceMappingURLs: string[] = []
+    const external_debug_infoURLs: string[] = []
+    const seenSections = new primordials.Set()
     while (dv.byteLength > state.position) {
         const secId = decodeLEB128_U32(dv, state)
         const secLen = decodeLEB128_U32(dv, state)
@@ -108,13 +117,16 @@ export const parseWasm = (b: BufferSource) => {
             for (let i = 0; i < numImports; i++) {
                 let modLen = decodeLEB128_U32(dv, state)
                 let modStart = state.position
+                const module = TD.decode(bufferSourceToDataView(dv, modStart, modLen))
+                if (isRelativeInvalid(filename, module)) {
+                    throw new Error('invalid import specifier "' + module + '"')
+                }
+                ArrayPush(importSpecifiers, module)
                 state.position += modLen
                 const fieldLen = decodeLEB128_U32(dv, state)
                 const fieldStart = state.position
                 state.position += fieldLen
                 const kind = decodeLEB128_U32(dv, state)
-                const module = TD.decode(bufferSourceToDataView(dv, modStart, modLen))
-                ArrayPush(importSpecifiers, module)
                 switch (kind) {
                     case 0: {
                         const index = decodeLEB128_U32(dv, state)
@@ -146,15 +158,70 @@ export const parseWasm = (b: BufferSource) => {
         else if (secId == 0) {
             const nameLen = decodeLEB128_U32(dv, state)
             const cname = TD.decode(bufferSourceToDataView(dv, state.position, nameLen))
-            ArrayPush(customNames, cname)
             state.position += nameLen
-            if (cname == 'sourceMappingURL' || cname == 'external_debug_info') {
+            if (!wasmSectionNames.has(cname)) {
+                throw new Error('invalid wasm custom section "' + cname + '"')
+            }
+            ArrayPush(customNames, cname)
+            if (cname == 'sourceMappingURL') {
                 const urlLen = decodeLEB128_U32(dv, state)
                 const url = TD.decode(bufferSourceToDataView(dv, state.position, urlLen))
-                ArrayPush(mapURLs, url)
+                if (isRelativeInvalid(filename, url)) {
+                    throw new Error('invalid sourceMappingURL "' + url + '"')
+                }
+                state.position += urlLen
+                ArrayPush(sourceMappingURLs, url)
             }
+            else if (cname == 'external_debug_info') {
+                const urlLen = decodeLEB128_U32(dv, state)
+                const url = TD.decode(bufferSourceToDataView(dv, state.position, urlLen))
+                if (isRelativeInvalid(filename, url)) {
+                    throw new Error('invalid external_debug_info "' + url + '"')
+                }
+                state.position += urlLen
+                ArrayPush(external_debug_infoURLs, url)
+            }
+            else {
+                state.position = secStart + secLen
+            }
+        }
+        else if (secId > 12) {
+            throw new Error('invalid section id ' + secId)
+        }
+        else {
+            if (seenSections.has(secId)) {
+                throw new Error('repeated section id ' + secId)
+            }
+            seenSections.add(secId)
+            state.position = secStart + secLen
+        }
+        if (state.position != secStart + secLen) {
+            throw new Error('invalid end of section ' + secId)
         }
         state.position = secStart + secLen
     }
-    return { importSpecifiers, customNames, mapURLs }
+    return { importSpecifiers, customNames, sourceMappingURLs, external_debug_infoURLs }
+}
+export const isRelativeInvalid = (file: string, specifier: string): boolean => {
+    if (StringStartsWith(specifier, './')) {
+        return false
+    }
+    if (StringStartsWith(specifier, '../')) {
+        return isSpecifierInvalid(file, specifier)
+    }
+    try {
+        new primordials.URL(specifier)
+        return true
+    }
+    catch { }
+    return false
+}
+export const isSpecifierInvalid = (file: string, specifier: string): boolean => {
+    if (StringStartsWith(specifier, './')) {
+        return false
+    }
+    if (StringStartsWith(specifier, '../')) {
+        return !StringStartsWith(new primordials.URL(specifier, 'http://x/x/' + file).href, 'http://x/x/') || !StringStartsWith(new primordials.URL(specifier, 'http://y/y/' + file).href, 'http://y/y/')
+    }
+    return true
 }

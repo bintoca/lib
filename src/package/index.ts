@@ -2,10 +2,6 @@ import primordials from '@bintoca/package/primordial'
 const { Set, URL, Error, StringEndsWith, StringStartsWith, StringReplace, StringSlice, RegExpTest, ArrayIsArray,
     ObjectGetOwnPropertyNames, ObjectHasOwnProperty, StringIndexOf, StringLastIndexOf, ArrayFilter, ArraySort } = primordials
 
-export type FileURLSystem = {
-    exists: (path: URL) => Promise<boolean>, read: (path: URL, decoded: boolean) => Promise<Uint8Array>, jsonCache: { [k: string]: PackageJSON }, stateURL: string, conditions: Set<string>,
-    fsSync: FileURLSystemSync, cjsParseCache: { [k: string]: { exportNames: Set<string> } }, initCJS: () => Promise<void>
-}
 export type FileURLSystemSync = { exists: (path: URL) => boolean, read: (path: URL) => any, jsonCache: { [k: string]: PackageJSON }, conditions: Set<string> }
 export type PackageJSON = { pjsonURL: URL, exists: boolean, main: string, name: string, type: string, exports, imports }
 export const defaultConditionsSync = new Set<string>()
