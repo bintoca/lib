@@ -1,7 +1,7 @@
 import { bufferSourceToDataView } from '@bintoca/cbor/core'
 import {
     ParseFilesError, getSubstituteId, getSubstituteIdCore, parseFile, parseFiles, createLookup, encodeFile, decodeFile,
-    lookupExists, FileType, FileBundle, decodeFileToOriginal, setupEncoderState, FileParseJS, FileParseJSON, FileParse, validatePackageJSON, FileParseBuffer
+    lookupExists, FileType, FileBundle, decodeFileToOriginal, setupEncoderState, FileParseJS, FileParseJSON, FileParse, validatePackageJSON, FileParseBuffer, FileParseError, validateSourceMap, validateExternalDebugInfo
 } from '@bintoca/package/core'
 import { decodeLEB128_U32, parseWasm } from '@bintoca/package/primordial'
 import { readFileSync } from 'fs'
@@ -17,9 +17,9 @@ test.each([[0, '$AAAAA'], [1, '$BAAAA'], [63, '$$AAAA'], [64, '$ABAAA'], [4095, 
 test.each([[{}, '$AAAAA'], [{ '$AAAAA': 1, '$BAAAA': 1, }, '$CAAAA']])('getSubstitueId', (a, e) => {
     expect(getSubstituteId(a, 5, '$')).toEqual(e)
 })
-test('parseFiles', async () => {
+test('parseFiles', () => {
     const files: FileBundle = { 'dist/index.js': { action: 'add', buffer: distIndex } }
-    const r = await parseFiles(files)
+    const r = parseFiles(files)
     expect(r['dist/index.js']).toEqual({
         type: FileType.js, value: distIndex, globals: ['Math', 'Number', 'd2', 'eval', 'this'], importSubstitute: "$BAAAA", importSubstituteOffsets: [193, 207], importSpecifiers: ["./es😀d", "./a1", "./b1", "./c1", "./d1", "./d2", "./d3"],
         sourceMappingURLs: ['a.js.map', 'b.js.map'],
@@ -67,9 +67,11 @@ test.each([['import a from "/x"', { type: FileType.error, error: ParseFilesError
 ['//# sourceMappingURL=../../../b', { type: FileType.error, error: ParseFilesError.invalidSpecifier, message: '../../../b' }],
 ['//# sourceMappingURL=file:///b', { type: FileType.error, error: ParseFilesError.invalidSpecifier, message: 'file:///b' }],
 ['import a from "../../../b"', { type: FileType.error, error: ParseFilesError.invalidSpecifier, message: '../../../b' }],
-])('parseFile(%s)', async (a, e: FileParse) => {
-    const m = await parseFile(FileType.js, 'lib/lib/a.js', Buffer.from(a))
+])('parseFile(%s)', (a, e: FileParse) => {
+    const filename = 'lib/lib/a.js'
+    const m = parseFile(FileType.js, filename, Buffer.from(a))
     if (m.type == FileType.error) {
+        (e as FileParseError).filename = filename
         expect(m).toEqual(e)
     }
     else {
@@ -79,15 +81,77 @@ test.each([['import a from "/x"', { type: FileType.error, error: ParseFilesError
 test.each([{ type: 'module', main: './xx.js' }, { type: 'module', main: 'xx.js' }])('validatePackageJSON', (p) => {
     const x = { 'xx.js': { type: FileType.js } as FileParseJS, 'package.json': { type: FileType.json, value: null, obj: p } as FileParseJSON }
     const man = { files: {}, main: null }
-    validatePackageJSON(x, man)
+    const err = []
+    validatePackageJSON(x, man, err)
     expect(man.main).toBe('xx.js')
 })
 test.each([[{}, 'package type must be module'], [{ type: 'module' }, 'package main required'], [{ type: 'module', main: '../' }, 'package main invalid'], [{ type: 'module', main: 'http://x/y' }, 'package main invalid'],
 [{ type: 'module', main: 'index.js' }, 'package main not found'], [{ type: 'module', main: './index.js' }, 'package main not found'], [{ type: 'module', main: 'index.ts' }, 'package main must be js']])('validatePackageJSON_Error', (p, m) => {
     const x = { 'index.ts': { type: FileType.buffer } as FileParseBuffer, 'package.json': { type: FileType.json, value: null, obj: p } as FileParseJSON }
     const man = { files: {}, main: null }
-    expect(validatePackageJSON(x, man)).toEqual({ type: FileType.error, error: ParseFilesError.packageJSON, message: m })
-    expect(validatePackageJSON({}, man)).toEqual({ type: FileType.error, error: ParseFilesError.packageJSON, message: 'package.json not found' })
+    const err = []
+    validatePackageJSON(x, man, err)
+    expect(err[0]).toEqual({ type: FileType.error, error: ParseFilesError.packageJSON, message: m, filename: 'package.json' })
+    const err1 = []
+    validatePackageJSON({}, man, err1)
+    expect(err1[0]).toEqual({ type: FileType.error, error: ParseFilesError.packageJSON, message: 'package.json not found', filename: 'package.json' })
+})
+test('validateSourceMap', () => {
+    const x = {
+        'a.map': { type: FileType.buffer, value: TE.encode(JSON.stringify({ version: 3, sources: ['1.ts'] })) } as FileParseBuffer,
+        '1.ts': { type: FileType.buffer, value: TE.encode('hello') } as FileParseBuffer
+    }
+    const man = { files: {}, main: null }
+    for (let k in x) {
+        man.files[k] = {}
+    }
+    const err = []
+    validateSourceMap('a.map', x, man, err)
+    expect(err.length).toBe(0)
+    expect(man.files).toEqual({ 'a.map': { debug: true }, '1.ts': { debug: true } })
+})
+test.each([[{}, 'sourceMap version must be 3'], [{ version: 3, sections: [] }, 'sourceMap sections not supported'], [{ version: 3, sourcesContent: ['sourceMappingURL=as'] }, 'sourceMappingURL found in sourcesContent'],
+[{ version: 3, sourceRoot: {} }, 'malformed sources or sourceRoot'], [{ version: 3, sources: {} }, 'malformed sources or sourceRoot'], [{ version: 3, sources: ['../../x.ts'] }, '../../x.ts'],
+[{ version: 3, sources: ['x.ts'] }, 'sourceMap source not found x.ts'], [{ version: 3, sources: ['y.ts'] }, 'sourceMappingURL found in y.ts']
+])('validateSourceMap_Error(%s,%s)', (p, m) => {
+    const x = { 'a.map': { type: FileType.buffer, value: TE.encode(JSON.stringify(p)) } as FileParseBuffer, 'y.ts': { type: FileType.buffer, value: TE.encode('sourceMappingURL=qq') } as FileParseBuffer }
+    const man = { files: {}, main: null }
+    for (let k in x) {
+        man.files[k] = {}
+    }
+    const err: FileParseError[] = []
+    validateSourceMap('a.map', x, man, err)
+    expect(err[0].message).toEqual(m)
+    const err1: FileParseError[] = []
+    validateSourceMap('a.map', {}, man, err1)
+    expect(err1[0].message).toEqual('sourceMap not found')
+})
+test('validateExternalDebugInfo', () => {
+    const x = {
+        'a.map': { type: FileType.buffer, value: Buffer.from('0061736d01000000', 'hex') } as FileParseBuffer
+    }
+    const man = { files: {}, main: null }
+    for (let k in x) {
+        man.files[k] = {}
+    }
+    const err = []
+    validateExternalDebugInfo('a.map', x, man, err)
+    expect(err.length).toBe(0)
+    expect(man.files).toEqual({ 'a.map': { debug: true } })
+})
+test.each([['0061736d01000000001510736f757263654d617070696e6755524c032e2f73', 'sourceMappingURL found in external file'], ['0061736d0100000000181365787465726e616c5f64656275675f696e666f032e2f65', 'external_debug_info found in external file']
+])('validateExternalDebugInfo_Error(%s,%s)', (b, m) => {
+    const x = { 'a.map': { type: FileType.buffer, value: Buffer.from(b, 'hex') } as FileParseBuffer }
+    const man = { files: {}, main: null }
+    for (let k in x) {
+        man.files[k] = {}
+    }
+    const err: FileParseError[] = []
+    validateExternalDebugInfo('a.map', x, man, err)
+    expect(err[0].message).toEqual(m)
+    const err1: FileParseError[] = []
+    validateExternalDebugInfo('a.map', {}, man, err1)
+    expect(err1[0].message).toEqual('external_debug_info not found')
 })
 const controlledGlobals = createLookup(new Set(['Math']))
 const parentURL = new URL('file:///a.mjs')

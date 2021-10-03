@@ -14,14 +14,14 @@ export const importBase = '/x/i/'
 export const packageBase = '/x/p/'
 export type FileBundle = { [k: string]: { action: UpdateActions, buffer: BufferSource } }
 export type UpdateActions = 'add' | 'change' | 'remove'
-export type FileParseError = { type: FileType.error, error: ParseFilesError, message: string }
+export type FileParseError = { type: FileType.error, error: ParseFilesError, message: string, filename: string }
 export type FileParseBuffer = { type: FileType.buffer, value: BufferSource }
 export type FileParseJSON = { type: FileType.json, value: BufferSource, obj: any }
 export type FileParseSourceMap = { type: FileType.sourceMap, value: BufferSource, obj: any }
 export type FileParseWASM = { type: FileType.wasm, value: BufferSource, importSpecifiers: string[], customNames: string[], sourceMappingURLs: string[], external_debug_infoURLs: string[] }
 export type FileParseJS = { type: FileType.js, value: BufferSource, body: string, globals: string[], importSubstitute: string, importSubstituteOffsets: number[], importSpecifiers: string[], sourceMappingURLs: string[] }
 export type FileParse = FileParseError | FileParseBuffer | FileParseJSON | FileParseWASM | FileParseJS | FileParseSourceMap
-export type Manifest = { files: { [k: string]: { integrity: string } }, main: string }
+export type Manifest = { files: { [k: string]: { integrity: string, debug?: boolean } }, main: string }
 export const enum ParseFilesError {
     syntax = 1,
     importSubstitute = 2,
@@ -55,18 +55,17 @@ export function getSubstituteId(suspects, length: number, prefix: string) {
         count++
     }
 }
-
-export const parseFiles = async (files: FileBundle): Promise<{ [k: string]: FileParse }> => {
+export const parseFiles = (files: FileBundle): { [k: string]: FileParse } => {
     const r = {}
     for (let k in files) {
         if (files[k].action != 'remove') {
-            r[k] = await parseFile(getFileType(k), k, files[k].buffer)
+            r[k] = parseFile(getFileType(k), k, files[k].buffer)
         }
     }
     return r
 }
 export const sourceMappingURLRegExp = /sourceMappingURL=(\S+).*/mg
-export const fileError = (p: ParseFilesError, message: string): FileParseError => { return { type: FileType.error, error: p, message } }
+export const sourceMappingURLTest = /sourceMappingURL=/
 export const getFileType = (filename: string): FileType => {
     if (filename.endsWith('.js') || filename.endsWith('.mjs')) {
         return FileType.js
@@ -79,7 +78,7 @@ export const getFileType = (filename: string): FileType => {
     }
     return FileType.buffer
 }
-export const parseFile = async (fileType: FileType, filename: string, b: BufferSource): Promise<FileParse> => {
+export const parseFile = (fileType: FileType, filename: string, b: BufferSource): FileParse => {
     if (fileType == FileType.js) {
         let ast//: acorn.Node
         let text: string
@@ -99,7 +98,7 @@ export const parseFile = async (fileType: FileType, filename: string, b: BufferS
             //console.log(JSON.stringify(acorn.parse('const ev=2//@ sourceMappingURL=js.map', { ecmaVersion: 2022, sourceType: 'module', onComment: (block, text, start, end) => { console.log(block, text, start, end) } })))
         }
         catch (e) {
-            return fileError(ParseFilesError.syntax, e.message)
+            return { type: FileType.error, error: ParseFilesError.syntax, message: e.message, filename }
         }
         const removeNodes = []
         const specifierNodes = []
@@ -155,13 +154,13 @@ export const parseFile = async (fileType: FileType, filename: string, b: BufferS
                 const specifier = n.source.value
                 importSpecifiers.push(specifier)
                 if (isSpecifierInvalid(filename, specifier)) {
-                    return fileError(ParseFilesError.invalidSpecifier, specifier)
+                    return { type: FileType.error, error: ParseFilesError.invalidSpecifier, message: specifier, filename }
                 }
             }
         }
         for (let n of sourceMappingURLs) {
             if (isRelativeInvalid(filename, n)) {
-                return fileError(ParseFilesError.invalidSpecifier, n)
+                return { type: FileType.error, error: ParseFilesError.invalidSpecifier, message: n, filename }
             }
         }
         let position = 0
@@ -180,7 +179,7 @@ export const parseFile = async (fileType: FileType, filename: string, b: BufferS
                     importSubstitute = getSubstituteId(importSuspectIds, 5, '$')
                 }
                 if (!importSubstitute) {
-                    return fileError(ParseFilesError.importSubstitute, filename)
+                    return { type: FileType.error, error: ParseFilesError.importSubstitute, message: filename, filename }
                 }
                 importSubstituteOffsets.push(n.start)
                 body += importSubstitute
@@ -356,7 +355,7 @@ export const parseFile = async (fileType: FileType, filename: string, b: BufferS
             return { type: fileType, value: b, obj }
         }
         catch (e) {
-            return fileError(ParseFilesError.syntax, e.message)
+            return { type: FileType.error, error: ParseFilesError.syntax, message: e.message, filename }
         }
     }
     else if (fileType == FileType.wasm) {
@@ -365,7 +364,7 @@ export const parseFile = async (fileType: FileType, filename: string, b: BufferS
             return { type: fileType, value: b, ...w }
         }
         catch (e) {
-            return fileError(ParseFilesError.syntax, e.message)
+            return { type: FileType.error, error: ParseFilesError.syntax, message: e.message, filename }
         }
     }
     else if (fileType == FileType.buffer) {
@@ -373,20 +372,22 @@ export const parseFile = async (fileType: FileType, filename: string, b: BufferS
     }
     throw new Error('FileType not implemented ' + fileType)
 }
-export const validatePackageJSON = (parsed: { [k: string]: FileParse }, manifest: Manifest) => {
-    let fp = parsed['package.json']
+export const resolveRelative = (filename: string, specifier: string): string => new URL(specifier, 'file:///' + filename).pathname.slice(1)
+export const validatePackageJSON = (parsed: { [k: string]: FileParse }, manifest: Manifest, errors: FileParseError[]) => {
+    const filename = 'package.json'
+    const fp = parsed[filename]
     if (!fp) {
-        fp = fileError(ParseFilesError.packageJSON, 'package.json not found')
+        errors.push({ type: FileType.error, error: ParseFilesError.packageJSON, message: 'package.json not found', filename })
     }
     else if (fp.type == FileType.json) {
         if (fp.obj.type != 'module') {
-            fp = fileError(ParseFilesError.packageJSON, 'package type must be module')
+            errors.push({ type: FileType.error, error: ParseFilesError.packageJSON, message: 'package type must be module', filename })
         }
         else if (typeof fp.obj.main != 'string') {
-            fp = fileError(ParseFilesError.packageJSON, 'package main required')
+            errors.push({ type: FileType.error, error: ParseFilesError.packageJSON, message: 'package main required', filename })
         }
         else if (isRelativeInvalid('package.json', fp.obj.main)) {
-            fp = fileError(ParseFilesError.packageJSON, 'package main invalid')
+            errors.push({ type: FileType.error, error: ParseFilesError.packageJSON, message: 'package main invalid', filename })
         }
         else {
             let m = fp.obj.main as string
@@ -399,75 +400,123 @@ export const validatePackageJSON = (parsed: { [k: string]: FileParse }, manifest
                     manifest.main = m
                 }
                 else {
-                    fp = fileError(ParseFilesError.packageJSON, 'package main must be js')
+                    errors.push({ type: FileType.error, error: ParseFilesError.packageJSON, message: 'package main must be js', filename })
                 }
             }
             else {
-                fp = fileError(ParseFilesError.packageJSON, 'package main not found')
+                errors.push({ type: FileType.error, error: ParseFilesError.packageJSON, message: 'package main not found', filename })
             }
         }
     }
     else if (fp.type != FileType.error) {
         throw new Error('incorrect FileType')
     }
-    parsed['package.json'] = fp
-    return fp
 }
-export const validateSourceMap = (filename: string, parsed: { [k: string]: FileParse }, manifest: Manifest) => {
-    let fp = parsed[filename]
+export const validateSourceMap = (filename: string, parsed: { [k: string]: FileParse }, manifest: Manifest, errors: FileParseError[]) => {
+    const fp = parsed[filename]
     if (!fp) {
-        fp = fileError(ParseFilesError.syntax, 'sourceMap not found')
+        //errors.push({ type: FileType.error, error: ParseFilesError.syntax, message: 'sourceMap not found', filename })
     }
     else if (fp.type != FileType.error) {
         try {
             const obj = JSON.parse(TD.decode(fp.value))
             if (obj.version !== 3) {
-                fp = fileError(ParseFilesError.syntax, 'sourceMap version must be 3')
+                errors.push({ type: FileType.error, error: ParseFilesError.syntax, message: 'sourceMap version must be 3', filename })
             }
             else if (obj.sections) {
-                fp = fileError(ParseFilesError.syntax, 'sourceMap sections not supported')
+                errors.push({ type: FileType.error, error: ParseFilesError.syntax, message: 'sourceMap sections not supported', filename })
             }
-            else if (Array.isArray(obj.sourcesContent)) {
-                for (let x of obj.sourcesContent) {
-                    if (x && typeof x == 'string') {
-                        if (sourceMappingURLRegExp.test(x)) {
-                            fp = fileError(ParseFilesError.syntax, 'sourceMappingURL found in sourcesContent')
+            else if (Array.isArray(obj.sourcesContent) && obj.sourcesContent.some(x => typeof x == 'string' && sourceMappingURLTest.test(x))) {
+                errors.push({ type: FileType.error, error: ParseFilesError.syntax, message: 'sourceMappingURL found in sourcesContent', filename })
+            }
+            else if ((obj.sourceRoot && typeof obj.sourceRoot != 'string') || (!Array.isArray(obj.sources))) {
+                errors.push({ type: FileType.error, error: ParseFilesError.syntax, message: 'malformed sources or sourceRoot', filename })
+            }
+            else {
+                manifest.files[filename].debug = true
+                const sources: string[] = obj.sources.map(x => (obj.sourceRoot || '') + x)
+                for (let x of sources) {
+                    if (isRelativeInvalid(filename, x)) {
+                        errors.push({ type: FileType.error, error: ParseFilesError.invalidSpecifier, message: x, filename })
+                    }
+                    else {
+                        const u = resolveRelative(filename, x)
+                        const f = parsed[u]
+                        if (!f) {
+                            errors.push({ type: FileType.error, error: ParseFilesError.syntax, message: 'sourceMap source not found ' + x, filename })
+                        }
+                        else {
+                            manifest.files[u].debug = true
+                            if (f.type != FileType.error) {
+                                const s = TD.decode(f.value)
+                                if (sourceMappingURLTest.test(s)) {
+                                    errors.push({ type: FileType.error, error: ParseFilesError.syntax, message: 'sourceMappingURL found in ' + x, filename })
+                                }
+                            }
                         }
                     }
                 }
             }
+        }
+        catch (e) {
+            errors.push({ type: FileType.error, error: ParseFilesError.syntax, message: e.message, filename })
+        }
+    }
+}
+export const validateExternalDebugInfo = (filename: string, parsed: { [k: string]: FileParse }, manifest: Manifest, errors: FileParseError[]) => {
+    const fp = parsed[filename]
+    if (!fp) {
+        errors.push({ type: FileType.error, error: ParseFilesError.syntax, message: 'external_debug_info not found', filename })
+    }
+    else if (fp.type != FileType.error) {
+        try {
+            manifest.files[filename].debug = true
+            const w = parseFile(FileType.wasm, filename, fp.value)
+            if (w.type == FileType.error) {
+                errors.push(w)
+            }
             else {
-                const sources: string[] = []
-                fp = { type: FileType.sourceMap, value: fp.value, obj }
+                const w1 = w as FileParseWASM
+                if (w1.sourceMappingURLs.length) {
+                    errors.push({ type: FileType.error, error: ParseFilesError.syntax, message: 'sourceMappingURL found in external file', filename })
+                }
+                if (w1.external_debug_infoURLs.length) {
+                    errors.push({ type: FileType.error, error: ParseFilesError.syntax, message: 'external_debug_info found in external file', filename })
+                }
             }
         }
         catch (e) {
-            fp = fileError(ParseFilesError.syntax, e.message)
+            errors.push({ type: FileType.error, error: ParseFilesError.syntax, message: e.message, filename })
         }
     }
-    parsed[filename] = fp
-    return fp
 }
 export const parsePackage = async (files: FileBundle, encoderState: EncoderState, integrityFunc: (u: Uint8Array) => Promise<string>) => {
-    const parsed = await parseFiles(files)
+    const parsed = parseFiles(files)
+    const errors: FileParseError[] = []
     const manifest: Manifest = { files: {}, main: null }
     for (let x in parsed) {
+        const f = parsed[x]
+        if (f.type == FileType.error) {
+            errors.push(f)
+        }
         manifest.files[x] = { integrity: null }
     }
-    validatePackageJSON(parsed, manifest)
+    validatePackageJSON(parsed, manifest, errors)
     for (let x in parsed) {
         const m = parsed[x]
         if (m.type == FileType.js || m.type == FileType.wasm) {
             for (let sm of m.sourceMappingURLs) {
-                validateSourceMap(new URL(sm, 'file:///' + x).pathname.slice(1), parsed, manifest)
+                validateSourceMap(resolveRelative(x, sm), parsed, manifest, errors)
+            }
+        }
+        if (m.type == FileType.wasm) {
+            for (let sm of m.external_debug_infoURLs) {
+                validateExternalDebugInfo(resolveRelative(x, sm), parsed, manifest, errors)
             }
         }
     }
-    for (let x in parsed) {
-        const m = parsed[x]
-        if (m.type == FileType.error) {
-            return { parsed }
-        }
+    if (errors.length) {
+        return { parsed, errors }
     }
     const encoded = encodePackage(parsed, encoderState)
     for (let x in encoded) {

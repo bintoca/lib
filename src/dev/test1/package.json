@@ -5,6 +5,7 @@
   "exports": {
     ".": "./index.js"
   },
+  "main": "index.js",
   "type": "module",
   "scripts": {
     "test": "node ../../../packages/dev",

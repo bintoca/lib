@@ -6,7 +6,7 @@ import { cwd } from 'process'
 import {
     ParseFilesError, decodeFile, createLookup, FileType,
     importBase, getDynamicImportModule, reloadBase, packageBase, internalBase, FileBundle,
-    globalBase, metaURL as packageMetaURL, getGlobalModule, configURL, FileParse, parsePackage, Manifest
+    globalBase, metaURL as packageMetaURL, getGlobalModule, configURL, FileParse, parsePackage, Manifest, FileParseError
 } from '@bintoca/package/core'
 import * as chokidar from 'chokidar'
 import { server as wss } from 'websocket'
@@ -169,31 +169,21 @@ export const notify = (state: State) => {
         x.sendUTF(JSON.stringify({ type: 'update' }))
     }
 }
-export const checkParsed = (parsed: { [k: string]: FileParse }, prefix: string, state: State): boolean => {
-    if (prefix) {
-        prefix += '/'
-    }
-    let r = true
-    for (let x in parsed) {
-        const m = parsed[x]
-        if (m.type == FileType.error) {
-            r = false
-            const type = m.error
-            if (type == ParseFilesError.syntax) {
-                log(state, 'File: ' + prefix + x, '- Syntax error: ' + m.message)
-            }
-            else if (type == ParseFilesError.invalidSpecifier) {
-                log(state, 'File: ' + prefix + x, '- Invalid import specifier: ' + m.message)
-            }
-            else if (type == ParseFilesError.packageJSON) {
-                log(state, 'File: ' + prefix + x, '- ' + m.message)
-            }
-            else {
-                log(state, 'File: ' + prefix + x, '- Error type: ' + type, 'Message: ' + m.message)
-            }
+export const logErrors = (err: FileParseError[], state: State) => {
+    for (let x of err) {
+        if (x.error == ParseFilesError.syntax) {
+            log(state, 'File: ' + x.filename, '- Syntax error: ' + x.message)
+        }
+        else if (x.error == ParseFilesError.invalidSpecifier) {
+            log(state, 'File: ' + x.filename, '- Invalid import specifier: ' + x.message)
+        }
+        else if (x.error == ParseFilesError.packageJSON) {
+            log(state, 'File: ' + x.filename, '- ' + x.message)
+        }
+        else {
+            log(state, 'File: ' + x.filename, '- Error type: ' + x.error, 'Message: ' + x.message)
         }
     }
-    return r
 }
 export const getIntegritySHA256 = (u: Uint8Array) => {
     const sha256 = createHash('sha256')
@@ -303,7 +293,7 @@ export const loadPackage = async (state: State) => {
     }
     else {
         r = false
-        checkParsed(up.parsed, '', state)
+        logErrors(up.errors, state)
     }
     if (!state.isWatching) {
         log(state, 'Done loading files.')
