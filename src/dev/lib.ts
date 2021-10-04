@@ -4,9 +4,9 @@ import * as path from 'path'
 import open from 'open'
 import { cwd } from 'process'
 import {
-    ParseFilesError, decodeFile, createLookup, FileType,
+    ParseFilesError, decodeFile, createLookup, FileType, ParseBundle,
     importBase, getDynamicImportModule, reloadBase, packageBase, internalBase, FileBundle,
-    globalBase, metaURL as packageMetaURL, getGlobalModule, configURL, FileParse, parsePackage, Manifest, FileParseError
+    globalBase, metaURL as packageMetaURL, getGlobalModule, configURL, FileParse, Manifest, FileParseError, parseFiles, validateParsed, encodeFile
 } from '@bintoca/package/core'
 import * as chokidar from 'chokidar'
 import { server as wss } from 'websocket'
@@ -35,7 +35,7 @@ export const defaultConfig: Config = {
 }
 export type Config = { hostname: string, port: number, ignore, awaitWriteFinish, open: boolean, watch: boolean, configFile, path: string }
 export type State = {
-    urlCache, fileCache, readlineInterface: readline.Interface, wsConnections: any[], watcher: chokidar.FSWatcher, manifest: Manifest,
+    urlCache, fileCache, readlineInterface: readline.Interface, wsConnections: any[], watcher: chokidar.FSWatcher, manifest: Manifest, parsed: ParseBundle,
     config: Config, controlledGlobals: Set<string>, controlledGlobalsLookup: DataView, encoderState: EncoderState, isWatching: boolean, autoReload: boolean
 }
 export const parseTar = async (t: NodeJS.ReadableStream): Promise<FileBundle> => {
@@ -202,11 +202,7 @@ export const readlineHandler = (line, state: State) => {
         console.log('  exit|quit|q     exit the program')
     }
     else if (line.trim() == 'parse' || line.trim() == 'p') {
-        loadPackage(state).then(x => {
-            if (x && state.autoReload) {
-                notify(state)
-            }
-        })
+        loadPackage(state)
     }
     else if (line.trim() == 'reload' || line.trim() == 'r') {
         notify(state)
@@ -240,6 +236,27 @@ export const applyConfigFile = async (state: State) => {
         Object.assign(state.config, dev.default)
     }
 }
+export const update = (f: FileBundle, state: State) => {
+    const p = parseFiles(f)
+    for (let x in p) {
+        state.parsed[x] = p[x]
+    }
+    const up = validateParsed(state.parsed)
+    if (up.manifest) {
+        state.manifest = up.manifest
+        for (let x in p) {
+            const url = packageBase + x
+            state.fileCache[url] = encodeFile(p[x], state.encoderState)
+            state.urlCache[url] = undefined
+        }
+        if (state.autoReload) {
+            notify(state)
+        }
+    }
+    else {
+        logErrors(up.errors, state)
+    }
+}
 export const watch = (state: State) => {
     if (state.isWatching) {
         log(state, 'Already watching "' + state.config.path + '"')
@@ -252,13 +269,7 @@ export const watch = (state: State) => {
         })
         //w.on('ready', () => log(w.getWatched(), config))
         w.on('error', er => log(state, 'Watcher error', er))
-        w.on('all', () => {
-            loadPackage(state).then(x => {
-                if (x && state.autoReload) {
-                    notify(state)
-                }
-            })
-        })
+        w.on('change', path => { update({ [path]: { action: 'change', buffer: fs.readFileSync(path) } }, state) })
         state.watcher = w
         state.isWatching = true
         log(state, 'Watching "' + state.config.path + '"')
@@ -280,30 +291,18 @@ export const loadPackage = async (state: State) => {
     }
     state.fileCache = {}
     state.urlCache = {}
+    state.parsed = {}
     state.manifest = undefined
     const man = await pacote.manifest('file:' + state.config.path)
-    const up = await parsePackage(await pacote.tarball.stream(man._resolved, parseTar), state.encoderState, getIntegritySHA256)
-    let r = true
-    if (up.manifest) {
-        state.manifest = up.manifest
-        for (let x in up.encoded) {
-            const url = packageBase + x
-            state.fileCache[url] = up.encoded[x]
-        }
-    }
-    else {
-        r = false
-        logErrors(up.errors, state)
-    }
+    update(await pacote.tarball.stream(man._resolved, parseTar), state)
     if (!state.isWatching) {
         log(state, 'Done loading files.')
     }
-    return r
 }
 export const init = async (config?: Config) => {
     const state: State = {
         urlCache: {}, fileCache: {}, wsConnections: [], manifest: undefined, watcher: undefined, isWatching: false, autoReload: true,
-        readlineInterface: readline.createInterface({ input: process.stdin, output: process.stdout, prompt: 'DEV> ' }),
+        readlineInterface: readline.createInterface({ input: process.stdin, output: process.stdout, prompt: 'DEV> ' }), parsed: null,
         config: config || Object.assign({}, defaultConfig), controlledGlobals: new Set(), controlledGlobalsLookup: null, encoderState: setupEncoderState()
     }
     if (state.config.configFile) {

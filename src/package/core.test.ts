@@ -78,6 +78,22 @@ test.each([['import a from "/x"', { type: FileType.error, error: ParseFilesError
         expect(m.type).toBe(e.type)
     }
 })
+test.each([['@media', { type: FileType.error, error: ParseFilesError.syntax, message: '@ rules or characters not supported' }],
+['calc()', { type: FileType.error, error: ParseFilesError.syntax, message: 'functions or () blocks not supported' }],
+['/* sourceMappingURL=../../../b */', { type: FileType.error, error: ParseFilesError.invalidSpecifier, message: '../../../b' }],
+['/* sourceMappingURL=file:///b */', { type: FileType.error, error: ParseFilesError.invalidSpecifier, message: 'file:///b' }],
+['a{border: salmon;}', { type: FileType.css }],
+])('parseFile_css(%s)', (a, e: FileParse) => {
+    const filename = 'lib/lib/a.css'
+    const m = parseFile(FileType.css, filename, Buffer.from(a))
+    if (m.type == FileType.error) {
+        (e as FileParseError).filename = filename
+        expect(m).toEqual(e)
+    }
+    else {
+        expect(m.type).toBe(e.type)
+    }
+})
 test.each([{ type: 'module', main: './xx.js' }, { type: 'module', main: 'xx.js' }])('validatePackageJSON', (p) => {
     const x = { 'xx.js': { type: FileType.js } as FileParseJS, 'package.json': { type: FileType.json, value: null, obj: p } as FileParseJSON }
     const man = { files: {}, main: null }

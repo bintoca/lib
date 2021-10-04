@@ -13,14 +13,15 @@ export const reloadBase = '/x/h/'
 export const importBase = '/x/i/'
 export const packageBase = '/x/p/'
 export type FileBundle = { [k: string]: { action: UpdateActions, buffer: BufferSource } }
+export type ParseBundle = { [k: string]: FileParse }
 export type UpdateActions = 'add' | 'change' | 'remove'
 export type FileParseError = { type: FileType.error, error: ParseFilesError, message: string, filename: string }
 export type FileParseBuffer = { type: FileType.buffer, value: BufferSource }
 export type FileParseJSON = { type: FileType.json, value: BufferSource, obj: any }
-export type FileParseSourceMap = { type: FileType.sourceMap, value: BufferSource, obj: any }
 export type FileParseWASM = { type: FileType.wasm, value: BufferSource, importSpecifiers: string[], customNames: string[], sourceMappingURLs: string[], external_debug_infoURLs: string[] }
 export type FileParseJS = { type: FileType.js, value: BufferSource, body: string, globals: string[], importSubstitute: string, importSubstituteOffsets: number[], importSpecifiers: string[], sourceMappingURLs: string[] }
-export type FileParse = FileParseError | FileParseBuffer | FileParseJSON | FileParseWASM | FileParseJS | FileParseSourceMap
+export type FileParseCSS = { type: FileType.css, value: BufferSource, importSpecifiers: string[], assetSpecifiers: string[], sourceMappingURLs: string[] }
+export type FileParse = FileParseError | FileParseBuffer | FileParseJSON | FileParseWASM | FileParseJS | FileParseCSS
 export type Manifest = { files: { [k: string]: { integrity: string, debug?: boolean } }, main: string }
 export const enum ParseFilesError {
     syntax = 1,
@@ -34,7 +35,7 @@ export const enum FileType {
     js = 2,
     json = 3,
     wasm = 4,
-    sourceMap = 5
+    css = 5,
 }
 export const escapeDoubleQuote = (s: string) => s.replace(/"/g, '\\"')
 export function getSubstituteIdCore(count: number, length: number, prefix: string) {
@@ -55,7 +56,7 @@ export function getSubstituteId(suspects, length: number, prefix: string) {
         count++
     }
 }
-export const parseFiles = (files: FileBundle): { [k: string]: FileParse } => {
+export const parseFiles = (files: FileBundle): ParseBundle => {
     const r = {}
     for (let k in files) {
         if (files[k].action != 'remove') {
@@ -75,6 +76,9 @@ export const getFileType = (filename: string): FileType => {
     }
     else if (filename.endsWith('.wasm')) {
         return FileType.wasm
+    }
+    else if (filename.endsWith('.css')) {
+        return FileType.css
     }
     return FileType.buffer
 }
@@ -350,6 +354,9 @@ export const parseFile = (fileType: FileType, filename: string, b: BufferSource)
         return { type: fileType, value: b, body, globals: glob, importSubstitute, importSubstituteOffsets, importSpecifiers, sourceMappingURLs }
     }
     else if (fileType == FileType.json) {
+        if (filename == 'npm-shrinkwrap.json') {
+            return { type: FileType.error, error: ParseFilesError.syntax, message: 'npm-shrinkwrap.json not allowed', filename }
+        }
         try {
             const obj = JSON.parse(TD.decode(b))
             return { type: fileType, value: b, obj }
@@ -367,13 +374,39 @@ export const parseFile = (fileType: FileType, filename: string, b: BufferSource)
             return { type: FileType.error, error: ParseFilesError.syntax, message: e.message, filename }
         }
     }
+    else if (fileType == FileType.css) {
+        try {
+            const sourceMappingURLs: string[] = []
+            const importSpecifiers: string[] = []
+            const assetSpecifiers: string[] = []
+            const s = TD.decode(b)
+            if (s.includes('@')) {
+                return { type: FileType.error, error: ParseFilesError.syntax, message: '@ rules or characters not supported', filename }
+            }
+            if (s.includes('(')) {
+                return { type: FileType.error, error: ParseFilesError.syntax, message: 'functions or () blocks not supported', filename }
+            }
+            let a;
+            while ((a = sourceMappingURLRegExp.exec(s)) !== null) {
+                sourceMappingURLs.push(a[1])
+            }
+            for (let n of sourceMappingURLs) {
+                if (isRelativeInvalid(filename, n)) {
+                    return { type: FileType.error, error: ParseFilesError.invalidSpecifier, message: n, filename }
+                }
+            }
+            return { type: fileType, value: b, importSpecifiers, assetSpecifiers, sourceMappingURLs }
+        } catch (e) {
+            return { type: FileType.error, error: ParseFilesError.syntax, message: e.message, filename }
+        }
+    }
     else if (fileType == FileType.buffer) {
         return { type: fileType, value: b }
     }
     throw new Error('FileType not implemented ' + fileType)
 }
 export const resolveRelative = (filename: string, specifier: string): string => new URL(specifier, 'file:///' + filename).pathname.slice(1)
-export const validatePackageJSON = (parsed: { [k: string]: FileParse }, manifest: Manifest, errors: FileParseError[]) => {
+export const validatePackageJSON = (parsed: ParseBundle, manifest: Manifest, errors: FileParseError[]) => {
     const filename = 'package.json'
     const fp = parsed[filename]
     if (!fp) {
@@ -412,10 +445,10 @@ export const validatePackageJSON = (parsed: { [k: string]: FileParse }, manifest
         throw new Error('incorrect FileType')
     }
 }
-export const validateSourceMap = (filename: string, parsed: { [k: string]: FileParse }, manifest: Manifest, errors: FileParseError[]) => {
+export const validateSourceMap = (filename: string, parsed: ParseBundle, manifest: Manifest, errors: FileParseError[]) => {
     const fp = parsed[filename]
     if (!fp) {
-        //errors.push({ type: FileType.error, error: ParseFilesError.syntax, message: 'sourceMap not found', filename })
+        errors.push({ type: FileType.error, error: ParseFilesError.syntax, message: 'sourceMap not found', filename })
     }
     else if (fp.type != FileType.error) {
         try {
@@ -463,7 +496,7 @@ export const validateSourceMap = (filename: string, parsed: { [k: string]: FileP
         }
     }
 }
-export const validateExternalDebugInfo = (filename: string, parsed: { [k: string]: FileParse }, manifest: Manifest, errors: FileParseError[]) => {
+export const validateExternalDebugInfo = (filename: string, parsed: ParseBundle, manifest: Manifest, errors: FileParseError[]) => {
     const fp = parsed[filename]
     if (!fp) {
         errors.push({ type: FileType.error, error: ParseFilesError.syntax, message: 'external_debug_info not found', filename })
@@ -490,8 +523,7 @@ export const validateExternalDebugInfo = (filename: string, parsed: { [k: string
         }
     }
 }
-export const parsePackage = async (files: FileBundle, encoderState: EncoderState, integrityFunc: (u: Uint8Array) => Promise<string>) => {
-    const parsed = parseFiles(files)
+export const validateParsed = (parsed: ParseBundle) => {
     const errors: FileParseError[] = []
     const manifest: Manifest = { files: {}, main: null }
     for (let x in parsed) {
@@ -504,7 +536,7 @@ export const parsePackage = async (files: FileBundle, encoderState: EncoderState
     validatePackageJSON(parsed, manifest, errors)
     for (let x in parsed) {
         const m = parsed[x]
-        if (m.type == FileType.js || m.type == FileType.wasm) {
+        if (m.type == FileType.js || m.type == FileType.wasm || m.type == FileType.css) {
             for (let sm of m.sourceMappingURLs) {
                 validateSourceMap(resolveRelative(x, sm), parsed, manifest, errors)
             }
@@ -516,13 +548,9 @@ export const parsePackage = async (files: FileBundle, encoderState: EncoderState
         }
     }
     if (errors.length) {
-        return { parsed, errors }
+        return { errors }
     }
-    const encoded = encodePackage(parsed, encoderState)
-    for (let x in encoded) {
-        manifest.files[x].integrity = await integrityFunc(encoded[x])
-    }
-    return { parsed, encoded, manifest }
+    return { manifest }
 }
 export const encodePackage = (p: { [k: string]: FileParse }, state: EncoderState): { [k: string]: Uint8Array } => {
     const q: { [k: string]: Uint8Array } = {}
@@ -554,6 +582,7 @@ export const encodeFile = (p: FileParse, state: EncoderState): Uint8Array => {
         }
         case FileType.buffer:
         case FileType.json:
+        case FileType.css:
         case FileType.wasm: {
             m.set(1, p.value)
             break
@@ -724,6 +753,11 @@ export const decodeFile = (b: BufferSource, controlledGlobals: DataView, parentU
                     state.position++
                     const len = decodeCount(dv, state)
                     return { type: 'application/json', data: bufferSourceToUint8Array(dv, state.position, len) }
+                }
+                case FileType.css: {
+                    state.position++
+                    const len = decodeCount(dv, state)
+                    return { type: 'text/css', data: bufferSourceToUint8Array(dv, state.position, len) }
                 }
                 case FileType.buffer: {
                     state.position++

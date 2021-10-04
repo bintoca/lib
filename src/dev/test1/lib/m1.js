@@ -6,5 +6,5 @@ export * as t from './t1.js'
 //import react from 'react'
 //console.log(acorn.parse('const a = import.meta.url', {sourceType:'module'}))
 
-//@ sourceMappingURL="js.map"
+//@ sourceMappingURLa="js.map"
 //@ sourceMappingURLa=js2<😀.map
