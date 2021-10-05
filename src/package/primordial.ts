@@ -5,7 +5,7 @@ declare global {
         ObjectHasOwnProperty: (o: object, k: PropertyKey) => boolean,
         JSONParse: (s: string) => any,
         TD: { decode: (b: BufferSource) => string }
-        Set: typeof Set,
+        SafeSet: typeof Set,
         URL: typeof URL
         Error: typeof Error,
         Event: typeof Event,
@@ -44,13 +44,13 @@ const callBind = Function.prototype.bind.bind(Function.prototype.call)
 const wa = copyProps(WebAssembly, Object.create(null)) as unknown as typeof WebAssembly
 wa.Module = copyConstructor(WebAssembly.Module, class extends WebAssembly.Module { constructor(i) { super(i); } })
 const TDe = copyConstructor(TextDecoder, class extends TextDecoder { constructor(i?, o?) { super(i, o); } })
-export const primordials: Primordials = {
+const primordials: Primordials = {
     ObjectCreate: Object.create,
     ObjectGetOwnPropertyNames: Object.getOwnPropertyNames,
     ObjectHasOwnProperty: callBind(Object.prototype.hasOwnProperty),
     JSONParse: JSON.parse,
     TD: new TDe(),
-    Set: copyConstructor(Set, class extends Set { constructor(i) { super(i); } }),
+    SafeSet: copyConstructor(Set, class extends Set { constructor(i) { super(i); } }),
     URL: copyConstructor(URL, class extends URL { constructor(i, base) { super(i, base); } }),
     Error: copyConstructor(Error, class extends Error { constructor(message?: string) { super(message); } } as ErrorConstructor),
     Event: typeof Event === 'undefined' ? undefined : copyConstructor(Event, class extends Event { constructor(i, d) { super(i, d); } }),
@@ -71,9 +71,8 @@ export const primordials: Primordials = {
     ArrayPush: callBind(Array.prototype.push),
     setTimeout: setTimeout
 }
-export default primordials
 const { ArrayPush, TD, StringStartsWith, StringIndexOf } = primordials
-export const decodeLEB128_U32 = (dv: DataView, state: { position: number }, invalidReturn?) => {
+const decodeLEB128_U32 = (dv: DataView, state: { position: number }, invalidReturn?) => {
     let bytes = 0
     let r = 0
     while (dv.byteLength > state.position && bytes < 5) {
@@ -90,14 +89,14 @@ export const decodeLEB128_U32 = (dv: DataView, state: { position: number }, inva
     }
     throw new Error('invalid leb128 u32')
 }
-export const bufferSourceToDataView = (b: BufferSource, offset: number = 0, length?: number): DataView => {
+const bufferSourceToDataView = (b: BufferSource, offset: number = 0, length?: number): DataView => {
     if ((b as DataView).buffer) {
         return new primordials.DataView((b as DataView).buffer, (b as DataView).byteOffset + offset, length !== undefined ? length : b.byteLength - offset)
     }
     return new primordials.DataView(b as ArrayBuffer, offset, length !== undefined ? length : b.byteLength - offset)
 }
-export const wasmSectionNames = new primordials.Set(['.debug_abbrev', '.debug_aranges', '.debug_frame', '.debug_info', '.debug_line', '.debug_loc', '.debug_macinfo', '.debug_pubnames', '.debug_pubtypes', '.debug_ranges', '.debug_str', 'name', 'sourceMappingURL', 'external_debug_info'])
-export const parseWasm = (filename: string, b: BufferSource) => {
+const wasmSectionNames = new primordials.SafeSet(['.debug_abbrev', '.debug_aranges', '.debug_frame', '.debug_info', '.debug_line', '.debug_loc', '.debug_macinfo', '.debug_pubnames', '.debug_pubtypes', '.debug_ranges', '.debug_str', 'name', 'sourceMappingURL', 'external_debug_info'])
+const parseWasm = (filename: string, b: BufferSource) => {
     const state = { position: 8 }
     const dv = bufferSourceToDataView(b)
     if (dv.getUint32(0) != 0x61736d || dv.getUint32(4, true) != 1) {
@@ -107,7 +106,7 @@ export const parseWasm = (filename: string, b: BufferSource) => {
     const customNames: string[] = []
     const sourceMappingURLs: string[] = []
     const external_debug_infoURLs: string[] = []
-    const seenSections = new primordials.Set()
+    const seenSections = new primordials.SafeSet()
     while (dv.byteLength > state.position) {
         const secId = decodeLEB128_U32(dv, state)
         const secLen = decodeLEB128_U32(dv, state)
@@ -202,7 +201,7 @@ export const parseWasm = (filename: string, b: BufferSource) => {
     }
     return { importSpecifiers, customNames, sourceMappingURLs, external_debug_infoURLs }
 }
-export const isRelativeInvalid = (file: string, specifier: string): boolean => {
+const isRelativeInvalid = (file: string, specifier: string): boolean => {
     if (StringStartsWith(specifier, './')) {
         return false
     }
@@ -216,7 +215,7 @@ export const isRelativeInvalid = (file: string, specifier: string): boolean => {
     catch { }
     return false
 }
-export const isSpecifierInvalid = (file: string, specifier: string): boolean => {
+const isSpecifierInvalid = (file: string, specifier: string): boolean => {
     if (StringStartsWith(specifier, './')) {
         return false
     }
@@ -225,3 +224,5 @@ export const isSpecifierInvalid = (file: string, specifier: string): boolean => 
     }
     return true
 }
+export default primordials
+export { primordials, decodeLEB128_U32, bufferSourceToDataView, parseWasm, isRelativeInvalid, isSpecifierInvalid }

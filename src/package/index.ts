@@ -1,10 +1,10 @@
 import primordials from '@bintoca/package/primordial'
-const { Set, URL, Error, StringEndsWith, StringStartsWith, StringReplace, StringSlice, RegExpTest, ArrayIsArray,
+const { SafeSet, URL, Error, StringEndsWith, StringStartsWith, StringReplace, StringSlice, RegExpTest, ArrayIsArray,
     ObjectGetOwnPropertyNames, ObjectHasOwnProperty, StringIndexOf, StringLastIndexOf, ArrayFilter, ArraySort } = primordials
 
 export type FileURLSystemSync = { exists: (path: URL) => boolean, read: (path: URL) => any, jsonCache: { [k: string]: PackageJSON }, conditions: Set<string> }
 export type PackageJSON = { pjsonURL: URL, exists: boolean, main: string, name: string, type: string, exports, imports }
-export const defaultConditionsSync = new Set<string>()
+export const defaultConditionsSync = new SafeSet<string>()
 defaultConditionsSync.add('node')
 defaultConditionsSync.add('import')
 //https://github.com/nodejs/node/blob/master/doc/api/esm.md

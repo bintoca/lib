@@ -1,37 +1,37 @@
 import primordials from '@bintoca/package/primordial'
-const { Set, ObjectCreate } = primordials
-const fetchFunc = fetch
+const { SafeSet, ObjectCreate } = primordials
+const _fetch = typeof fetch == 'undefined' ? undefined : fetch
 
-export const freeGlobals = ['Array', 'ArrayBuffer', 'addEventListener', 'atob', 'BigInt', 'Blob', 'btoa', 'CryptoKey', 'clearInterval', 'clearTimeout', 'console', 'constructor', 'crypto', 'DataView', 'Date',
+const freeGlobals = ['Array', 'ArrayBuffer', 'addEventListener', 'atob', 'BigInt', 'Blob', 'btoa', 'CryptoKey', 'clearInterval', 'clearTimeout', 'console', 'constructor', 'crypto', 'DataView', 'Date',
     'decodeURIComponent', 'dispatchEvent', 'encodeURIComponent', 'Error', 'Function', 'globalThis', 'Infinity', 'isFinite', 'isNaN', 'JSON',
-    'Map', 'Math', 'MessageChannel', 'NaN', 'Number', 'Object', 'parseFloat', 'parseInt', 'performance', 'Promise', 'Proxy', 'ReadableStream', 'ReadableStreamBYOBReader', 'Reflect', 'RegExp', 'removeEventListener',
+    'Map', 'Math', 'MessageChannel', 'NaN', 'Number', 'Object', 'parseFloat', 'parseInt', 'performance', 'Promise', 'Proxy', 'queueMicrotask', 'ReadableStream', 'ReadableStreamBYOBReader', 'Reflect', 'RegExp', 'removeEventListener',
     'Set', 'String', 'Symbol', 'SyntaxError', 'self', 'setInterval', 'setTimeout',
     'TextDecoder', 'TextEncoder', 'TypeError', 'Uint16Array', 'Uint8Array', 'URL', 'undefined', 'WeakMap', 'WeakSet', 'WritableStream', Symbol.toStringTag]
-const freeSet = new Set(freeGlobals)
+const freeSet = new SafeSet(freeGlobals)
 const gt = typeof globalThis !== 'undefined' ? globalThis : typeof self !== 'undefined' ? self : null
 gt.Function = new Proxy(Function, {
     apply() { throw new Error('not implemented') },
     construct() { throw new Error('not implemented') },
 })
-const internal_setInterval = setInterval
+const _setInterval = setInterval
 gt.setInterval = function (h, t, ...a) {
     if (typeof h !== 'function') {
         throw new TypeError('first argument is not a function')
     }
-    return internal_setInterval(h, t, ...a)
+    return _setInterval(h, t, ...a)
 } as any
-const internal_setTimeout = setTimeout
+const _setTimeout = setTimeout
 gt.setTimeout = function (h, t, ...a) {
     if (typeof h !== 'function') {
         throw new TypeError('first argument is not a function')
     }
-    return internal_setTimeout(h, t, ...a)
+    return _setTimeout(h, t, ...a)
 } as any
 
-export const internalNativeObj = Symbol('internalNativeObj')
-export const internalListeners = Symbol('internalListeners')
+const internalNativeObj = Symbol('internalNativeObj')
+const internalListeners = Symbol('internalListeners')
 
-export const eventProxy = (ev, tar) => {
+const eventProxy = (ev, tar) => {
     return new Proxy(ev, {
         get(target, property, receiver) {
             switch (property) {
@@ -44,7 +44,7 @@ export const eventProxy = (ev, tar) => {
         set(target, property, value, receiver) { return false }
     })
 }
-export const eventTargetProps = (target, property, receiver) => {
+const eventTargetProps = (target, property, receiver) => {
     switch (property) {
         case 'addEventListener':
             return (t, l, op) => {
@@ -59,7 +59,7 @@ export const eventTargetProps = (target, property, receiver) => {
     }
     return undefined
 }
-export const locationProxy = new Proxy(ObjectCreate(null), {
+const locationProxy = new Proxy(ObjectCreate(null), {
     get(target, property, receiver) {
         if (property == 'reload') {
             return () => { location.reload() }
@@ -67,7 +67,7 @@ export const locationProxy = new Proxy(ObjectCreate(null), {
     },
     set(target, property, value, receiver) { return false },
 })
-const prohibitedStyle = new Set<string | Symbol>(['parentRule', 'setProperty'])
+const prohibitedStyle = new SafeSet<string | Symbol>(['parentRule', 'setProperty'])
 function styleProxy(sty) {
     return new Proxy(sty, {
         get(target, property, receiver) {
@@ -77,18 +77,15 @@ function styleProxy(sty) {
             return target[property]
         },
         set(target, property, value, receiver) {
-            if (value.indexOf('(') >= 0) {
-                value = value.toLowerCase()
-                if (value.indexOf('url(') >= 0 || value.indexOf('image(') >= 0 || value.indexOf('image-set(') >= 0) {
-                    return false
-                }
+            if (value.includes('@') || value.includes('(')) {
+                return false
             }
             target[property] = value
             return true
         }
     })
 }
-const allowedNodeProps = new Set<string | Symbol>(['remove', 'textContent'])
+const allowedNodeProps = new SafeSet<string | Symbol>(['remove', 'textContent'])
 function nodeProxy(n) {
     n[internalListeners] = new WeakMap()
     return new Proxy(n, {
@@ -122,10 +119,10 @@ function nodeProxy(n) {
         }
     })
 }
-const prohibitedTags = new Set<string | Symbol>('a,applet,base,body,embed,form,frame,head,html,iframe,link,meta,object,script,style,title'.split(','))
+const prohibitedTags = new SafeSet<string | Symbol>('a,applet,base,body,embed,form,frame,head,html,iframe,link,meta,object,script,style,title'.split(','))
 const initDocument = () => {
-    document[internalListeners] = new WeakMap()
-    return new Proxy(document, {
+    gt.document[internalListeners] = new WeakMap()
+    return new Proxy(gt.document, {
         get(target, property, receiver) {
             const et = eventTargetProps(target, property, receiver)
             if (et) {
@@ -133,7 +130,7 @@ const initDocument = () => {
             }
             switch (property) {
                 case 'body': {
-                    return nodeProxy(document.body)
+                    return nodeProxy(gt.document.body)
                 }
                 case 'createElement':
                     return tag => {
@@ -156,7 +153,7 @@ const initDocument = () => {
         set(target, property, value, receiver) { return false }
     })
 }
-const documentProxy = typeof document === 'undefined' ? undefined : initDocument()
+const documentProxy = typeof gt.document === 'undefined' ? undefined : initDocument()
 gt[internalListeners] = new WeakMap()
 const selfProxy = new Proxy(gt, {
     get(target, property, receiver) {
@@ -196,28 +193,31 @@ gt.self = selfProxy as Window & typeof globalThis
 gt['global' + 'This'] = selfProxy
 const configURL = gt['configURL']
 let ob = gt
-const nonConfigurable = new Set<string | symbol>()
-while (ob && ob !== Object.prototype) {
-    const ds = Object.getOwnPropertyDescriptors(ob)
-    for (let k of (Object.getOwnPropertyNames(ds) as any[]).concat(Object.getOwnPropertySymbols(ds))) {
-        if (!freeSet.has(k)) {
-            if (ds[k].configurable) {
-                //console.log('delete', k)
-                delete ob[k]
-            }
-            else {
-                nonConfigurable.add(k)
+const nonConfigurable = new SafeSet<string | symbol>()
+if (_fetch) {
+    while (ob && ob !== Object.prototype) {
+        const ds = Object.getOwnPropertyDescriptors(ob)
+        for (let k of (Object.getOwnPropertyNames(ds) as any[]).concat(Object.getOwnPropertySymbols(ds))) {
+            if (!freeSet.has(k)) {
+                if (ds[k].configurable) {
+                    //console.log('delete', k)
+                    delete ob[k]
+                }
+                else {
+                    nonConfigurable.add(k)
+                }
             }
         }
+        ob = Object.getPrototypeOf(ob)
     }
-    ob = Object.getPrototypeOf(ob)
+    _fetch(configURL, { method: 'POST', body: JSON.stringify({ nonConfigurable: Array.from(nonConfigurable) }) }).then(x => x.json()).then(x => {
+        if (typeof document !== 'undefined') {
+            const s = document.createElement('script')
+            s.type = 'module'
+            s.src = x.src
+            document.head.appendChild(s)
+        }
+    })
 }
-fetchFunc(configURL, { method: 'POST', body: JSON.stringify({ nonConfigurable: Array.from(nonConfigurable) }) }).then(x => x.json()).then(x => {
-    if (typeof document !== 'undefined') {
-        const s = document.createElement('script')
-        s.type = 'module'
-        s.src = x.src
-        document.head.appendChild(s)
-    }
-})
 export default selfProxy
+export { freeGlobals, internalListeners, internalNativeObj, eventProxy, eventTargetProps, documentProxy }
