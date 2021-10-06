@@ -50,6 +50,44 @@ const { tes, expec } = (function () {
     }
     return { tes: test, expec: expect }
 })()
+tes('eval', () => {
+    expec(() => setInterval('')).toThrow()
+    expec(() => setTimeout('')).toThrow()
+    expec(() => new Function('')).toThrow()
+    expec(() => Function('')).toThrow()
+    expec(typeof eval).toBe('undefined')
+    expec(() => Proxy.prototype = 5).toThrow()
+})
+tes('location', () => {
+    expec(() => (location as any) = 'a').toThrow('Assignment to constant variable.')
+    expec(() => location.href = 'a').toThrow()
+    expec(location.href).toBe(undefined)
+})
+tes('window', async () => {
+    await new Promise((resolve, reject) => {
+        window.addEventListener('foo', (ev: Event) => {
+            try {
+                expec(ev.target).toBe(window)
+                expec(ev.target['location'].href).toBe(undefined)
+                resolve(null)
+            }
+            catch (e) {
+                reject(e)
+            }
+        })
+        window.dispatchEvent(new Event('foo'))
+    })
+    window['foo'] = 5
+    expec(typeof Object.getOwnPropertyNames(window)).toBe('object')
+    expec(typeof Object.getOwnPropertyDescriptor(window, 'foo')).toBe('object')
+    expec(window['foo']).toBe(5)
+    expec(typeof top).toBe('undefined')
+    expec(window.top).toBe(undefined)
+    expec(self).toBe(window)
+    expec(self.location.href).toBe(undefined)
+    expec(globalThis).toBe(window)
+    expec(globalThis.location.href).toBe(undefined)
+})
 tes('document', () => {
     expec(() => document.title).toThrow()
     expec(() => document.title = 'a').toThrow()

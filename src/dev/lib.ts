@@ -257,6 +257,7 @@ export const update = (f: FileBundle, state: State) => {
         logErrors(up.errors, state)
     }
 }
+export const alignPath = (s: string) => s.replace(/\\/g, '/')
 export const watch = (state: State) => {
     if (state.isWatching) {
         log(state, 'Already watching "' + state.config.path + '"')
@@ -270,6 +271,7 @@ export const watch = (state: State) => {
         //w.on('ready', () => log(w.getWatched(), config))
         w.on('error', er => log(state, 'Watcher error', er))
         w.on('change', path => {
+            path = alignPath(path)
             if (state.parsed[path]) {
                 update({ [path]: { action: 'change', buffer: fs.readFileSync(path) } }, state)
             }

@@ -20,6 +20,5 @@ console.log('enum', Object.getOwnPropertyNames(window).map(x => { return { x, d:
 console.log('not enum', Object.getOwnPropertyNames(window).map(x => { return { x, d: Object.getOwnPropertyDescriptor(window, x) } }).filter(x => !x.d.enumerable))
 console.log('writeable', Object.getOwnPropertyNames(window).map(x => { return { x, d: Object.getOwnPropertyDescriptor(window, x) } }).filter(x => x.d.writable || x.d.set))
 console.log('not writeable', Object.getOwnPropertyNames(window).map(x => { return { x, d: Object.getOwnPropertyDescriptor(window, x) } }).filter(x => !x.d.writable && !x.d.set))
-console.log('\uD800', JSON.parse('{"a":"\uD800"}'))
 
-document.body.textContent = 'hey1231' + w.s + import.meta.url
+document.body.textContent = 'hey123' + w.s + import.meta.url
