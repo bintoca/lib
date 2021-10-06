@@ -13,9 +13,10 @@ test('dom', async () => {
     const script = new Script(
         ["'use strict';const {window, document, location, self} = (function(){"]
             .concat(lines('./packages/package/primordial.js'))
-            .concat(['const { ObjectCreate, _Proxy, _Reflect, _WeakMap } = primordials', 'const isJSDOM = true'])
-            .concat(lines('./packages/package/init.js').filter(x => !x.startsWith('const { _Set,') && !x.startsWith('const isJSDOM =')))
-            .concat(['return {window:selfProxy, document:documentProxy, location:locationProxy, self:selfProxy} })();'])
+            .concat(['const { ObjectCreate, _Proxy, _Reflect, _WeakMap } = primordials'])
+            .concat(lines('./packages/package/init.js').filter(x => !x.startsWith('const { _Set,'))
+                .map(x => x.includes('delete ob[k]') ? "if (typeof k == 'string' && !k.startsWith('_') && k != 'document' && k != 'location' && k != 'customElements') {delete ob[k]}" : x))
+            .concat(['gt.bintocaFetchTest = fetchPromise', 'return {window:selfProxy, document:documentProxy, location:locationProxy, self:selfProxy} })();'])
             .concat(lines('./src/dev/test1/lib/t1.js'))
             .join('\n'));
     const vmContext = dom.getInternalVMContext();

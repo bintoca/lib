@@ -776,7 +776,7 @@ export const getDynamicImportModule = (urlpath: string, hot: string): string => 
     const url = escapeDoubleQuote(decodeURIComponent(urlpath.slice(importBase.length)))
     const meta = 'imp.meta.url="' + url + '";' +
         (hot ? hot : '')
-    return 'function imp(){};imp.meta=Object.create(null);' + meta + ';export default imp'
+    return 'import primordials from "@bintoca/package/primordial";const { ObjectCreate } = primordials;function imp(){};imp.meta=ObjectCreate(null);' + meta + ';export default imp'
 }
 export const getGlobalModule = (p: string, initURL) => 'import gt from "' + initURL + '";export default gt.' + p.slice(0, -3)
 export const createLookup = (s: Set<string>): DataView => {

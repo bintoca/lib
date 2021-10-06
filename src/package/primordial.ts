@@ -1,6 +1,6 @@
 declare global {
     type Primordials = {
-        ObjectCreate: (o: object) => {},
+        ObjectCreate: typeof Object.create,
         ObjectGetOwnPropertyNames: (o: object) => string[],
         ObjectHasOwnProperty: (o: object, k: PropertyKey) => boolean,
         JSONParse: (s: string) => any,

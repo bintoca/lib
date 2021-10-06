@@ -109,7 +109,7 @@ export const httpHandler = async (req: http.IncomingMessage, res: http.ServerRes
             }
             else if (req.url.startsWith(importBase)) {
                 res.setHeader('Content-Type', 'text/javascript')
-                res.end(getDynamicImportModule(req.url, 'import {metaServer} from "' + clientURL + '";imp.meta.server=metaServer;'))
+                res.end(getDynamicImportModule(req.url, 'import {metaServer} from "' + clientURL + '";imp.meta.server=metaServer;').replace('@bintoca/package/primordial', primordialURL))
             }
             else if (req.url.startsWith(reloadBase)) {
                 const u = state.urlCache[packageBase + req.url.slice(req.url.indexOf('/', 5) + 1)]

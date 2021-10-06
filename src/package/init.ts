@@ -8,7 +8,7 @@ const freeGlobals = ['Array', 'ArrayBuffer', 'addEventListener', 'atob', 'BigInt
     'TextDecoder', 'TextEncoder', 'TypeError', 'Uint16Array', 'Uint8Array', 'URL', 'undefined', 'WeakMap', 'WeakSet', 'WritableStream', Symbol.toStringTag]
 const freeSet = new _Set(freeGlobals)
 const gt = typeof globalThis !== 'undefined' ? globalThis : typeof self !== 'undefined' ? self : null
-gt.Function = new Proxy(Function, {
+gt.Function = new _Proxy(Function, {
     apply() { throw new _Error('not implemented') },
     construct() { throw new _Error('not implemented') },
 })
@@ -190,16 +190,13 @@ gt['global' + 'This'] = selfProxy
 const configURL = gt['configURL']
 let ob = gt
 const nonConfigurable = new _Set<string | symbol>()
-const isJSDOM = false
 while (ob && ob !== Object.prototype) {
     const ds = Object.getOwnPropertyDescriptors(ob)
     for (let k of (Object.getOwnPropertyNames(ds) as any[]).concat(Object.getOwnPropertySymbols(ds))) {
         if (!freeSet.has(k)) {
             if (ds[k].configurable) {
-                if (!isJSDOM || (isJSDOM && typeof k == 'string' && !k.startsWith('_') && k != 'document' && k != 'location' && k != 'customElements')) {
-                    //console.log('delete', isJSDOM, k)
-                    delete ob[k]
-                }
+                //console.log('delete', isJSDOM, k)
+                delete ob[k]
             }
             else {
                 nonConfigurable.add(k)
@@ -216,8 +213,5 @@ const fetchPromise = _fetch(configURL, { method: 'POST', body: JSON.stringify({ 
         gt.document.head.appendChild(s)
     }
 })
-if (isJSDOM) {
-    gt.bintocaFetchTest = fetchPromise
-}
 export default selfProxy
 export { freeGlobals, eventProxy, eventTargetProps, documentProxy }

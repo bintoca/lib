@@ -50,6 +50,11 @@ const { tes, expec } = (function () {
     }
     return { tes: test, expec: expect }
 })()
+delete window.Proxy
+delete window.Reflect
+delete window.Set
+delete window.WeakMap
+delete window.Object.create
 tes('eval', () => {
     expec(() => setInterval('')).toThrow()
     expec(() => setTimeout('')).toThrow()
