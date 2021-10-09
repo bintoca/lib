@@ -94,6 +94,38 @@ test.each([['@media', { type: FileType.error, error: ParseFilesError.syntax, mes
         expect(m.type).toBe(e.type)
     }
 })
+test.each([['function f(){var a=this; return function (c){a=c+d}};function g(){arguments}', ['d']],
+['var a = b=>b+c+this;let d=()=>{var e;var f};e;f;var g=()=>{arguments}', ['arguments', 'c', 'e', 'f', 'this']],
+['var x;x=y', ['y']],
+['try{}catch({x}){x}', []],
+['try{}catch{x};try{}finally{}', ['x']],
+['(class c extends c2{})', ['c2']],
+['class c1 extends c2{constructor(x){super();this.x=x};get a(){return this.a};set a(x){this.a=x};b(x,y){x=y;return super.constructor(x)};static b(x,y){x=y;return super.prototype.constructor(x)}};let c3=class c4 extends c1{};c4;', ['c2', 'c4']],
+['{class c5{};class c6{};c6;};c5;', ['c5']],
+['this', ['this']],
+['function x(a=b,{c:d,e=e1,e2:e3=e4()}=f,[h=i,,j]=k,l=a){}', ['b', 'e1', 'e4', 'f', 'i', 'k']],
+['const {...a}={};a;const [...b]=[];b;function c({...d},[...e]){d;e;};({...f},[...g])=>{f;g;}', []],
+['var {a: b, c, d} = {};b; c; d;var [e = 5, f = g, h] = [];e; f; h;', ['g']],
+['x.y();y(function(){var z});z;', ['x', 'y', 'z']],
+['export var a;export default b;a();', ['b']],
+['export default class {}', []],
+['export default function () {};', []],
+['export * as x from "./x";export {y} from "./y";', []],
+['export * as x from "./x";export {y} from "./y";x;y;', ['x', 'y']],
+['import a from "./a";import {b as c}from "./c";import * as d from "./d";a;b;c;d;', ['b']],
+['l:while(true){break l;continue l;};function f(){a:while(true){break a;continue a;}}', []],
+['a.b={c:2}', ['a']],
+['{let valueOf;valueOf;};let toString;toString;hasOwnProperty;constructor;__proto__;', ['__proto__', 'constructor', 'hasOwnProperty']],
+['function a(b, ...c) {a; b; c;}', []]
+])('parseFile_js_globals(%s)', (a: string, e: string[]) => {
+    const filename = 'lib/lib/a.js'
+    const m = parseFile(FileType.js, filename, Buffer.from(a))
+    if (m.type == FileType.error) {
+        console.log(m.message)
+    }
+    expect(m.type).toBe(FileType.js)
+    expect((m as FileParseJS).globals).toEqual(e)
+})
 test.each([{ type: 'module', main: './xx.js' }, { type: 'module', main: 'xx.js' }])('validatePackageJSON', (p) => {
     const x = { 'xx.js': { type: FileType.js } as FileParseJS, 'package.json': { type: FileType.json, value: null, obj: p } as FileParseJSON }
     const man = { files: {}, main: null }

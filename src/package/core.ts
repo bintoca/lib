@@ -84,12 +84,10 @@ export const getFileType = (filename: string): FileType => {
 }
 export const parseFile = (fileType: FileType, filename: string, b: BufferSource): FileParse => {
     if (fileType == FileType.js) {
-        let ast//: acorn.Node
-        let text: string
-        const sourceMappingURLs: string[] = []
         try {
-            text = TD.decode(b)
-            ast = acorn.parse(text, {
+            const sourceMappingURLs: string[] = []
+            const text = TD.decode(b)
+            const ast:any = acorn.parse(text, {
                 ecmaVersion: 2022, sourceType: 'module', allowHashBang: true, onComment: (block, s, start, end) => {
                     let a;
                     while ((a = sourceMappingURLRegExp.exec(s)) !== null) {
@@ -100,258 +98,259 @@ export const parseFile = (fileType: FileType, filename: string, b: BufferSource)
             })
             //console.log(JSON.stringify(ast))
             //console.log(JSON.stringify(acorn.parse('const ev=2//@ sourceMappingURL=js.map', { ecmaVersion: 2022, sourceType: 'module', onComment: (block, text, start, end) => { console.log(block, text, start, end) } })))
-        }
-        catch (e) {
-            return { type: FileType.error, error: ParseFilesError.syntax, message: e.message, filename }
-        }
-        const removeNodes = []
-        const specifierNodes = []
-        const importSpecifiers: string[] = []
-        const importSuspectIds = {}
-        function isSuspectId(s: string) {
-            if (s.length == 6 && s.startsWith('$')) {
-                importSuspectIds[s] = 1
-            }
-        }
-        walk.ancestor(ast, {
-            ImportExpression(n) {
-                removeNodes.push(n)
-            },
-            Identifier(n) {
-                isSuspectId(n['name'])
-            },
-            VariablePattern(n) {
-                isSuspectId(n['name'])
-            },
-            ImportSpecifier(n) {
-                isSuspectId(n['local']['name'])
-            },
-            ImportDefaultSpecifier(n) {
-                isSuspectId(n['local']['name'])
-            },
-            ImportNamespaceSpecifier(n) {
-                isSuspectId(n['local']['name'])
-            },
-            PrivateIdentifier(n) {
-                isSuspectId(n['name'])
-            },
-            PropertyDefinition(n) {
-                if (n['key']?.type == 'PrivateIdentifier') {
-                    isSuspectId(n['key']['name'])
-                }
-            },
-            ExportNamedDeclaration(n) {
-                specifierNodes.push(n)
-            },
-            ImportDeclaration(n) {
-                specifierNodes.push(n)
-            },
-            ExportAllDeclaration(n) {
-                specifierNodes.push(n)
-            },
-            MetaProperty(n) {
-                removeNodes.push(n)
-            }
-        })
-        for (let n of specifierNodes) {
-            if (n.source) {
-                const specifier = n.source.value
-                importSpecifiers.push(specifier)
-                if (isSpecifierInvalid(filename, specifier)) {
-                    return { type: FileType.error, error: ParseFilesError.invalidSpecifier, message: specifier, filename }
-                }
-            }
-        }
-        for (let n of sourceMappingURLs) {
-            if (isRelativeInvalid(filename, n)) {
-                return { type: FileType.error, error: ParseFilesError.invalidSpecifier, message: n, filename }
-            }
-        }
-        let position = 0
-        let importSubstitute
-        const importSubstituteOffsets: number[] = []
-        removeNodes.sort((a, b) => a.start - b.start)
-        let body = ''
-        for (let n of removeNodes) {
-            if (position != n.start) {
-                body += text.substring(position, n.start)
-            }
-            position = n.end
-            if (n.type == 'ImportExpression' || (n.type == 'MetaProperty' && n.meta.name == 'import')) {
-                position = n.start + 6
-                if (!importSubstitute) {
-                    importSubstitute = getSubstituteId(importSuspectIds, 5, '$')
-                }
-                if (!importSubstitute) {
-                    return { type: FileType.error, error: ParseFilesError.importSubstitute, message: filename, filename }
-                }
-                importSubstituteOffsets.push(n.start)
-                body += importSubstitute
-            }
-        }
-        body += text.substring(position)
-        let glob
-        //const g = glo(ast)
-        {//fork of acorn-globals with PRs #52 #58 #60 and fix for ExportAllDeclaration es2020
-            var globals = [];
-            function isScope(node) {
-                return node.type === 'FunctionExpression' || node.type === 'FunctionDeclaration' || node.type === 'ArrowFunctionExpression' || node.type === 'Program';
-            }
-            function isBlockScope(node) {
-                return node.type === 'BlockStatement' || isScope(node);
-            }
 
-            function declaresArguments(node) {
-                return node.type === 'FunctionExpression' || node.type === 'FunctionDeclaration';
+            const removeNodes = []
+            const specifierNodes = []
+            const importSpecifiers: string[] = []
+            const importSuspectIds = {}
+            function isSuspectId(s: string) {
+                if (s.length == 6 && s.startsWith('$')) {
+                    importSuspectIds[s] = 1
+                }
             }
-
-            function declaresThis(node) {
-                return node.type === 'FunctionExpression' || node.type === 'FunctionDeclaration';
-            }
-            var declareFunction = function (node) {
-                var fn = node;
-                fn.locals = fn.locals || Object.create(null);
-                node.params.forEach(function (node) {
-                    declarePattern(node, fn);
-                });
-                if (node.id) {
-                    fn.locals[node.id.name] = true;
-                }
-            };
-            var declareClass = function (node) {
-                node.locals = node.locals || Object.create(null);
-                if (node.id) {
-                    node.locals[node.id.name] = true;
-                }
-            };
-            var declarePattern = function (node, parent) {
-                switch (node.type) {
-                    case 'Identifier':
-                        parent.locals[node.name] = true;
-                        break;
-                    case 'ObjectPattern':
-                        node.properties.forEach(function (node) {
-                            declarePattern(node.value || node.argument, parent);
-                        });
-                        break;
-                    case 'ArrayPattern':
-                        node.elements.forEach(function (node) {
-                            if (node) declarePattern(node, parent);
-                        });
-                        break;
-                    case 'RestElement':
-                        declarePattern(node.argument, parent);
-                        break;
-                    case 'AssignmentPattern':
-                        declarePattern(node.left, parent);
-                        break;
-                    // istanbul ignore next
-                    default:
-                        throw new Error('Unrecognized pattern type: ' + node.type);
-                }
-            };
-            var declareModuleSpecifier = function (node, parents) {
-                ast.locals = ast.locals || Object.create(null);
-                ast.locals[node.local.name] = true;
-            };
             walk.ancestor(ast, {
-                'VariableDeclaration': function (node: any, parents) {
-                    var parent = null;
-                    for (var i = parents.length - 1; i >= 0 && parent === null; i--) {
-                        if (node.kind === 'var' ? isScope(parents[i]) : isBlockScope(parents[i])) {
-                            parent = parents[i];
-                        }
+                ImportExpression(n) {
+                    removeNodes.push(n)
+                },
+                Identifier(n) {
+                    isSuspectId(n['name'])
+                },
+                VariablePattern(n) {
+                    isSuspectId(n['name'])
+                },
+                ImportSpecifier(n) {
+                    isSuspectId(n['local']['name'])
+                },
+                ImportDefaultSpecifier(n) {
+                    isSuspectId(n['local']['name'])
+                },
+                ImportNamespaceSpecifier(n) {
+                    isSuspectId(n['local']['name'])
+                },
+                PrivateIdentifier(n) {
+                    isSuspectId(n['name'])
+                },
+                PropertyDefinition(n) {
+                    if (n['key']?.type == 'PrivateIdentifier') {
+                        isSuspectId(n['key']['name'])
                     }
-                    parent.locals = parent.locals || Object.create(null);
-                    node.declarations.forEach(function (declaration) {
-                        declarePattern(declaration.id, parent);
+                },
+                ExportNamedDeclaration(n) {
+                    specifierNodes.push(n)
+                },
+                ImportDeclaration(n) {
+                    specifierNodes.push(n)
+                },
+                ExportAllDeclaration(n) {
+                    specifierNodes.push(n)
+                },
+                MetaProperty(n) {
+                    removeNodes.push(n)
+                }
+            })
+            for (let n of specifierNodes) {
+                if (n.source) {
+                    const specifier = n.source.value
+                    importSpecifiers.push(specifier)
+                    if (isSpecifierInvalid(filename, specifier)) {
+                        return { type: FileType.error, error: ParseFilesError.invalidSpecifier, message: specifier, filename }
+                    }
+                }
+            }
+            for (let n of sourceMappingURLs) {
+                if (isRelativeInvalid(filename, n)) {
+                    return { type: FileType.error, error: ParseFilesError.invalidSpecifier, message: n, filename }
+                }
+            }
+            let position = 0
+            let importSubstitute
+            const importSubstituteOffsets: number[] = []
+            removeNodes.sort((a, b) => a.start - b.start)
+            let body = ''
+            for (let n of removeNodes) {
+                if (position != n.start) {
+                    body += text.substring(position, n.start)
+                }
+                position = n.end
+                if (n.type == 'ImportExpression' || (n.type == 'MetaProperty' && n.meta.name == 'import')) {
+                    position = n.start + 6
+                    if (!importSubstitute) {
+                        importSubstitute = getSubstituteId(importSuspectIds, 5, '$')
+                    }
+                    if (!importSubstitute) {
+                        return { type: FileType.error, error: ParseFilesError.importSubstitute, message: filename, filename }
+                    }
+                    importSubstituteOffsets.push(n.start)
+                    body += importSubstitute
+                }
+            }
+            body += text.substring(position)
+            let glob
+            //const g = glo(ast)
+            {//fork of acorn-globals with PRs #52 #58 #60 and fix for ExportAllDeclaration es2020
+                var globals = [];
+                function isScope(node) {
+                    return node.type === 'FunctionExpression' || node.type === 'FunctionDeclaration' || node.type === 'ArrowFunctionExpression' || node.type === 'Program';
+                }
+                function isBlockScope(node) {
+                    return node.type === 'BlockStatement' || isScope(node);
+                }
+
+                function declaresArguments(node) {
+                    return node.type === 'FunctionExpression' || node.type === 'FunctionDeclaration';
+                }
+
+                function declaresThis(node) {
+                    return node.type === 'FunctionExpression' || node.type === 'FunctionDeclaration';
+                }
+                var declareFunction = function (node) {
+                    var fn = node;
+                    fn.locals = fn.locals || Object.create(null);
+                    node.params.forEach(function (node) {
+                        declarePattern(node, fn);
                     });
-                },
-                'FunctionDeclaration': function (node: any, parents) {
-                    var parent = null;
-                    for (var i = parents.length - 2; i >= 0 && parent === null; i--) {
-                        if (isScope(parents[i])) {
-                            parent = parents[i];
+                    if (node.id) {
+                        fn.locals[node.id.name] = true;
+                    }
+                };
+                var declareClass = function (node) {
+                    node.locals = node.locals || Object.create(null);
+                    if (node.id) {
+                        node.locals[node.id.name] = true;
+                    }
+                };
+                var declarePattern = function (node, parent) {
+                    switch (node.type) {
+                        case 'Identifier':
+                            parent.locals[node.name] = true;
+                            break;
+                        case 'ObjectPattern':
+                            node.properties.forEach(function (node) {
+                                declarePattern(node.value || node.argument, parent);
+                            });
+                            break;
+                        case 'ArrayPattern':
+                            node.elements.forEach(function (node) {
+                                if (node) declarePattern(node, parent);
+                            });
+                            break;
+                        case 'RestElement':
+                            declarePattern(node.argument, parent);
+                            break;
+                        case 'AssignmentPattern':
+                            declarePattern(node.left, parent);
+                            break;
+                        // istanbul ignore next
+                        default:
+                            throw new Error('Unrecognized pattern type: ' + node.type);
+                    }
+                };
+                var declareModuleSpecifier = function (node, parents) {
+                    ast.locals = ast.locals || Object.create(null);
+                    ast.locals[node.local.name] = true;
+                };
+                walk.ancestor(ast, {
+                    'VariableDeclaration': function (node: any, parents) {
+                        var parent = null;
+                        for (var i = parents.length - 1; i >= 0 && parent === null; i--) {
+                            if (node.kind === 'var' ? isScope(parents[i]) : isBlockScope(parents[i])) {
+                                parent = parents[i];
+                            }
+                        }
+                        parent.locals = parent.locals || Object.create(null);
+                        node.declarations.forEach(function (declaration) {
+                            declarePattern(declaration.id, parent);
+                        });
+                    },
+                    'FunctionDeclaration': function (node: any, parents) {
+                        var parent = null;
+                        for (var i = parents.length - 2; i >= 0 && parent === null; i--) {
+                            if (isScope(parents[i])) {
+                                parent = parents[i];
+                            }
+                        }
+                        parent.locals = parent.locals || Object.create(null);
+                        if (node.id) {
+                            parent.locals[node.id.name] = true;
+                        }
+                        declareFunction(node);
+                    },
+                    'Function': declareFunction,
+                    'ClassDeclaration': function (node: any, parents) {
+                        var parent = null;
+                        for (var i = parents.length - 2; i >= 0 && parent === null; i--) {
+                            if (isBlockScope(parents[i])) {
+                                parent = parents[i];
+                            }
+                        }
+                        parent.locals = parent.locals || Object.create(null);
+                        if (node.id) {
+                            parent.locals[node.id.name] = true;
+                        }
+                        declareClass(node);
+                    },
+                    'Class': declareClass,
+                    'TryStatement': function (node: any) {
+                        if (node.handler === null || node.handler.param === null) return;
+                        node.handler.locals = node.handler.locals || Object.create(null);
+                        declarePattern(node.handler.param, node.handler);
+                    },
+                    'ImportDefaultSpecifier': declareModuleSpecifier,
+                    'ImportSpecifier': declareModuleSpecifier,
+                    'ImportNamespaceSpecifier': declareModuleSpecifier,
+                    'ExportAllDeclaration': function (node: any) {//TODO make pull request or formal fork
+                        ast.ignore = ast.ignore || new WeakSet();
+                        if (node.exported) {
+                            ast.ignore.add(node.exported)
                         }
                     }
-                    parent.locals = parent.locals || Object.create(null);
-                    if (node.id) {
-                        parent.locals[node.id.name] = true;
+                });
+                function identifier(node, parents) {
+                    var name = node.name;
+                    if (name === 'undefined') return;
+                    if (ast.ignore && ast.ignore.has(node)) {
+                        return
                     }
-                    declareFunction(node);
-                },
-                'Function': declareFunction,
-                'ClassDeclaration': function (node: any, parents) {
-                    var parent = null;
-                    for (var i = parents.length - 2; i >= 0 && parent === null; i--) {
-                        if (isBlockScope(parents[i])) {
-                            parent = parents[i];
-                        }
-                    }
-                    parent.locals = parent.locals || Object.create(null);
-                    if (node.id) {
-                        parent.locals[node.id.name] = true;
-                    }
-                    declareClass(node);
-                },
-                'Class': declareClass,
-                'TryStatement': function (node: any) {
-                    if (node.handler === null || node.handler.param === null) return;
-                    node.handler.locals = node.handler.locals || Object.create(null);
-                    declarePattern(node.handler.param, node.handler);
-                },
-                'ImportDefaultSpecifier': declareModuleSpecifier,
-                'ImportSpecifier': declareModuleSpecifier,
-                'ImportNamespaceSpecifier': declareModuleSpecifier,
-                'ExportAllDeclaration': function (node: any) {//TODO make pull request or formal fork
-                    ast.ignore = ast.ignore || new WeakSet();
-                    if (node.exported) {
-                        ast.ignore.add(node.exported)
-                    }
-                }
-            });
-            function identifier(node, parents) {
-                var name = node.name;
-                if (name === 'undefined') return;
-                if (ast.ignore && ast.ignore.has(node)) {
-                    return
-                }
-                for (var i = 0; i < parents.length; i++) {
-                    if (name === 'arguments' && declaresArguments(parents[i])) {
-                        return;
-                    }
-                    if (parents[i].locals && name in parents[i].locals) {
-                        return;
-                    }
-                }
-                node.parents = parents.slice();
-                globals.push(node);
-            }
-            walk.ancestor(ast, {
-                'VariablePattern': identifier,
-                'Identifier': identifier,
-                'ThisExpression': function (node: any, parents) {
                     for (var i = 0; i < parents.length; i++) {
-                        var parent = parents[i];
-                        if (parent.type === 'FunctionExpression' || parent.type === 'FunctionDeclaration') { return; }
-                        if (parent.type === 'PropertyDefinition' && parents[i + 1] === parent.value) { return; }
+                        if (name === 'arguments' && declaresArguments(parents[i])) {
+                            return;
+                        }
+                        if (parents[i].locals && name in parents[i].locals) {
+                            return;
+                        }
                     }
                     node.parents = parents.slice();
                     globals.push(node);
                 }
-            });
-            var groupedGlobals = Object.create(null);
-            globals.forEach(function (node) {
-                var name = node.type === 'ThisExpression' ? 'this' : node.name;
-                groupedGlobals[name] = (groupedGlobals[name] || []);
-                groupedGlobals[name].push(node);
-            });
-            glob = Object.keys(groupedGlobals).sort().map(function (name) {
-                return { name: name, nodes: groupedGlobals[name] };
-            });
+                walk.ancestor(ast, {
+                    'VariablePattern': identifier,
+                    'Identifier': identifier,
+                    'ThisExpression': function (node: any, parents) {
+                        for (var i = 0; i < parents.length; i++) {
+                            var parent = parents[i];
+                            if (parent.type === 'FunctionExpression' || parent.type === 'FunctionDeclaration') { return; }
+                            if (parent.type === 'PropertyDefinition' && parents[i + 1] === parent.value) { return; }
+                        }
+                        node.parents = parents.slice();
+                        globals.push(node);
+                    }
+                });
+                var groupedGlobals = Object.create(null);
+                globals.forEach(function (node) {
+                    var name = node.type === 'ThisExpression' ? 'this' : node.name;
+                    groupedGlobals[name] = (groupedGlobals[name] || []);
+                    groupedGlobals[name].push(node);
+                });
+                glob = Object.keys(groupedGlobals).sort().map(function (name) {
+                    return { name: name, nodes: groupedGlobals[name] };
+                });
+            }
+            glob = glob.map(x => x.name)
+            return { type: fileType, value: b, body, globals: glob, importSubstitute, importSubstituteOffsets, importSpecifiers, sourceMappingURLs }
         }
-        glob = glob.map(x => x.name)
-        return { type: fileType, value: b, body, globals: glob, importSubstitute, importSubstituteOffsets, importSpecifiers, sourceMappingURLs }
+        catch (e) {
+            return { type: FileType.error, error: ParseFilesError.syntax, message: e.message, filename }
+        }
     }
     else if (fileType == FileType.json) {
         if (filename == 'npm-shrinkwrap.json') {
