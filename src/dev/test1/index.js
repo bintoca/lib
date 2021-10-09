@@ -21,4 +21,6 @@ console.log('not enum', Object.getOwnPropertyNames(window).map(x => { return { x
 console.log('writeable', Object.getOwnPropertyNames(window).map(x => { return { x, d: Object.getOwnPropertyDescriptor(window, x) } }).filter(x => x.d.writable || x.d.set))
 console.log('not writeable', Object.getOwnPropertyNames(window).map(x => { return { x, d: Object.getOwnPropertyDescriptor(window, x) } }).filter(x => !x.d.writable && !x.d.set))
 
-document.body.textContent = 'hey123' + w.s + import.meta.url
+const d = document.createElement('div')
+document.body.appendChild(d)
+d.textContent = 'hey123' + w.s + import.meta.url

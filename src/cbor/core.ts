@@ -1288,6 +1288,50 @@ export const defaultTypeMap = new Map<Function, (a, state: EncoderState) => void
     tagItem(tags.uint8, state)
     binaryItem(a, state)
 }],
+[Int8Array, (a: Int8Array, state: EncoderState) => {
+    tagItem(tags.sint8, state)
+    binaryItem(a, state)
+}],
+[Uint8ClampedArray, (a: Uint8ClampedArray, state: EncoderState) => {
+    tagItem(tags.uint8Clamped, state)
+    binaryItem(a, state)
+}],
+[Int16Array, (a: Int16Array, state: EncoderState) => {
+    tagItem(tags.sint16LE, state)
+    binaryItem(a, state)
+}],
+[Uint16Array, (a: Uint16Array, state: EncoderState) => {
+    tagItem(tags.uint16LE, state)
+    binaryItem(a, state)
+}],
+[Int32Array, (a: Int32Array, state: EncoderState) => {
+    tagItem(tags.sint32LE, state)
+    binaryItem(a, state)
+}],
+[Uint32Array, (a: Uint32Array, state: EncoderState) => {
+    tagItem(tags.uint32LE, state)
+    binaryItem(a, state)
+}],
+[String, (a: String, state: EncoderState) => {
+    state.stack.push(['Object', a.valueOf()])
+    state.stack.push(new TagHelper(tags.typeConstructor))
+}],
+[Number, (a: Number, state: EncoderState) => {
+    state.stack.push(['Object', a.valueOf()])
+    state.stack.push(new TagHelper(tags.typeConstructor))
+}],
+[Boolean, (a: Boolean, state: EncoderState) => {
+    state.stack.push(['Object', a.valueOf()])
+    state.stack.push(new TagHelper(tags.typeConstructor))
+}],
+[RegExp, (a: RegExp, state: EncoderState) => {
+    state.stack.push(['RegExp', a.source, a.flags])
+    state.stack.push(new TagHelper(tags.typeConstructor))
+}],
+[DataView, (a: DataView, state: EncoderState) => {
+    state.stack.push(['DataView', a.buffer.slice(a.byteOffset, a.byteOffset + a.byteLength)])
+    state.stack.push(new TagHelper(tags.typeConstructor))
+}],
 [TagHelper, (a: TagHelper, state: EncoderState) => {
     tagItem(a.tag, state)
 }]
@@ -1297,6 +1341,16 @@ if (typeof Blob == 'function') {
         state.resume = {
             promise: a.arrayBuffer().then(x => {
                 state.stack.push(['Blob', [x], { type: a.type }])
+                state.stack.push(new TagHelper(tags.typeConstructor))
+            })
+        }
+    })
+}
+if (typeof File == 'function') {
+    defaultTypeMap.set(File, (a: File, state: EncoderState) => {
+        state.resume = {
+            promise: a.arrayBuffer().then(x => {
+                state.stack.push(['File', [x], a.name, { type: a.type, lastModified: a.lastModified }])
                 state.stack.push(new TagHelper(tags.typeConstructor))
             })
         }
@@ -1318,6 +1372,72 @@ if (typeof Buffer == 'function') {
         binaryItem(a, state)
     })
 }
+if (typeof BigInt == 'function') {
+    defaultTypeMap.set(BigInt, (a: BigInt, state: EncoderState) => {
+        state.stack.push(['Object', a.valueOf()])
+        state.stack.push(new TagHelper(tags.typeConstructor))
+    })
+}
+if (typeof BigInt64Array == 'function') {
+    defaultTypeMap.set(BigInt64Array, (a: BigInt64Array, state: EncoderState) => {
+        tagItem(tags.sint64LE, state)
+        binaryItem(a, state)
+    })
+}
+if (typeof BigUint64Array == 'function') {
+    defaultTypeMap.set(BigUint64Array, (a: BigUint64Array, state: EncoderState) => {
+        tagItem(tags.uint64LE, state)
+        binaryItem(a, state)
+    })
+}
+if (typeof ImageData == 'function') {
+    defaultTypeMap.set(ImageData, (a: ImageData, state: EncoderState) => {
+        state.stack.push(['ImageData', a.data, a.width, a.height])
+        state.stack.push(new TagHelper(tags.typeConstructor))
+    })
+}
+if (typeof DOMPoint == 'function') {
+    defaultTypeMap.set(DOMPoint, (a: DOMPoint, state: EncoderState) => {
+        state.stack.push(['DOMPoint', a.x, a.y, a.z, a.w])
+        state.stack.push(new TagHelper(tags.typeConstructor))
+    })
+}
+if (typeof DOMPointReadOnly == 'function') {
+    defaultTypeMap.set(DOMPointReadOnly, (a: DOMPointReadOnly, state: EncoderState) => {
+        state.stack.push(['DOMPointReadOnly', a.x, a.y, a.z, a.w])
+        state.stack.push(new TagHelper(tags.typeConstructor))
+    })
+}
+if (typeof DOMRect == 'function') {
+    defaultTypeMap.set(DOMRect, (a: DOMRect, state: EncoderState) => {
+        state.stack.push(['DOMRect', a.x, a.y, a.width, a.height])
+        state.stack.push(new TagHelper(tags.typeConstructor))
+    })
+}
+if (typeof DOMRectReadOnly == 'function') {
+    defaultTypeMap.set(DOMRectReadOnly, (a: DOMRectReadOnly, state: EncoderState) => {
+        state.stack.push(['DOMRectReadOnly', a.x, a.y, a.width, a.height])
+        state.stack.push(new TagHelper(tags.typeConstructor))
+    })
+}
+if (typeof DOMQuad == 'function') {
+    defaultTypeMap.set(DOMQuad, (a: DOMQuad, state: EncoderState) => {
+        state.stack.push(['DOMQuad', a.p1, a.p2, a.p3, a.p4])
+        state.stack.push(new TagHelper(tags.typeConstructor))
+    })
+}
+if (typeof DOMMatrix == 'function') {
+    defaultTypeMap.set(DOMMatrix, (a: DOMMatrix, state: EncoderState) => {
+        state.stack.push(['DOMMatrix', [a.m11, a.m12, a.m13, a.m14, a.m21, a.m22, a.m23, a.m24, a.m31, a.m32, a.m33, a.m34, a.m41, a.m42, a.m43, a.m44]])
+        state.stack.push(new TagHelper(tags.typeConstructor))
+    })
+}
+if (typeof DOMMatrixReadOnly == 'function') {
+    defaultTypeMap.set(DOMMatrixReadOnly, (a: DOMMatrixReadOnly, state: EncoderState) => {
+        state.stack.push(['DOMMatrixReadOnly', [a.m11, a.m12, a.m13, a.m14, a.m21, a.m22, a.m23, a.m24, a.m31, a.m32, a.m33, a.m34, a.m41, a.m42, a.m43, a.m44]])
+        state.stack.push(new TagHelper(tags.typeConstructor))
+    })
+}
 export const defaultTagMap = new Map<number | bigint, (v, state: DecoderState) => any>([[tags.dateString, (v) => new Date(v)], [tags.datePOSIX, (v) => new Date(v * 1000)], [tags.extendedTime, (v) => new Date((v.get(1) || 0) * 1000 + (v.get(-3) || 0))],
 [tags.positiveBigNum, decodeBigInt], [tags.negativeBigNum, decodeBigInt],
 [tags.Map, (v) => {
@@ -1333,6 +1453,20 @@ export const defaultTagMap = new Map<number | bigint, (v, state: DecoderState) =
     throw new Error('invalid Set tag')
 }],
 [tags.uint8, (v) => new Uint8Array(v)],
+[tags.uint8Clamped, (v) => new Uint8ClampedArray(v)],
+[tags.sint8, (v) => new Int8Array(v)],
+[tags.uint16BE, (v) => new Uint16Array(v)],
+[tags.uint16LE, (v) => new Uint16Array(v)],
+[tags.sint16BE, (v) => new Int16Array(v)],
+[tags.sint16LE, (v) => new Int16Array(v)],
+[tags.uint32BE, (v) => new Uint32Array(v)],
+[tags.uint32LE, (v) => new Uint32Array(v)],
+[tags.sint32BE, (v) => new Int32Array(v)],
+[tags.sint32LE, (v) => new Int32Array(v)],
+[tags.uint64BE, (v) => typeof BigUint64Array == 'function' ? new BigUint64Array(v) : new Uint8Array(v)],
+[tags.uint64LE, (v) => typeof BigUint64Array == 'function' ? new BigUint64Array(v) : new Uint8Array(v)],
+[tags.sint64BE, (v) => typeof BigInt64Array == 'function' ? new BigInt64Array(v) : new Uint8Array(v)],
+[tags.sint64LE, (v) => typeof BigInt64Array == 'function' ? new BigInt64Array(v) : new Uint8Array(v)],
 [tags.absent, (v) => absentSymbol],
 [tags.typeConstructor, (v: any[], state) => {
     const c = state.namedConstructorMap.get(v[0])
@@ -1343,6 +1477,42 @@ export const defaultTagMap = new Map<number | bigint, (v, state: DecoderState) =
 }]
 ])
 export const defaultNamedConstructorMap = new Map<string, (v, state: DecoderState) => any>([
+    ['Object', (v: any[], state: DecoderState) => {
+        if (v.length != 1) {
+            throw new Error('Object invalid parameters')
+        }
+        return Object(v[0])
+    }],
+    ['DataView', (v: any[], state: DecoderState) => {
+        if (v.length != 1) {
+            throw new Error('DataView invalid parameters')
+        }
+        return new DataView(v[0])
+    }],
+    ['RegExp', (v: any[], state: DecoderState) => {
+        if (v.length != 2) {
+            throw new Error('RegExp invalid parameters')
+        }
+        return new RegExp(v[0], v[1])
+    }],
+    ['Blob', (v: any[], state: DecoderState) => {
+        if (v.length != 2) {
+            throw new Error('Blob invalid parameters')
+        }
+        return new Blob(v[0], v[1])
+    }],
+    ['File', (v: any[], state: DecoderState) => {
+        if (v.length != 3) {
+            throw new Error('File invalid parameters')
+        }
+        return new File(v[0], v[1], v[2])
+    }],
+    ['ImageData', (v: any[], state: DecoderState) => {
+        if (v.length != 3) {
+            throw new Error('ImageData invalid parameters')
+        }
+        return new ImageData(v[0], v[1], v[2])
+    }],
     ['CryptoKey', (v: any[], state: DecoderState) => {
         if (v.length != 4) {
             throw new Error('CryptoKey invalid parameters')
@@ -1350,5 +1520,47 @@ export const defaultNamedConstructorMap = new Map<string, (v, state: DecoderStat
         const i = state.promises.length
         state.promises.push(v[3] ? crypto.subtle.importKey('jwk', v[3], v[0], v[1], v[2]) : crypto.subtle.generateKey(v[0], v[1], v[2]))
         return { [promiseRefSymbol]: i }
+    }],
+    ['DOMPoint', (v: any[], state: DecoderState) => {
+        if (v.length != 4) {
+            throw new Error('DOMPoint invalid parameters')
+        }
+        return new DOMPoint(v[0], v[1], v[2], v[3])
+    }],
+    ['DOMPointReadOnly', (v: any[], state: DecoderState) => {
+        if (v.length != 4) {
+            throw new Error('DOMPointReadOnly invalid parameters')
+        }
+        return new DOMPointReadOnly(v[0], v[1], v[2], v[3])
+    }],
+    ['DOMRect', (v: any[], state: DecoderState) => {
+        if (v.length != 4) {
+            throw new Error('DOMRect invalid parameters')
+        }
+        return new DOMRect(v[0], v[1], v[2], v[3])
+    }],
+    ['DOMRectReadOnly', (v: any[], state: DecoderState) => {
+        if (v.length != 4) {
+            throw new Error('DOMRectReadOnly invalid parameters')
+        }
+        return new DOMRectReadOnly(v[0], v[1], v[2], v[3])
+    }],
+    ['DOMQuad', (v: any[], state: DecoderState) => {
+        if (v.length != 4) {
+            throw new Error('DOMQuad invalid parameters')
+        }
+        return new DOMQuad(v[0], v[1], v[2], v[3])
+    }],
+    ['DOMMatrix', (v: any[], state: DecoderState) => {
+        if (v.length != 1) {
+            throw new Error('DOMMatrix invalid parameters')
+        }
+        return new DOMMatrix(v[0])
+    }],
+    ['DOMMatrixReadOnly', (v: any[], state: DecoderState) => {
+        if (v.length != 1) {
+            throw new Error('DOMMatrixReadOnly invalid parameters')
+        }
+        return new DOMMatrixReadOnly(v[0])
     }]
 ])

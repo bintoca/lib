@@ -34,7 +34,6 @@ defaultTagMap.set(15, (v, state) => {
     state.promises.push(Promise.resolve(v))
     return { [promiseRefSymbol]: i }
 })
-
 test.each([[0, '0,0,0,0,0,0,0,0,0', 1], [23, '23,0,0,0,0,0,0,0,0', 1], [24, '24,24,0,0,0,0,0,0,0', 2], [256, '25,1,0,0,0,0,0,0,0', 3], [2 ** 16, '26,0,1,0,0,0,0,0,0', 5], [2 ** 32, '27,0,0,0,1,0,0,0,0', 9],
 [-23, '54,0,0,0,0,0,0,0,0', 1], [-25, '56,24,0,0,0,0,0,0,0', 2], [-257, '57,1,0,0,0,0,0,0,0', 3], [-(2 ** 16 + 1), '58,0,1,0,0,0,0,0,0', 5], [-(2 ** 32 + 1), '59,0,0,0,1,0,0,0,0', 9]])('integerItem(%i)', (a, e, l) => {
     const out = { view: new DataView(new ArrayBuffer(9)), length: 0 } as EncoderState
@@ -122,19 +121,23 @@ test('items', () => {
     expect(new Uint8Array(out.view.buffer).toString()).toBe('129,161,1,202,246,247,245,244,160,160,95,127,159,191,255,217,1,3,160,160,217,1,2,128,128,217,3,233,162,1,1,34,24,234,193,2,0,0,0,0')
     expect(out.length).toBe(36)
 })
-
 const cycle1 = {}
 const cycle2 = {}
 cycle1['a'] = cycle1
 cycle1['b'] = [cycle2, cycle2]
-
 test.each([[{ a: 1, b: [2, 3] }, [new Uint8Array([162, 97, 97, 1, 97, 98, 130, 2, 3])]], [cycle1, [new Uint8Array([216, 28, 162, 97, 97, 216, 29, 0, 97, 98, 130, 216, 28, 160, 216, 29, 1])]],
 [[new ArrayBuffer(4092), new ArrayBuffer(8)], [new Uint8Array([130, 89, 15, 252].concat(Array(4092))), new Uint8Array([72].concat(Array(8)))]], //resumeItem
 [[new ArrayBuffer(4100)], [new Uint8Array([129, 89, 16, 4].concat(Array(4092))), new Uint8Array(Array(8))]], //resumeBuffer
 [[new ArrayBuffer(4100), new ArrayBuffer(4100)], [new Uint8Array([130, 89, 16, 4].concat(Array(4092))), new Uint8Array(Array(8).concat([89, 16, 4].concat(Array(4085)))), new Uint8Array(Array(15))]], //resumeBuffer 2
 [[new ArrayBuffer(9000)], [new Uint8Array([129, 89, 35, 40].concat(Array(4092))), new Uint8Array(4096), new Uint8Array(Array(812))]], //resumeBuffer large
-[{ a: [1, , 2], [tagSymbol]: [5, 6] }, [new Uint8Array([197, 198, 161, 97, 97, 131, 1, 216, 31, 247, 2])]],
-[{ a: 1, [tagSymbol]: 5 }, [new Uint8Array([197, 161, 97, 97, 1])]]
+[{ a: [1, , 2], [tagSymbol]: [5, 6] }, [new Uint8Array([197, 198, 161, 97, 97, 131, 1, 216, 31, 247, 2])]], [{ a: 1, [tagSymbol]: 5 }, [new Uint8Array([197, 161, 97, 97, 1])]],
+[new Uint8Array(), [new Uint8Array([216, 64, 64])]], [new Uint8ClampedArray(), [new Uint8Array([216, 68, 64])]], [Buffer.from([]), [new Uint8Array([216, 64, 64])]],
+[new Int8Array(), [new Uint8Array([216, 72, 64])]], [new Uint16Array(), [new Uint8Array([216, 69, 64])]], [new Int16Array(), [new Uint8Array([216, 77, 64])]],
+[new Uint32Array(), [new Uint8Array([216, 70, 64])]], [new Int32Array(), [new Uint8Array([216, 78, 64])]], [new BigUint64Array(), [new Uint8Array([216, 71, 64])]],
+[new BigInt64Array(), [new Uint8Array([216, 79, 64])]], [new String(''), [new Uint8Array([216, 27, 130, 102, 79, 98, 106, 101, 99, 116, 96])]],
+[new Number(2), [new Uint8Array([216, 27, 130, 102, 79, 98, 106, 101, 99, 116, 2])]], [new Boolean(true), [new Uint8Array([216, 27, 130, 102, 79, 98, 106, 101, 99, 116, 245])]],
+[Object(BigInt(3)), [new Uint8Array([216, 27, 130, 102, 79, 98, 106, 101, 99, 116, 194, 65, 3])]], [new RegExp('', ''), [new Uint8Array([216, 27, 131, 102, 82, 101, 103, 69, 120, 112, 100, 40, 63, 58, 41, 96])]],
+[new DataView(new ArrayBuffer(0)), [new Uint8Array([216, 27, 130, 104, 68, 97, 116, 97, 86, 105, 101, 119, 64])]]
 ])('encodeSync(%#)', (a, e) => {
     const r = encodeSync(a, setupEncoder())
     expect(r.length).toBe(e.length)
@@ -242,7 +245,6 @@ test.each([[new ArrayBuffer(4100), new Uint8Array([89, 16, 4].concat(Array(4093)
     expect(new Uint8Array(r[0])).toEqual(a1)
     expect(new Uint8Array(r[1])).toEqual(b1)
 })
-
 test.each([[[0], 0, 1], [[24, 50], 50, 2], [[25, 1, 0], 256, 3], [[26, 1, 0, 0, 0], 2 ** 24, 5], [[27, 0, 0, 0, 1, 0, 0, 0, 0], 2 ** 32, 9], [[27, 1, 0, 0, 0, 0, 0, 0, 0], BigInt(2) ** BigInt(56), 9], [[250, 90, 0, 0, 0], Number.MAX_SAFE_INTEGER + 1, 5],
 [[54], -23, 1], [[56, 24], -25, 2], [[57, 1, 0], -257, 3], [[58, 0, 1, 0, 0], -(2 ** 16 + 1), 5], [[59, 0, 0, 0, 1, 0, 0, 0, 0], -(2 ** 32 + 1), 9], [[250, 218, 0, 0, 0], Number.MIN_SAFE_INTEGER - 1, 5],
 [[249, 62, 0], 1.5, 3], [[250, 71, 128, 0, 64], 2 ** 16 + 0.5, 5], [[251, 65, 240, 0, 0, 0, 8, 0, 0], 2 ** 32 + 0.5, 9], [[249, 128, 0], -0, 3], [[249, 126, 0], NaN, 3], [[249, 124, 0], Infinity, 3], [[249, 252, 0], -Infinity, 3],
@@ -327,7 +329,22 @@ test.each([[new Uint8Array(), undefined], [[new Uint8Array(), new Uint8Array([2]
 [[new Uint8Array([101]), new Uint8Array([104, 101, 108, 108, 111])], 'hello'], [[new Uint8Array([99, 104]), new Uint8Array([101, 121])], 'hey'],
 [[new Uint8Array([120, 40, 104]), new Uint8Array([65, 65, 65, 65, 65, 65, 65, 65, 65, 65, 65, 65, 65, 65, 65, 65, 65, 65, 65, 65, 65, 65, 65, 65, 65, 65, 65, 65, 65, 65, 65, 65, 65, 65, 65, 65, 65]), new Uint8Array([101, 0, 1, 3])], 'hAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAe\0'],
 [[new Uint8Array([216, 64, 95]), new Uint8Array([66, 101, 104, 255])], new Uint8Array([101, 104])], [[new Uint8Array([127]), new Uint8Array([101, 104, 101, 108, 108, 111, 255])], 'hello'],
-[[new Uint8Array([159]), new Uint8Array([1, 2, 3, 255])], [1, 2, 3]], [[new Uint8Array([191]), new Uint8Array([1, 2, 3, 4, 255])], new Map([[1, 2], [3, 4]])]])('decodeSync(%i,%s)', (a, e) => {
+[[new Uint8Array([159]), new Uint8Array([1, 2, 3, 255])], [1, 2, 3]], [[new Uint8Array([191]), new Uint8Array([1, 2, 3, 4, 255])], new Map([[1, 2], [3, 4]])],
+])('decodeSync(%i,%s)', (a, e) => {
+    const state = setupDecoder()
+    const r = decodeSync(a, state, { allowExcessBytes: true })
+    expect(e instanceof ArrayBuffer ? new Uint8Array(r) : r).toEqual(e instanceof ArrayBuffer ? new Uint8Array(e) : e)
+})
+test.each([[new Uint8Array(), [new Uint8Array([216, 64, 64])]], [new Uint8ClampedArray(), [new Uint8Array([216, 68, 64])]],
+[new Int8Array(), [new Uint8Array([216, 72, 64])]], [new Uint16Array(), [new Uint8Array([216, 69, 64])]], [new Int16Array(), [new Uint8Array([216, 77, 64])]],
+[new Uint32Array(), [new Uint8Array([216, 70, 64])]], [new Int32Array(), [new Uint8Array([216, 78, 64])]], [new BigUint64Array(), [new Uint8Array([216, 71, 64])]],
+[new BigInt64Array(), [new Uint8Array([216, 79, 64])]], [new Uint16Array(), [new Uint8Array([216, 65, 64])]], [new Int16Array(), [new Uint8Array([216, 73, 64])]],
+[new Uint32Array(), [new Uint8Array([216, 66, 64])]], [new Int32Array(), [new Uint8Array([216, 74, 64])]], [new BigUint64Array(), [new Uint8Array([216, 67, 64])]],
+[new BigInt64Array(), [new Uint8Array([216, 75, 64])]], [new String(''), [new Uint8Array([216, 27, 130, 102, 79, 98, 106, 101, 99, 116, 96])]],
+[new Number(2), [new Uint8Array([216, 27, 130, 102, 79, 98, 106, 101, 99, 116, 2])]], [new Boolean(true), [new Uint8Array([216, 27, 130, 102, 79, 98, 106, 101, 99, 116, 245])]],
+[Object(BigInt(3)), [new Uint8Array([216, 27, 130, 102, 79, 98, 106, 101, 99, 116, 194, 65, 3])]], [new RegExp('', ''), [new Uint8Array([216, 27, 131, 102, 82, 101, 103, 69, 120, 112, 100, 40, 63, 58, 41, 96])]],
+[new DataView(new ArrayBuffer(0)), [new Uint8Array([216, 27, 130, 104, 68, 97, 116, 97, 86, 105, 101, 119, 64])]]
+])('decodeSync_flip_Params(%s,%s)', (e, a) => {
     const state = setupDecoder()
     const r = decodeSync(a, state, { allowExcessBytes: true })
     expect(e instanceof ArrayBuffer ? new Uint8Array(r) : r).toEqual(e instanceof ArrayBuffer ? new Uint8Array(e) : e)

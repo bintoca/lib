@@ -10,6 +10,9 @@ const check = async () => {
     else {
         console.log(r)
     }
+    const d = document.createElement('div')
+    document.body.appendChild(d)
+    d.textContent = JSON.stringify(r)
 }
 check()
 //import * as acorn from 'acorn'

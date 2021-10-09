@@ -22,7 +22,7 @@
     <script type="module">
         import { Encoder, Decoder } from '@bintoca/cbor'
         import { defaultTypeMap } from '@bintoca/cbor/core'
-        import { print, checkArray, pushScope, popScope, eq, memberEq } from 'tester'
+        import { print, checkArray, pushScope, popScope, eq, memberEq, bufEq } from 'tester'
         //import * as idb from 'idb/with-async-ittr.js'
 
         async function test() {
@@ -416,17 +416,61 @@
                     }
                     const r1 = await f([2, 3, k1, 4, 5])
                     const r2 = await f([[k1, k1]])
-                    memberEq('roundTrip1', (await f([k1]))[0], k1)
-                    memberEq('roundTrip2', (await f([k1, k2]))[1], k2)
-                    memberEq('roundTrip3', [r1[0], r1[1], r1[3], r1[4]], [2, 3, 4, 5])
+                    const r3 = await f([[k1, k1]])
+                    pushScope('roundTrip')
+                    memberEq('1', (await f([k1]))[0], k1)
+                    memberEq('2', (await f([k1, k2]))[1], k2)
+                    memberEq('3', [r1[0], r1[1], r1[3], r1[4]], [2, 3, 4, 5])
                     if (r2[0][0] == r2[0][1]) {
-                        memberEq('roundTripShared', r2[0][0], k1)
+                        memberEq('Shared', r2[0][0], k1)
                     }
+                    {
+                        const v = new Blob([1], { type: 'text/plain' })
+                        memberEq('Blob', (await f([v]))[0], v)
+                    }
+                    {
+                        const v = new File([1], 'f.txt', { type: 'text/plain', lastModified: 2345 })
+                        memberEq('File', (await f([v]))[0], v)
+                    }
+                    {
+                        const v = new ImageData(new Uint8ClampedArray([1, 2, 3, 4, 5, 6, 7, 8]), 2, 1)
+                        bufEq('ImageData', (await f([v]))[0].data, v.data)
+                    }
+                    {
+                        const v = new DOMPoint(1, 2, 3, 4)
+                        memberEq('DOMPoint', (await f([v]))[0], v)
+                    }
+                    {
+                        const v = new DOMPointReadOnly(1, 2, 3, 4)
+                        memberEq('DOMPointReadOnly', (await f([v]))[0], v)
+                    }
+                    {
+                        const v = new DOMRect(1, 2, 3, 4)
+                        memberEq('DOMRect', (await f([v]))[0], v)
+                    }
+                    {
+                        const v = new DOMRectReadOnly(1, 2, 3, 4)
+                        memberEq('DOMRectReadOnly', (await f([v]))[0], v)
+                    }
+                    {
+                        const v = new DOMQuad(new DOMPoint(1, 2), new DOMPoint(3, 4), new DOMPoint(5, 6), new DOMPoint(7, 8))
+                        memberEq('DOMQuad', (await f([v]))[0], v)
+                    }
+                    {
+                        const v = new DOMMatrix([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16])
+                        memberEq('DOMMatrix', (await f([v]))[0], v)
+                    }
+                    {
+                        const v = new DOMMatrixReadOnly([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16])
+                        memberEq('DOMMatrixReadOnly', (await f([v]))[0], v)
+                    }
+                    popScope()
                 }
                 popScope()
             }
             print(['write then read', 'read then write', 'split chunk', 'error', 'abort', 'byob', 'byob error', 'cancel', 'pipeTo', 'pipeThrough', 'cycles'].map(x => 'Encoder/' + x)
-                .concat(['write then read', 'read then write', 'error', 'abort', 'cancel', 'roundTrip1', 'roundTrip2', 'roundTrip3', 'roundTripShared'].map(x => 'Decoder/' + x)))
+                .concat(['write then read', 'read then write', 'error', 'abort', 'cancel']
+                    .concat(['1', '2', '3', 'Shared', 'Blob', 'File', 'ImageData', 'DOMPoint', 'DOMPointReadOnly', 'DOMRect', 'DOMRectReadOnly', 'DOMQuad', 'DOMMatrix', 'DOMMatrixReadOnly'].map(x => 'roundTrip/' + x)).map(x => 'Decoder/' + x)))
         }
         test()
     </script>
@@ -470,12 +514,12 @@
                 n10: typeof BigUint64Array != 'function' ? 'placeholder for BigUint64Array' : new BigUint64Array(8),
                 o: new Blob(),
                 p: new File([''], 'name'),
-                q: navigator.vendor === '' ? 'placeholder for FileList' : document.getElementById('fileIn').files,//FileList
+                q: navigator.vendor === '' ? 'placeholder for FileList' : document.getElementById('fileIn').files,//FileList *** can't recreate
                 r: ss, //Symbol and extra members get dropped
                 s: { [sy]: 6 }, //Symbol and extra members get dropped
                 t: new RegExp('d'),
                 u: new DataView(new ArrayBuffer(4)),
-                v: navigator.vendor === '' || typeof createImageBitmap != 'function' ? 'placeholder for ImageBitmap' : (await createImageBitmap(new ImageData(5, 5))),
+                v: navigator.vendor === '' || typeof createImageBitmap != 'function' ? 'placeholder for ImageBitmap' : (await createImageBitmap(new ImageData(5, 5))), //*** can't export
                 w: new ImageData(new Uint8ClampedArray([1, 2, 3, 4, 5, 6, 7, 8]), 2, 1),
                 x: new Map(),
                 y: new Set(),
@@ -483,6 +527,13 @@
                 z0: navigator.vendor === '' ? 'placeholder for ECDSA key' : await crypto.subtle.generateKey({ name: 'ECDSA', namedCurve: 'P-256' }, true, ['sign', 'verify']),
                 za: NaN,
                 zb: navigator.vendor === '' || navigator.vendor === 'Apple Computer, Inc.' ? 'placeholder for Error' : new Error('err'),
+                zb0: navigator.vendor === '' || navigator.vendor === 'Apple Computer, Inc.' ? 'placeholder for Error' : new SyntaxError('err'),
+                zb1: navigator.vendor === '' || navigator.vendor === 'Apple Computer, Inc.' ? 'placeholder for Error' : new EvalError('err'),
+                zb2: navigator.vendor === '' || navigator.vendor === 'Apple Computer, Inc.' ? 'placeholder for Error' : new RangeError('err'),
+                zb3: navigator.vendor === '' || navigator.vendor === 'Apple Computer, Inc.' ? 'placeholder for Error' : new ReferenceError('err'),
+                zb4: navigator.vendor === '' || navigator.vendor === 'Apple Computer, Inc.' ? 'placeholder for Error' : new TypeError('err'),
+                zb5: navigator.vendor === '' || navigator.vendor === 'Apple Computer, Inc.' ? 'placeholder for Error' : new URIError('err'),
+                zb6: navigator.vendor === '' || navigator.vendor === 'Apple Computer, Inc.' ? 'placeholder for Error' : new AggregateError('err'),
                 zc: new DOMPointReadOnly(),
                 zd: new DOMPoint(),
                 ze: new DOMRectReadOnly(),
