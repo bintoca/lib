@@ -5,17 +5,20 @@ const { tes, expec } = (function () {
             const bad = []
             const good = []
             for (let x of list) {
+                let count = 1
                 for (let t of x.a) {
                     if (!Array.isArray(t)) {
                         t = [t]
                     }
+                    const n = x.n + ((x.a.length > 1) ? (t[0].toString() || count) : '')
                     try {
                         await x.f(...t)
-                        good.push({ name: x.n })
+                        good.push({ name: n })
                     }
                     catch (e) {
-                        bad.push({ name: x.n, message: e.message, stack: e.stack })
+                        bad.push({ name: n, message: e.message, stack: e.stack })
                     }
+                    count++
                 }
             }
             resolve({ good, bad })
@@ -93,7 +96,45 @@ tes('window', async () => {
     expec(globalThis).toBe(window)
     expec(globalThis.location.href).toBe(undefined)
 })
-tes('document', () => {
+tes('document', async () => {
+    expec(() => document.cookie).toThrow()
+    expec(() => document.cookie = 'a').toThrow()
     expec(() => document.title).toThrow()
     expec(() => document.title = 'a').toThrow()
+    expec(() => document.defaultView).toThrow()
+    expec(() => document.domain).toThrow()
+    expec(() => document.domain = 'a').toThrow()
+    expec(() => document.location).toThrow()
+    expec(() => document.location = 'a').toThrow()
+    expec(() => document.referrer).toThrow()
+    expec(() => document.URL).toThrow()
+    await new Promise((resolve, reject) => {
+        document.addEventListener('foo', (ev: Event) => {
+            try {
+                expec(ev.target).toBe(document)
+                expec(() => ev.target['location']).toThrow()
+                resolve(null)
+            }
+            catch (e) {
+                reject(e)
+            }
+        })
+        document.dispatchEvent(new Event('foo'))
+    })
+    await new Promise((resolve, reject) => {
+        const div = document.createElement('div')
+        div.textContent = 'te'
+        const lis = (ev) => {
+            expec(ev.view).toBe(undefined)
+            expec(ev.target['textContent']).toBe('te')
+            div.removeEventListener('click', lis)
+            div.remove()
+            resolve(null)
+        }
+        div.addEventListener('click', lis)
+        div.click()
+    })
 })
+tes('createElement_error_', (tag) => {
+    expec(() => document.createElement(tag)).toThrow()
+}, ['a', 'applet', 'base', 'body', 'embed', 'form', 'frame', 'head', 'html', 'iframe', 'link', 'meta', 'object', 'script', 'style', 'title'])

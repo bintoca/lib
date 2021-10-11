@@ -8,7 +8,7 @@
   "main": "index.js",
   "type": "module",
   "scripts": {
-    "test": "node ../../../packages/dev",
+    "server": "node ../../../packages/dev",
     "build": "tsc",
     "watch": "tsc -w"
   },
@@ -19,5 +19,8 @@
     "lib/m1.js",
     "lib/t1.js",
     "lib/m.css"
-  ]
+  ],
+  "devDependencies": {
+    "typescript": "^4.4.3"
+  }
 }

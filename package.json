@@ -7,9 +7,10 @@
   "main": "index.js",
   "scripts": {
     "test": "node --experimental-vm-modules node_modules/jest/bin/jest.js",
-    "build": "tsc -b src",
+    "build": "tsc -b src && tsc -b src/dev/test1",
     "watch": "tsc -b -w src",
-    "cbor-benchmark": "node ./packages/cbor/benchmark.js"
+    "cbor-benchmark": "node ./packages/cbor/benchmark.js",
+    "postinstall": "node ./src/setup.js"
   },
   "repository": {
     "type": "git",

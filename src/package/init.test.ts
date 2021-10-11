@@ -15,7 +15,8 @@ test('dom', async () => {
             .concat(lines('./packages/package/primordial.js'))
             .concat(['const { ObjectCreate, _Proxy, _Reflect, _WeakMap } = primordials'])
             .concat(lines('./packages/package/init.js').filter(x => !x.startsWith('const { _Set,'))
-                .map(x => x.includes('delete ob[k]') ? "if (typeof k == 'string' && !k.startsWith('_') && k != 'document' && k != 'location' && k != 'customElements') {delete ob[k]}" : x))
+                .map(x => x.includes('delete ob[k]') ? "if (typeof k == 'string' && !k.startsWith('_') && k != 'document' && k != 'location' && k != 'customElements') {delete ob[k]}" : x)
+                .map(x => x.includes('if (allowedNodeProps.has(property)) {') ? "if(typeof property == 'symbol'){return target[property]};if (allowedNodeProps.has(property)) {" : x))
             .concat(['gt.bintocaFetchTest = fetchPromise', 'return {window:selfProxy, document:documentProxy, location:locationProxy, self:selfProxy} })();'])
             .concat(lines('./src/dev/test1/lib/t1.js'))
             .join('\n'));
@@ -24,6 +25,6 @@ test('dom', async () => {
     await dom.window['bintocaFetchTest']
     const r = await dom.window['bintocaTest']
     expect(r.bad).toEqual([])
-    expect(r.good.length).toBe(4)
+    expect(r.good.length).toBe(20)
     expect(dom.window.document.head.firstChild != null).toBe(true)
 });

@@ -87,11 +87,14 @@ function styleProxy(sty) {
         }
     })
 }
-const allowedNodeProps = new _Set<string | Symbol>(['remove', 'textContent'])
+const allowedNodeProps = new _Set<string | Symbol>(['remove', 'textContent', 'click'])
 function nodeProxy(n) {
     const p = new _Proxy(n, {
         get(target, property, receiver) {
             if (allowedNodeProps.has(property)) {
+                if (typeof target[property] == 'function') {
+                    return (...x) => target[property](...x)
+                }
                 return target[property]
             }
             const et = eventTargetProps(target, property, receiver)
@@ -101,10 +104,10 @@ function nodeProxy(n) {
             switch (property) {
                 case 'appendChild':
                     return c => { target.appendChild(targetMap.get(c)); return c }
-                case 'insertBefore':
-                    return (n, r) => { target.insertBefore(targetMap.get(n), r ? targetMap.get(r) : r); return n }
-                case 'style':
-                    return styleProxy(target.style)
+                // case 'insertBefore':
+                //     return (n, r) => { target.insertBefore(targetMap.get(n), r ? targetMap.get(r) : r); return n }
+                // case 'style':
+                //     return styleProxy(target.style)
                 default:
                     throw new _Error('"' + property.toString() + '" property disabled in sandbox environment')
             }
@@ -120,7 +123,7 @@ function nodeProxy(n) {
     targetMap.set(p, n)
     return p
 }
-const prohibitedTags = new _Set<string | Symbol>(['a', 'applet', 'base', 'body', 'embed', 'form', 'frame', 'head', 'html', 'iframe', 'link', 'meta', 'object', 'script', 'style', 'title'])
+const allowedTags = new _Set<string | Symbol>(['div'])
 const documentProxy = typeof gt.document === 'undefined' ? undefined : new _Proxy(gt.document, {
     get(target, property, receiver) {
         const et = eventTargetProps(target, property, receiver)
@@ -133,7 +136,7 @@ const documentProxy = typeof gt.document === 'undefined' ? undefined : new _Prox
             }
             case 'createElement':
                 return tag => {
-                    if (prohibitedTags.has(tag)) {
+                    if (!allowedTags.has(tag)) {
                         throw new _Error('Unsupported tag "' + tag + '"')
                     }
                     return nodeProxy(target.createElement(tag))
