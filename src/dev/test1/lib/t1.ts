@@ -34,10 +34,10 @@ const { tes, expec } = (function () {
                     throw new Error(v + ' !== ' + a)
                 }
             },
-            toThrow: (a?: string) => {
+            toThrow: async (a?: string) => {
                 let er
                 try {
-                    v()
+                    await v()
                 }
                 catch (e) {
                     er = true
@@ -124,9 +124,18 @@ tes('document', async () => {
     await new Promise((resolve, reject) => {
         const div = document.createElement('div')
         div.textContent = 'te'
+        document.body.appendChild(div)
+        const div2 = document.createElement('div')
+        div2.textContent = 't2'
+        div2['style' + ''] = 'border:solid 1px black'
+        div2.style.backgroundColor = 'green'
+        div2.className = 'c1'
+        div2.textContent = div2.textContent + div2.className
+        document.body.insertBefore(div2, div)
         const lis = (ev) => {
             expec(ev.view).toBe(undefined)
             expec(ev.target['textContent']).toBe('te')
+            expec(div2.textContent).toBe('t2c1')
             div.removeEventListener('click', lis)
             div.remove()
             resolve(null)
@@ -134,7 +143,73 @@ tes('document', async () => {
         div.addEventListener('click', lis)
         div.click()
     })
+    const div = document.createElement('div')
+    expec(() => div['style' + ''] = 'url()').toThrow()
+    expec(() => div.style.backgroundImage = 'url()').toThrow()
+    expec(() => div.style.setProperty('border', 'url()')).toThrow()
+    const link = document.createElement('link')
+    link.href = 'lib/m.css'
+    link.rel = 'stylesheet'
+    document.body.appendChild(link)
+    expec(() => link.href = './m.cs').toThrow()
+    expec(() => link.href = '../m.css').toThrow()
+    expec(() => link.href = 'http://localhost/x.css').toThrow()
+    expec(() => link.rel = 'a').toThrow()
+    const checkbox = document.createElement('input')
+    checkbox.type = 'checkbox'
+    checkbox.checked = true
+    checkbox.id = 'chid'
+    checkbox.name = 'chname'
+    document.body.appendChild(checkbox)
+    const fil = document.createElement('input')
+    fil.type = 'file'
+    fil.files
+    document.body.appendChild(fil)
+    const intext = document.createElement('input')
+    intext.type = 'text'
+    intext.value = 'v'
+    document.body.appendChild(intext)
+    const tarea = document.createElement('textarea')
+    tarea.value = 'v'
+    document.body.appendChild(tarea)
+    const select = document.createElement('select')
+    const option = document.createElement('option')
+    option.value = 'vf'
+    option.textContent = 'foo'
+    select.appendChild(option)
+    document.body.appendChild(select)
+    const canvas = document.createElement('canvas')
+    canvas.width = 100
+    canvas.height = 50
+    const ctx = canvas.getContext('2d')
+    ctx.fillRect(20, 30, 40, 50)
+    ctx.textAlign = 'center'
+    document.body.appendChild(canvas)
+    expec(() => ctx.canvas).toThrow()
 })
 tes('createElement_error_', (tag) => {
     expec(() => document.createElement(tag)).toThrow()
-}, ['a', 'applet', 'base', 'body', 'embed', 'form', 'frame', 'head', 'html', 'iframe', 'link', 'meta', 'object', 'script', 'style', 'title'])
+}, ['a', 'applet', 'base', 'body', 'embed', 'form', 'frame', 'head', 'html', 'iframe', 'meta', 'object', 'script', 'style', 'title'])
+tes('fetch', async () => {
+    expec(() => fetch('../')).toThrow()
+})
+tes('wasm', async () => {
+    const r = await fetch('lib/leb128.wasm')
+    const b = await r.arrayBuffer()
+    const m = await WebAssembly.compile(b)
+    const mm = new WebAssembly.Module(b)
+    WebAssembly.Module.imports(m)
+    WebAssembly.Module.exports(m)
+    WebAssembly.Module.customSections(m, '')
+    const mem = new WebAssembly.Memory({ initial: 1 })
+    const i = await WebAssembly.instantiate(b, { memory: { "": mem }, console: { logi32: () => { } } })
+    const im = await WebAssembly.instantiate(m, { memory: { "": mem }, console: { logi32: () => { } } })
+    const ms = await WebAssembly.compileStreaming(await fetch('lib/leb128.wasm'))
+    const is = await WebAssembly.instantiateStreaming(await fetch('lib/leb128.wasm'), { memory: { "": mem }, console: { logi32: () => { } } })
+
+    const buf = new Uint8Array('00,61,73,6d,01,00,00,00,00,15,10,73,6f,75,72,63,65,4d,61,70,70,69,6e,67,55,52,4c,04,61,3a,2f,2f'.split(',').map(x => parseInt(x, 16)))
+    expec(() => WebAssembly.compile(buf)).toThrow('invalid sourceMappingURL "a://"')
+    expec(() => WebAssembly.instantiate(buf)).toThrow('invalid sourceMappingURL "a://"')
+    expec(async () => await WebAssembly.compileStreaming(new Response(buf))).toThrow('invalid sourceMappingURL "a://"')
+    expec(async () => await WebAssembly.instantiateStreaming(new Response(buf), { memory: { "": mem }, console: { logi32: () => { } } })).toThrow('invalid sourceMappingURL "a://"')
+})

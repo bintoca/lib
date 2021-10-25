@@ -82,7 +82,7 @@ export const httpHandler = async (req: http.IncomingMessage, res: http.ServerRes
                 }
                 else {
                     res.setHeader('Content-Type', 'text/html')
-                    res.end('<html><head><meta charset="utf-8"/><meta name="viewport" content="width=device-width, initial-scale=1" /><script>self.configURL="' + configURL
+                    res.end('<html><head><meta charset="utf-8"/><meta name="viewport" content="width=device-width, initial-scale=1" /><base href="' + packageBase + '"><script>self.configURL="' + configURL
                         + '"</script><script type="module" src="' + clientURL + '"></script><script type="module" src="' + initURL + '"></script></head><body></body></html>')
                 }
             }

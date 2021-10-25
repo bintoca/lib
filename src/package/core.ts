@@ -87,7 +87,7 @@ export const parseFile = (fileType: FileType, filename: string, b: BufferSource)
         try {
             const sourceMappingURLs: string[] = []
             const text = TD.decode(b)
-            const ast:any = acorn.parse(text, {
+            const ast: any = acorn.parse(text, {
                 ecmaVersion: 2022, sourceType: 'module', allowHashBang: true, onComment: (block, s, start, end) => {
                     let a;
                     while ((a = sourceMappingURLRegExp.exec(s)) !== null) {
@@ -561,6 +561,9 @@ export const encodePackage = (p: { [k: string]: FileParse }, state: EncoderState
 export const setupEncoderState = () => {
     const s = setupEncoder({ omitMapTag: true })
     s.typeMap.set(Uint8Array, s.typeMap.get(ArrayBuffer))
+    if (typeof Buffer == 'function') {
+        s.typeMap.set(Buffer, s.typeMap.get(ArrayBuffer))
+    }
     return s
 }
 export const encodeFile = (p: FileParse, state: EncoderState): Uint8Array => {

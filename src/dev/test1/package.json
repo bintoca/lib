@@ -18,7 +18,8 @@
     "index.js",
     "lib/m1.js",
     "lib/t1.js",
-    "lib/m.css"
+    "lib/m.css",
+    "lib/leb128.wasm"
   ],
   "devDependencies": {
     "typescript": "^4.4.3"
