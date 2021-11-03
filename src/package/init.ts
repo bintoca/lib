@@ -1,6 +1,7 @@
 import { primordials, isRelativeInvalid, parseWasm } from '@bintoca/package/primordial'
 const { _Set, ObjectCreate, _Error, _Proxy, _Reflect, _WeakMap, StringEndsWith, _WebAssembly } = primordials
 const _fetch = fetch
+const _navigator = navigator
 const freeGlobals = ['Array', 'ArrayBuffer', 'addEventListener', 'atob', 'BigInt', 'Blob', 'btoa', 'CryptoKey', 'clearInterval', 'clearTimeout', 'console', 'constructor', 'crypto', 'DataView', 'Date',
     'decodeURIComponent', 'dispatchEvent', 'encodeURIComponent', 'Error', 'Event', 'Function', 'fetch', 'globalThis', 'Infinity', 'isFinite', 'isNaN', 'JSON',
     'Map', 'Math', 'MessageChannel', 'NaN', 'Number', 'Object', 'parseFloat', 'parseInt', 'performance', 'Promise', 'Proxy', 'queueMicrotask', 'ReadableStream', 'ReadableStreamBYOBReader', 'Reflect', 'RegExp', 'Response', 'removeEventListener',
@@ -298,5 +299,11 @@ const fetchPromise = _fetch(configURL, { method: 'POST', body: JSON.stringify({ 
         gt.document.head.appendChild(s)
     }
 })
+if ('serviceWorker' in _navigator) {
+    // _navigator.serviceWorker.register('/sw.js').then(x => {
+    // }).catch(x => {
+    //     console.log('sw failed', x)
+    // })
+}
 export default selfProxy
 export { freeGlobals, eventProxy, eventTargetProps, documentProxy }

@@ -107,6 +107,14 @@ export const httpHandler = async (req: http.IncomingMessage, res: http.ServerRes
                 res.setHeader('Content-Type', 'text/javascript')
                 res.end(fs.readFileSync(new URL('./primordial.js', packageMetaURL) as any))
             }
+            else if (req.url == '/sw.js') {
+                res.setHeader('Content-Type', 'text/javascript')
+                res.end(fs.readFileSync(new URL('./sw.js', packageMetaURL) as any))
+            }
+            else if (req.url == '/favicon.ico') {
+                res.setHeader('Content-Type', 'image/x-icon')
+                res.end(fs.readFileSync(new URL('./favicon.ico', import.meta.url) as any))
+            }
             else if (req.url.startsWith(importBase)) {
                 res.setHeader('Content-Type', 'text/javascript')
                 res.end(getDynamicImportModule(req.url, 'import {metaServer} from "' + clientURL + '";imp.meta.server=metaServer;').replace('@bintoca/package/primordial', primordialURL))
