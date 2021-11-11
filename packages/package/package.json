@@ -11,6 +11,7 @@
     "./client": "./client.js",
     "./core": "./core.js",
     "./dynamic": "./dynamic.js",
+    "./home": "./home.js",
     "./init": "./init.js",
     "./primordial": "./primordial.js",
     "./resolve": "./resolve.js",
@@ -27,6 +28,9 @@
   "keywords": [],
   "files": [
     "index.js",
-    "index.d.ts"
+    "index.d.ts",
+    "favicon.ico",
+    "apple-touch-icon.png",
+    "main.css"
   ]
 }

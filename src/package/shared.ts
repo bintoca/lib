@@ -1,19 +1,22 @@
-export type PageConfig = { title: string, docs: string, preconnects: string[], isDev: boolean }
+export type PageConfig = { title: string, docs: string, isDev: boolean }
 export type PlatformManifest = { [k: string]: { fileURL?: URL, path?: string, deps?: string[], content?: Buffer, ct: string } }
+export type HtmlOptions = { base?: string, scripts?: string[], embedData?, preconnects?: string[], stylesheets?: string[] }
+export type HtmlRoutes = { [k: string]: HtmlOptions }
 const apiVersion = 1
-const indexHtml = (pageConfig:PageConfig, base: string, scripts: string[], man: PlatformManifest, embedData) => {
+const indexHtml = (pageConfig: PageConfig, manifest: PlatformManifest, op: HtmlOptions) => {
     return `<!DOCTYPE html>
       <html>
         <head>
           <meta charset="utf-8"/>
           <title>${pageConfig.title}</title>
           <meta name="viewport" content="width=device-width, initial-scale=1" />
-          <link rel="apple-touch-icon" href="${man['apple-touch-icon'].path}">
-          <link rel="icon" href="${man['favicon'].path}">
-          ${base ? `<base href="${base}">` : ''}
-          ${embedData ? `<meta name="props" content="${JSON.stringify(embedData)}" />` : ''}
-          ${pageConfig.preconnects.map(x => `<link rel="preconnect" href="${x}" crossorigin>`).join('')}
-          ${scripts.map(x => `<script defer type="module" src="${man[x].path}"></script>`).join('')}
+          <link rel="apple-touch-icon" href="${manifest['apple-touch-icon'].path}">
+          <link rel="icon" href="${manifest['favicon'].path}">
+          ${op.base ? `<base href="${op.base}">` : ''}
+          ${op.embedData ? `<meta name="props" content="${JSON.stringify(op.embedData)}" />` : ''}
+          ${(op.preconnects || []).map(x => `<link rel="preconnect" href="${x}" crossorigin>`).join('')}
+          ${(op.scripts || []).map(x => `<script defer type="module" src="${manifest[x].path}"></script>`).join('')}
+          ${(op.stylesheets || []).map(x => `<link href="${manifest[x].path}" rel="stylesheet">`).join('')}
         </head>
         <body>
         <noscript>Javascript is required <a href="${pageConfig.docs}">See documentation</a></noscript>
@@ -36,4 +39,19 @@ const indexHtmlHeaders = () => {
         'Cross-Origin-Embedder-Policy': 'require-corp'
     }
 }
-export { apiVersion, indexHtml, indexHtmlHeaders }
+const matchHtmlRoute = (pathname: string, routes: HtmlRoutes): HtmlOptions => {
+    for (let k in routes) {
+        if (k.endsWith('*')) {
+            const v = k.slice(-1)
+            if (v == pathname || pathname.startsWith(v)) {
+                return routes[k]
+            }
+        }
+        else {
+            if (k == pathname) {
+                return routes[k]
+            }
+        }
+    }
+}
+export { apiVersion, indexHtml, indexHtmlHeaders, matchHtmlRoute }

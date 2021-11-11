@@ -18,12 +18,9 @@
     "url": "git+https://github.com/bintoca/lib.git",
     "directory": "packages/dev"
   },
-  "keywords": [
-  ],
+  "keywords": [],
   "files": [
     "index.js",
-    "index.d.ts",
-    "favicon.ico",
-    "apple-touch-icon.png"
+    "index.d.ts"
   ]
 }

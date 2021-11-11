@@ -4,11 +4,11 @@ import * as path from 'path'
 import open from 'open'
 import { cwd } from 'process'
 import {
-    ParseFilesError, decodeFile, createLookup, FileType, ParseBundle,
+    ParseFilesError, decodeFile, createLookup, ParseBundle,
     importBase, getDynamicImportModule, reloadBase, packageBase, internalBase, FileBundle,
-    globalBase, metaURL as packageMetaURL, getGlobalModule, FileParse, Manifest, FileParseError, parseFiles, validateParsed, encodeFile
+    globalBase, getGlobalModule, Manifest, FileParseError, parseFiles, validateParsed, encodeFile
 } from '@bintoca/package/core'
-import { initPlatformManifest, defaultPlatformManifest } from '@bintoca/package'
+import { initPlatformManifest, defaultPlatformManifest, defaultRoutes } from '@bintoca/package'
 import * as chokidar from 'chokidar'
 import { server as wss } from 'websocket'
 import * as readline from 'readline'
@@ -17,17 +17,11 @@ import tar from 'tar'
 import { EncoderState } from '@bintoca/cbor/core'
 import { createHash } from 'crypto'
 import { setupEncoderState } from '@bintoca/package/core'
-import { indexHtml, indexHtmlHeaders, PageConfig, PlatformManifest } from '@bintoca/package/shared'
+import { indexHtml, indexHtmlHeaders, matchHtmlRoute, PageConfig, PlatformManifest } from '@bintoca/package/shared'
 import { configURL } from '@bintoca/package/primordial'
 
 const TD = new TextDecoder()
 const TE = new TextEncoder()
-const clientURL = internalBase + new URL('./client.js', packageMetaURL).href
-const initURL = internalBase + new URL('./init.js', packageMetaURL).href
-const primordialURL = internalBase + new URL('./primordial.js', packageMetaURL).href
-defaultPlatformManifest['favicon'].fileURL = new URL('./favicon.ico', import.meta.url)
-defaultPlatformManifest['apple-touch-icon'].fileURL = new URL('./apple-touch-icon.png', import.meta.url)
-
 export const defaultConfig: Config = {
     hostname: 'localhost',
     port: 3000,
@@ -37,7 +31,7 @@ export const defaultConfig: Config = {
     watch: true,
     configFile: './bintoca.config.js',
     path: '.',
-    pageConfig: { title: 'bintoca', docs: 'https://docs.bintoca.com', preconnects: [], isDev: false }
+    pageConfig: { title: 'bintoca', docs: 'https://docs.bintoca.com', isDev: false }
 }
 export type Config = { hostname: string, port: number, ignore, awaitWriteFinish, open: boolean, watch: boolean, configFile, path: string, pageConfig: PageConfig }
 export type State = {
@@ -75,7 +69,12 @@ export type ResponseFields = { statusCode: number, body: string | Buffer, header
 export const contentType = (res: ResponseFields, ct: string) => res.headers['Content-Type'] = ct
 export const httpHandler = async (req: RequestFields, state: State): Promise<ResponseFields> => {
     const res: ResponseFields = { statusCode: 200, body: '', headers: {} }
-    if (req.url == '/') {
+    const route = matchHtmlRoute(req.url, defaultRoutes)
+    if (route) {
+        res.headers = indexHtmlHeaders()
+        res.body = indexHtml(state.config.pageConfig, state.platformManifest, route)
+    }
+    else if (req.url == '/') {
         let err
         if (!state.manifest) {
             err = 'error parsing package'
@@ -85,7 +84,7 @@ export const httpHandler = async (req: RequestFields, state: State): Promise<Res
         }
         else {
             res.headers = indexHtmlHeaders()
-            res.body = indexHtml(state.config.pageConfig, packageBase, ['@bintoca/package/client', '@bintoca/package/init'], state.platformManifest, null)
+            res.body = indexHtml(state.config.pageConfig, state.platformManifest, { base: packageBase, scripts: ['@bintoca/package/client', '@bintoca/package/init'], stylesheets: ['css'] })
         }
     }
     else if (req.url == configURL) {
@@ -109,7 +108,7 @@ export const httpHandler = async (req: RequestFields, state: State): Promise<Res
     }
     else if (req.url == '/sw.js') {
         if (state.config.pageConfig.isDev) {
-            state.platformManifest = initPlatformManifest(state.platformManifest, state.config.pageConfig)
+            state.platformManifest = initPlatformManifest(state.platformManifest, state.config.pageConfig, defaultRoutes)
         }
         const sw = state.platformManifest['@bintoca/package/sw']
         contentType(res, sw.ct)
@@ -316,7 +315,7 @@ export const init = async (config?: Config) => {
         urlCache: {}, fileCache: {}, wsConnections: [], manifest: undefined, watcher: undefined, isWatching: false, autoReload: true,
         readlineInterface: readline.createInterface({ input: process.stdin, output: process.stdout, prompt: 'DEV> ' }), parsed: null,
         config: config || Object.assign({}, defaultConfig), controlledGlobals: new Set(), controlledGlobalsLookup: null, encoderState: setupEncoderState(),
-        platformManifest: initPlatformManifest(defaultPlatformManifest, defaultConfig.pageConfig)
+        platformManifest: initPlatformManifest(defaultPlatformManifest, defaultConfig.pageConfig, defaultRoutes)
     }
     if (state.config.configFile) {
         await applyConfigFile(state)

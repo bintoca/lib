@@ -1,10 +1,11 @@
 import { decodeSync } from '@bintoca/cbor/core'
-import { apiVersion, indexHtml, indexHtmlHeaders, PageConfig, PlatformManifest } from '@bintoca/package/shared'
+import { apiVersion, HtmlRoutes, indexHtml, indexHtmlHeaders, PageConfig, PlatformManifest, matchHtmlRoute } from '@bintoca/package/shared'
 const _self: ServiceWorkerGlobalScope = self as any
 const selfOrigin = new URL(_self.location.href).origin
 
 const pageConfig: PageConfig = {} as any
 const manifest: PlatformManifest = {}
+const routes: HtmlRoutes = {}
 const cachedURLs = Object.keys(manifest).map(x => manifest[x].path)
 
 _self.addEventListener('install', function (event) {
@@ -17,13 +18,20 @@ _self.addEventListener('install', function (event) {
     );
 });
 _self.addEventListener('activate', event => {
-    event.waitUntil(_self.clients.claim().then(x => {
-        return _self.clients.matchAll().then(x => {
+    event.waitUntil(_self.clients.claim()
+        .then(x => _self.clients.matchAll())
+        .then(x => {
             for (let c of x) {
                 c.postMessage({ apiVersion, force: pageConfig.isDev })
             }
+            return self.caches.open('cache1')
         })
-    }));
+        .then(cache => {
+            return cache.keys().then(keys => {
+                return Promise.all(keys.map(k => cachedURLs.includes(new URL(k.url).pathname) ? undefined : cache.delete(k)))
+            })
+        })
+    )
 });
 
 _self.addEventListener('fetch', function (event) {
@@ -43,7 +51,10 @@ _self.addEventListener('fetch', function (event) {
                 }
                 else {
                     const isAppProcess = event.request.referrer && new URL(event.request.referrer).origin == selfOrigin
-                    //return new Response(indexHtml(pageConfig, null, [], manifest, { isAppProcess }), { headers: indexHtmlHeaders() })
+                    const route = matchHtmlRoute(u.pathname, routes)
+                    if (route) {
+                        return new Response(indexHtml(pageConfig, manifest, Object.assign({ embedData: { isAppProcess } }, route)), { headers: indexHtmlHeaders() })
+                    }
                 }
             }
             return fetch(event.request);

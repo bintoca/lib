@@ -6,7 +6,6 @@ import { PlatformManifest } from '@bintoca/package/shared'
 const TD = new TextDecoder()
 const TE = new TextEncoder()
 
-export const metaURL = import.meta.url
 export const internalBase = '/x/a/'
 export const globalBase = '/x/g/'
 export const reloadBase = '/x/h/'
