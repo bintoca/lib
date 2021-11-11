@@ -23,6 +23,7 @@
   "files": [
     "index.js",
     "index.d.ts",
-    "favicon.ico"
+    "favicon.ico",
+    "apple-touch-icon.png"
   ]
 }

@@ -233,5 +233,6 @@ const isSpecifierInvalid = (file: string, specifier: string): boolean => {
     }
     return true
 }
+const configURL = '/x/config'
 export default primordials
-export { primordials, decodeLEB128_U32, bufferSourceToDataView, parseWasm, isRelativeInvalid, isSpecifierInvalid }
+export { primordials, decodeLEB128_U32, bufferSourceToDataView, parseWasm, isRelativeInvalid, isSpecifierInvalid, configURL }

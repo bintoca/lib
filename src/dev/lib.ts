@@ -6,8 +6,9 @@ import { cwd } from 'process'
 import {
     ParseFilesError, decodeFile, createLookup, FileType, ParseBundle,
     importBase, getDynamicImportModule, reloadBase, packageBase, internalBase, FileBundle,
-    globalBase, metaURL as packageMetaURL, getGlobalModule, configURL, FileParse, Manifest, FileParseError, parseFiles, validateParsed, encodeFile
+    globalBase, metaURL as packageMetaURL, getGlobalModule, FileParse, Manifest, FileParseError, parseFiles, validateParsed, encodeFile
 } from '@bintoca/package/core'
+import { initPlatformManifest, defaultPlatformManifest } from '@bintoca/package'
 import * as chokidar from 'chokidar'
 import { server as wss } from 'websocket'
 import * as readline from 'readline'
@@ -16,12 +17,16 @@ import tar from 'tar'
 import { EncoderState } from '@bintoca/cbor/core'
 import { createHash } from 'crypto'
 import { setupEncoderState } from '@bintoca/package/core'
+import { indexHtml, indexHtmlHeaders, PageConfig, PlatformManifest } from '@bintoca/package/shared'
+import { configURL } from '@bintoca/package/primordial'
 
 const TD = new TextDecoder()
 const TE = new TextEncoder()
 const clientURL = internalBase + new URL('./client.js', packageMetaURL).href
 const initURL = internalBase + new URL('./init.js', packageMetaURL).href
 const primordialURL = internalBase + new URL('./primordial.js', packageMetaURL).href
+defaultPlatformManifest['favicon'].fileURL = new URL('./favicon.ico', import.meta.url)
+defaultPlatformManifest['apple-touch-icon'].fileURL = new URL('./apple-touch-icon.png', import.meta.url)
 
 export const defaultConfig: Config = {
     hostname: 'localhost',
@@ -31,12 +36,13 @@ export const defaultConfig: Config = {
     open: true,
     watch: true,
     configFile: './bintoca.config.js',
-    path: '.'
+    path: '.',
+    pageConfig: { title: 'bintoca', docs: 'https://docs.bintoca.com', preconnects: [], isDev: false }
 }
-export type Config = { hostname: string, port: number, ignore, awaitWriteFinish, open: boolean, watch: boolean, configFile, path: string }
+export type Config = { hostname: string, port: number, ignore, awaitWriteFinish, open: boolean, watch: boolean, configFile, path: string, pageConfig: PageConfig }
 export type State = {
     urlCache, fileCache, readlineInterface: readline.Interface, wsConnections: any[], watcher: chokidar.FSWatcher, manifest: Manifest, parsed: ParseBundle,
-    config: Config, controlledGlobals: Set<string>, controlledGlobalsLookup: DataView, encoderState: EncoderState, isWatching: boolean, autoReload: boolean
+    config: Config, controlledGlobals: Set<string>, controlledGlobalsLookup: DataView, encoderState: EncoderState, isWatching: boolean, autoReload: boolean, platformManifest: PlatformManifest
 }
 export const parseTar = async (t: NodeJS.ReadableStream): Promise<FileBundle> => {
     return new Promise((resolve, reject) => {
@@ -64,102 +70,94 @@ export const parseTar = async (t: NodeJS.ReadableStream): Promise<FileBundle> =>
         t.pipe(p)
     })
 }
-export const httpHandler = async (req: http.IncomingMessage, res: http.ServerResponse, state: State) => {
-    let chunks: Buffer[] = []
-    req.on('data', (c: Buffer) => {
-        chunks.push(c)
-    })
-    req.on('end', async () => {
-        try {
-            if (req.url == '/') {
-                let err
-                if (!state.manifest) {
-                    err = 'error parsing package'
-                }
-                if (err) {
-                    res.statusCode = 500
-                    res.end(err)
-                }
-                else {
-                    res.setHeader('Content-Type', 'text/html')
-                    res.end('<html><head><meta charset="utf-8"/><meta name="viewport" content="width=device-width, initial-scale=1" /><base href="' + packageBase + '"><script>self.configURL="' + configURL
-                        + '"</script><script type="module" src="' + clientURL + '"></script><script type="module" src="' + initURL + '"></script></head><body></body></html>')
-                }
-            }
-            else if (req.url == configURL) {
-                const c = JSON.parse(TD.decode(Buffer.concat(chunks))) as { nonConfigurable: string[] }
-                for (let x of c.nonConfigurable) {
-                    state.controlledGlobals.add(x)
-                }
-                state.controlledGlobalsLookup = createLookup(state.controlledGlobals)
-                res.setHeader('Content-Type', 'application/json')
-                res.end(JSON.stringify({ src: packageBase + state.manifest.main }))
-            }
-            else if (req.url == clientURL) {
-                res.setHeader('Content-Type', 'text/javascript')
-                res.end(fs.readFileSync(new URL('./client.js', packageMetaURL) as any, { encoding: 'utf8' }).replace('@bintoca/package/primordial', primordialURL))
-            }
-            else if (req.url == initURL) {
-                res.setHeader('Content-Type', 'text/javascript')
-                res.end(fs.readFileSync(new URL('./init.js', packageMetaURL) as any, { encoding: 'utf8' }).replace('@bintoca/package/primordial', primordialURL))
-            }
-            else if (req.url == primordialURL) {
-                res.setHeader('Content-Type', 'text/javascript')
-                res.end(fs.readFileSync(new URL('./primordial.js', packageMetaURL) as any))
-            }
-            else if (req.url == '/sw.js') {
-                res.setHeader('Content-Type', 'text/javascript')
-                res.end(fs.readFileSync(new URL('./sw.js', packageMetaURL) as any))
-            }
-            else if (req.url == '/favicon.ico') {
-                res.setHeader('Content-Type', 'image/x-icon')
-                res.end(fs.readFileSync(new URL('./favicon.ico', import.meta.url) as any))
-            }
-            else if (req.url.startsWith(importBase)) {
-                res.setHeader('Content-Type', 'text/javascript')
-                res.end(getDynamicImportModule(req.url, 'import {metaServer} from "' + clientURL + '";imp.meta.server=metaServer;').replace('@bintoca/package/primordial', primordialURL))
-            }
-            else if (req.url.startsWith(reloadBase)) {
-                const u = state.urlCache[packageBase + req.url.slice(req.url.indexOf('/', 5) + 1)]
-                if (u) {
-                    res.setHeader('Content-Type', u.type)
-                    res.end(Buffer.from(u.data))
-                }
-                else {
-                    res.statusCode = 404
-                    res.end()
-                }
-            }
-            else if (state.urlCache[req.url]) {
-                const u = state.urlCache[req.url]
-                res.setHeader('Content-Type', u.type)
-                res.end(Buffer.from(u.data))
-            }
-            else if (req.url.startsWith(globalBase)) {
-                res.setHeader('Content-Type', 'text/javascript')
-                const g = req.url.slice(globalBase.length)
-                const d = Buffer.from(TE.encode(getGlobalModule(g, initURL)))
-                state.urlCache[req.url] = { data: d, type: 'text/javascript' }
-                res.end(d)
-            }
-            else if (state.fileCache[req.url]) {
-                const u = decodeFile(state.fileCache[req.url], req.url.startsWith(internalBase) ? null : state.controlledGlobalsLookup, new URL(req.url, getRootURL(state)))
-                state.urlCache[req.url] = u
-                res.setHeader('Content-Type', u.type)
-                res.end(Buffer.from(u.data))
-            }
-            else {
-                res.statusCode = 404
-                log(state, 404, req.url)
-                res.end()
-            }
+export type RequestFields = { method: string, url: string, headers: { [header: string]: string | string[] | undefined }, body: Buffer }
+export type ResponseFields = { statusCode: number, body: string | Buffer, headers: { [header: string]: number | string } }
+export const contentType = (res: ResponseFields, ct: string) => res.headers['Content-Type'] = ct
+export const httpHandler = async (req: RequestFields, state: State): Promise<ResponseFields> => {
+    const res: ResponseFields = { statusCode: 200, body: '', headers: {} }
+    if (req.url == '/') {
+        let err
+        if (!state.manifest) {
+            err = 'error parsing package'
         }
-        catch (e) {
+        if (err) {
             res.statusCode = 500
-            log(state, e)
-            res.end()
         }
-    })
+        else {
+            res.headers = indexHtmlHeaders()
+            res.body = indexHtml(state.config.pageConfig, packageBase, ['@bintoca/package/client', '@bintoca/package/init'], state.platformManifest, null)
+        }
+    }
+    else if (req.url == configURL) {
+        const c = JSON.parse(TD.decode(req.body)) as { nonConfigurable: string[] }
+        for (let x of c.nonConfigurable) {
+            state.controlledGlobals.add(x)
+        }
+        state.controlledGlobalsLookup = createLookup(state.controlledGlobals)
+        contentType(res, 'application/json')
+        res.body = JSON.stringify({ src: packageBase + state.manifest.main })
+    }
+    else if (req.url.startsWith(internalBase)) {
+        const f = Object.keys(state.platformManifest).map(x => state.platformManifest[x]).filter(x => x.path == req.url)[0]
+        if (f) {
+            contentType(res, f.ct)
+            res.body = f.content
+        }
+        else {
+            res.statusCode = 404
+        }
+    }
+    else if (req.url == '/sw.js') {
+        if (state.config.pageConfig.isDev) {
+            state.platformManifest = initPlatformManifest(state.platformManifest, state.config.pageConfig)
+        }
+        const sw = state.platformManifest['@bintoca/package/sw']
+        contentType(res, sw.ct)
+        res.body = sw.content
+    }
+    else if (req.url == '/favicon.ico') {
+        const x = state.platformManifest['favicon']
+        contentType(res, x.ct)
+        res.body = x.content
+    }
+    else if (req.url.startsWith(importBase)) {
+        const x = state.platformManifest['@bintoca/package/client']
+        contentType(res, 'text/javascript')
+        res.body = getDynamicImportModule(req.url, state.platformManifest, 'import {metaServer} from "' + x.path + '";imp.meta.server=metaServer;')
+    }
+    else if (req.url.startsWith(reloadBase)) {
+        const u = state.urlCache[packageBase + req.url.slice(req.url.indexOf('/', 5) + 1)]
+        if (u) {
+            contentType(res, u.type)
+            res.body = Buffer.from(u.data)
+        }
+        else {
+            res.statusCode = 404
+        }
+    }
+    else if (state.urlCache[req.url]) {
+        const u = state.urlCache[req.url]
+        contentType(res, u.type)
+        res.body = Buffer.from(u.data)
+    }
+    else if (req.url.startsWith(globalBase)) {
+        const x = state.platformManifest['@bintoca/package/init']
+        contentType(res, x.ct)
+        const g = req.url.slice(globalBase.length)
+        const d = Buffer.from(TE.encode(getGlobalModule(g, x.path)))
+        state.urlCache[req.url] = { data: d, type: x.ct }
+        res.body = d
+    }
+    else if (state.fileCache[req.url]) {
+        const u = decodeFile(state.fileCache[req.url], req.url.startsWith(internalBase) ? null : state.controlledGlobalsLookup, new URL(req.url, getRootURL(state)))
+        state.urlCache[req.url] = u
+        contentType(res, u.type)
+        res.body = Buffer.from(u.data)
+    }
+    else {
+        res.statusCode = 404
+    }
+    return res
 }
 export const getRootURL = (state: State) => 'http://' + state.config.hostname + ':' + state.config.port
 export const wsHandler = function (request, state: State) {
@@ -317,7 +315,8 @@ export const init = async (config?: Config) => {
     const state: State = {
         urlCache: {}, fileCache: {}, wsConnections: [], manifest: undefined, watcher: undefined, isWatching: false, autoReload: true,
         readlineInterface: readline.createInterface({ input: process.stdin, output: process.stdout, prompt: 'DEV> ' }), parsed: null,
-        config: config || Object.assign({}, defaultConfig), controlledGlobals: new Set(), controlledGlobalsLookup: null, encoderState: setupEncoderState()
+        config: config || Object.assign({}, defaultConfig), controlledGlobals: new Set(), controlledGlobalsLookup: null, encoderState: setupEncoderState(),
+        platformManifest: initPlatformManifest(defaultPlatformManifest, defaultConfig.pageConfig)
     }
     if (state.config.configFile) {
         await applyConfigFile(state)
@@ -331,7 +330,30 @@ export const init = async (config?: Config) => {
         log(state, e)
         process.exit()
     }
-    const httpServer = http.createServer({}, async (req: http.IncomingMessage, res: http.ServerResponse) => await httpHandler(req, res, state))
+    const httpServer = http.createServer({}, async (req: http.IncomingMessage, res: http.ServerResponse) => {
+        let chunks: Buffer[] = []
+        req.on('data', (c: Buffer) => {
+            chunks.push(c)
+        })
+        req.on('end', async () => {
+            try {
+                const r = await httpHandler({ method: req.method || '', url: req.url || '', headers: req.headers, body: Buffer.concat(chunks) }, state)
+                res.statusCode = r.statusCode
+                for (let h in r.headers) {
+                    res.setHeader(h, r.headers[h])
+                }
+                res.end(r.body)
+                if (res.statusCode == 404) {
+                    log(state, 404, req.url)
+                }
+            }
+            catch (e) {
+                res.statusCode = 500
+                log(state, e)
+                res.end()
+            }
+        })
+    })
     const wsServer = new wss({ httpServer: httpServer })
     wsServer.on('request', function (request) { wsHandler(request, state) })
     httpServer.listen(state.config.port)

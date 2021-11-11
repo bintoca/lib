@@ -8,11 +8,14 @@
   },
   "exports": {
     ".": "./index.js",
-    "./server": "./server.js",
-    "./init": "./init.js",
+    "./client": "./client.js",
     "./core": "./core.js",
+    "./dynamic": "./dynamic.js",
+    "./init": "./init.js",
     "./primordial": "./primordial.js",
-    "./globals/globalThis": "./globals/globalThis.js"
+    "./resolve": "./resolve.js",
+    "./shared": "./shared.js",
+    "./sw": "./sw.js"
   },
   "types": "./index.d.ts",
   "license": "Apache-2.0 WITH LLVM-exception",

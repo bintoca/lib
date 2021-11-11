@@ -2,12 +2,12 @@ import * as acorn from 'acorn'
 import * as walk from 'acorn-walk'
 import { EncoderState, bufferSourceToDataView, DecoderState, decodeCount, bufferSourceToUint8Array, decodeSkip, encodeSync, concat as bufConcat, setupDecoder, setupEncoder, decodeSync } from '@bintoca/cbor/core'
 import { parseWasm, isSpecifierInvalid, isRelativeInvalid } from '@bintoca/package/primordial'
+import { PlatformManifest } from '@bintoca/package/shared'
 const TD = new TextDecoder()
 const TE = new TextEncoder()
 
 export const metaURL = import.meta.url
 export const internalBase = '/x/a/'
-export const configURL = '/x/config'
 export const globalBase = '/x/g/'
 export const reloadBase = '/x/h/'
 export const importBase = '/x/i/'
@@ -774,11 +774,10 @@ export const decodeFile = (b: BufferSource, controlledGlobals: DataView, parentU
             throw new Error('Major type not implemented ' + maj)
     }
 }
-export const getDynamicImportModule = (urlpath: string, hot: string): string => {
+export const getDynamicImportModule = (urlpath: string, platformManifest: PlatformManifest, hot: string): string => {
     const url = escapeDoubleQuote(decodeURIComponent(urlpath.slice(importBase.length)))
-    const meta = 'imp.meta.url="' + url + '";' +
-        (hot ? hot : '')
-    return 'import primordials from "@bintoca/package/primordial";const { ObjectCreate } = primordials;function imp(){};imp.meta=ObjectCreate(null);' + meta + ';export default imp'
+    const meta = ';imp.meta.url="' + url + '";' + (hot ? hot : '')
+    return TD.decode(platformManifest['@bintoca/package/dynamic'].content) + meta
 }
 export const getGlobalModule = (p: string, initURL) => 'import gt from "' + initURL + '";export default gt.' + p.slice(0, -3)
 export const createLookup = (s: Set<string>): DataView => {
