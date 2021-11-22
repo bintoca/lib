@@ -111,8 +111,14 @@ export const httpHandler = async (req: RequestFields, state: State): Promise<Res
             state.platformManifest = initPlatformManifest(state.platformManifest, state.config.pageConfig, defaultRoutes)
         }
         const sw = state.platformManifest['@bintoca/package/sw']
-        contentType(res, sw.ct)
-        res.body = sw.content
+        if (req.headers['if-none-match'] == sw.path) {
+            res.statusCode = 304
+        }
+        else {
+            contentType(res, sw.ct)
+            res.headers['ETag'] = sw.path
+            res.body = sw.content
+        }
     }
     else if (req.url == '/favicon.ico') {
         const x = state.platformManifest['favicon']

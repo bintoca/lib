@@ -71,5 +71,6 @@ export const initPlatformManifest = (manifest: PlatformManifest, pageConfig: Pag
             .replace('const routes = {}', 'const routes = ' + JSON.stringify(routes))
             .split('\n'))
         .filter(x => !x.startsWith('import ') && !x.startsWith('export ')).join('\n'))
+    sw.path = crypto.createHash('sha256').update(sw.content).digest().toString('hex')
     return manifest
 }
