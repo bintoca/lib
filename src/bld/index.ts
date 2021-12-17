@@ -15,6 +15,7 @@ export const enum op {
     append_IRI_suffixes, //(count:number, [count:number, bytes:currentEncoding][])
     append_IRI_range, //(offset:number, count:number)
     append_unicode, //(count:number)
+    append_op, //(i:op)
     append_from_sourceList, //(offset:number, count:number)
     append_Uint, //(offset:number, bits:number)
     append_UintNeg, //(offset:number, bits:number)
@@ -28,11 +29,15 @@ export const enum op {
     true,
     null,
     undefined,
-    bool, //[false, true]
 
-    IEEE_binary16,
-    IEEE_binary32,
-    IEEE_binary64,
+    numberStandard, //default:IEEE754
+    IEEE754,
+    IEEE754_decimal32_BID,
+    IEEE754_decimal64_BID,
+    IEEE754_decimal128_BID,
+    IEEE754_decimal32_DPD,
+    IEEE754_decimal64_DPD,
+    IEEE754_decimal128_DPD,
 
     Infinity,
     NegativeInfinity,
@@ -41,10 +46,13 @@ export const enum op {
     NegativeZero,
 
     uint,
+    denominator, //use uint as numerator in rationals
     biasedExponentBase2,
     biasedExponentWithSignBase2,
-    biasedExponentBase10,
-    biasedExponentWithSignBase10,
+    signed_normalized,
+    unsigned_normalized,
+    fixedPointScalingBase2,
+    fixedPointScalingBase10,
 
     seconds,
     minutes,
@@ -54,7 +62,7 @@ export const enum op {
     years,
     timeScale, //default:UTC
     TAI,
-    UTC, //if only seconds is used apply posix rules
+    UTC, //if only seconds is specified apply posix rules
     leapSeconds,
     timezoneOffset,
     timezoneID,
@@ -84,13 +92,32 @@ export const enum op {
     Math_PI,
     Math_SQRT1_2,
     Math_SQRT2,
-
-    Red,
-    Green,
-    Blue,
-    Alpha,
-    Depth,
-    Stencil,
+    
+    CoordinateSystem,
+    Quaternions,
+    Cartesian,
+    Cylindrical,
+    Spherical,
+    RGBA,
+    DepthStencil,
+    Origin,
+    Coordinate1,
+    Coordinate2,
+    Coordinate3,
+    Coordinate4,
+    Orientation1,
+    Orientation2,
+    Orientation3,
+    Orientation4,
+    Unit,
+    power,
+    second,
+    meter,
+    kilogram,
+    ampere,
+    kelvin,
+    mole,
+    candela,
 
     scheme,
     authority,
