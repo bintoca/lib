@@ -244,7 +244,7 @@ const doBench = () => {
     bench('d', f, testFile(longString, ['Math', 'Number']))
 }
 //doBench()
-test.each([['85', -1], ['808080808080', -1], ['05', 5], ['8500', 5], ['858000', 5], ['e58e26', 624485], ['808080fd07', 2141192192]])('decodeLEB128_U32(%s,%i)', (b, n) => {
+test.each([['85', -1], ['808080808080', -1], ['05', 5], ['8500', 5], ['858000', 5], ['e58e26', 624485], ['808080fd07', 2141192192], ['D9D9F842', 140389593]])('decodeLEB128_U32(%s,%i)', (b, n) => {
     const dv = bufferSourceToDataView(Buffer.from(b, 'hex'))
     const state = { position: 0 }
     expect(decodeLEB128_U32(dv, state, -1)).toBe(n)
