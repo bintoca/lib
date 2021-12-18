@@ -6,17 +6,33 @@ export const enum op {
     setOffset, //(i:vint)
     setOffset_scale, //(scalingFactor:vint4, i:vint)
     setComponentType, //(c:vint)
-    extendComponent, //(count:vint, bytes:count*(vint|utf8))
-    shortenComponent, //(units:vint)
-    append_offset_many, //(count:vint, bytes:count*specSize)
+    extendComponent, //(size:vint, bytes:u8[])
+    shortenComponent, //(count:vint)
+    append_offset, //(size:vint, bytes:size)
+    append_offset_many, //(count:vint, size:vint, bytes:(count*size):u8[])
     append_offset_range, //(range:vint)
     append_offset_range_scale, //(scalingFactor:vint4, range:vint)
-    
-    extra = 13, //D
-    incrementDestinationList = 208, //() size hint?
+    special, //D_13
+    extendedOps1param, //(i:vint, p1:vint)
+    extendedOps2param, //(i:vint, p1:vint, p2:vint)
+}
+export const enum D_13 {
+    incrementDestinationList, //()
     noop, //()
     draftRevision, //(i:vint)
-    magicNumber = 217, //0xD9D9F8 (non-unicode bytes derived from cbor tag 55800) + 0x42494E4C44 ("BINLD") or ("BXXLD")
+    setComponentIANAPrivateEnterpriseOID, //() 1.3.6.1.4.1
+    append_offset_many_sizes, //(count:vint, bytes:count*(size:vint,u8[]))
+    extendedOps0param, //(i:vint)
+    extendComponent_bits, //(bitCount:vint, size:vint, bytes:u8[])
+    shortenComponent_bits, //(count:vint)
+    reserved0param8,
+    magicNumber, //0xD9D9F8 (non-unicode bytes derived from cbor tag 55800) + 0x42494E4C44 ("BINLD") or ("BXXLD") for beta
+    reserved0param10,
+    reserved0param11,
+    reserved0param12,
+    reserved0param13,
+    reserved0param14,
+    reserved0param15,
 }
 export const enum plane {
     standard,
@@ -30,21 +46,25 @@ export const enum standard {
     neg,
     registry,
     unicode,
+    component,
 }
 export const enum sha {
     sha256
 }
 export const enum component {
-    ObjectIdentifier,
+    ObjectIdentifier, //ASN.1 BER rules [X.690] [RFC6256] 
     scheme,
     DNS,
-    path,
+    pathHierarchy,
+    IPv6,
+
+    pathString = 8,
     query,
     fragment,
     port,
-    IPv6,
-    IPv4,
     user,
+    IPv4,
+    language,
 }
 export const enum registryID {
     id,
