@@ -27,20 +27,22 @@ export const enum op {
     magicNumber = 217, //0xD9D9F8 (non-unicode bytes derived from cbor tag 55800) + 0x42494E4C44 ("BINLD") or ("BXXLD")
 }
 export const enum op2 {
-    setSourcePlane, //(i:uint)
-    setDestinationPlane, //(i:uint)
-    setSourceList, //(i:uint)
-    setDestinationList, //(i:uint)
-    setOffset, //(i:uint)
-    setOffset_scale, //(scalingFactor:uint, i:uint)
-    append_offset_many, //(count:uint, bytes:count*specSize)
-    append_offset_range, //(range:uint)
-    append_offset_range_scale, //(scalingFactor:uint, range:uint)
+    setSourcePlane, //(i:vint)
+    setDestinationPlane, //(i:vint)
+    setSourceList, //(i:vint)
+    setDestinationList, //(i:vint)
+    setOffset, //(i:vint)
+    setOffset_scale, //(scalingFactor:vint4, i:vint)
+    setComponentType, //(c:vint)
+    extendComponent, //(count:vint, bytes:count*vint)
+    shortenComponent, //(units:vint)
+    append_offset_many, //(count:vint, bytes:count*specSize)
+    append_offset_range, //(range:vint)
+    append_offset_range_scale, //(scalingFactor:vint4, range:vint)
 }
 export const enum plane {
     standard,
     sha,
-    hierarchy,
     constructed,
     pack,
     context,
@@ -53,6 +55,18 @@ export const enum standard {
 }
 export const enum sha {
     sha256
+}
+export const enum component {
+    ObjectIdentifier,
+    scheme,
+    DNS,
+    path,
+    query,
+    fragment,
+    port,
+    IPv6,
+    IPv4,
+    user,
 }
 export const enum registryID {
     id,
