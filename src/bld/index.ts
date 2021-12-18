@@ -5,7 +5,7 @@ export const enum op {
     setUnicodeSize2, //() default:1
     setUnicodeSize3, //() default:1
     setIRIindex, //(i:number) default:0
-    setIRIcomponentType, //(i:op) default:DNS, default scheme:https
+    setIRIcomponentType, //(i:registry) default:DNS, default scheme:https
     setIRIcomponent, //(count:number, bytes:currentEncoding) - vary by componentType
     extendIRIcomponent, //(count:number, bytes:currentEncoding) - vary by componentType
     shortenIRIcomponent, //(count:number) - vary by componentType
@@ -15,7 +15,7 @@ export const enum op {
     append_IRI_suffixes, //(count:number, [count:number, bytes:currentEncoding][])
     append_IRI_range, //(offset:number, count:number)
     append_unicode, //(count:number)
-    append_op, //(i:op)
+    append_registry, //(i:registry)
     append_from_sourceList, //(offset:number, count:number)
     append_Uint, //(offset:number, bits:number)
     append_UintNeg, //(offset:number, bits:number)
@@ -24,6 +24,42 @@ export const enum op {
     save_config, //(id:number)
     load_config, //(id:number)
     noop, //()
+    magicNumber = 217, //0xD9D9F8 (non-unicode bytes derived from cbor tag 55800) + 0x42494E4C44 ("BINLD") or ("BXXLD")
+}
+export const enum op2 {
+    setSourcePlane, //(i:uint)
+    setDestinationPlane, //(i:uint)
+    setSourceList, //(i:uint)
+    setDestinationList, //(i:uint)
+    setOffset, //(i:uint)
+    setOffset_scale, //(scalingFactor:uint, i:uint)
+    append_offset_many, //(count:uint, bytes:count*specSize)
+    append_offset_range, //(range:uint)
+    append_offset_range_scale, //(scalingFactor:uint, range:uint)
+}
+export const enum plane {
+    standard,
+    sha,
+    hierarchy,
+    constructed,
+    pack,
+    context,
+}
+export const enum standard {
+    uint,
+    neg,
+    registry,
+    unicode,
+}
+export const enum sha {
+    sha256
+}
+export const enum registryID {
+    id,
+    type,
+    container,
+    set,
+    list,
 
     false,
     true,
@@ -92,7 +128,7 @@ export const enum op {
     Math_PI,
     Math_SQRT1_2,
     Math_SQRT2,
-    
+
     CoordinateSystem,
     Quaternions,
     Cartesian,
@@ -133,6 +169,6 @@ export const enum op {
     prefix,
     IPversion,
     IPvFuture,
-
-    magicNumber = 217, //0xD9D9F8 (non-unicode bytes derived from cbor tag 55800) + 0x42494E4C44 ("BINLD")
 }
+type token = op | number | string | Uint8Array
+const registry: token[] = []
