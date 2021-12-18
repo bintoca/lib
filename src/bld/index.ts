@@ -1,32 +1,4 @@
 export const enum op {
-    setDraftRevision, //(i:number) not present means official spec
-    setUnicodeOffset, //(i:number) default:0
-    setUnicodeSize1, //() default:1
-    setUnicodeSize2, //() default:1
-    setUnicodeSize3, //() default:1
-    setIRIindex, //(i:number) default:0
-    setIRIcomponentType, //(i:registry) default:DNS, default scheme:https
-    setIRIcomponent, //(count:number, bytes:currentEncoding) - vary by componentType
-    extendIRIcomponent, //(count:number, bytes:currentEncoding) - vary by componentType
-    shortenIRIcomponent, //(count:number) - vary by componentType
-    setDestinationList, //(i:number) default:0
-    setSourceList, //(i:number) default:0
-    incrementDestinationList, //(size:number)
-    append_IRI_suffixes, //(count:number, [count:number, bytes:currentEncoding][])
-    append_IRI_range, //(offset:number, count:number)
-    append_unicode, //(count:number)
-    append_registry, //(i:registry)
-    append_from_sourceList, //(offset:number, count:number)
-    append_Uint, //(offset:number, bits:number)
-    append_UintNeg, //(offset:number, bits:number)
-    append_sha256, //(count:number, btyes:count*32)
-    load_link, //(i:number)
-    save_config, //(id:number)
-    load_config, //(id:number)
-    noop, //()
-    magicNumber = 217, //0xD9D9F8 (non-unicode bytes derived from cbor tag 55800) + 0x42494E4C44 ("BINLD") or ("BXXLD")
-}
-export const enum op2 {
     setSourcePlane, //(i:vint)
     setDestinationPlane, //(i:vint)
     setSourceList, //(i:vint)
@@ -34,11 +6,17 @@ export const enum op2 {
     setOffset, //(i:vint)
     setOffset_scale, //(scalingFactor:vint4, i:vint)
     setComponentType, //(c:vint)
-    extendComponent, //(count:vint, bytes:count*vint)
+    extendComponent, //(count:vint, bytes:count*(vint|utf8))
     shortenComponent, //(units:vint)
     append_offset_many, //(count:vint, bytes:count*specSize)
     append_offset_range, //(range:vint)
     append_offset_range_scale, //(scalingFactor:vint4, range:vint)
+    
+    extra = 13, //D
+    incrementDestinationList = 208, //() size hint?
+    noop, //()
+    draftRevision, //(i:vint)
+    magicNumber = 217, //0xD9D9F8 (non-unicode bytes derived from cbor tag 55800) + 0x42494E4C44 ("BINLD") or ("BXXLD")
 }
 export const enum plane {
     standard,
