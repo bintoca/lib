@@ -7,9 +7,9 @@ export const enum op {
     setComponentType, //(c:vint)
     shortenComponent, //(count:vint)
     append_offset_range, //(range:vint)
-    sint, //(i:svint)
-    map_or_array, //(typesize:svint)
-    string, //(typesize:svint, bytes:u8[])
+    uint, //(i:vint)
+    array, //(size:vint)
+    uft8, //(size:vint, bytes:u8[])
     append_offset, //(size:vint, bytes:u8[])
     extendComponent, //(size:vint, bytes:u8[])
     special, //D_13
@@ -17,19 +17,19 @@ export const enum op {
     append_offset_range_scale, //(scalingFactor:vint4, range:vint)
 }
 export const enum D_13 {
-    false, //()
-    true, //()
-    null, //()
     noop, //()
     incrementDestinationList, //()
-    garbageCollect, //() dest -> src
+    nint, //(i:svint)
+    map, //(size:vint)
+    byteString, //(size:vint, bytes:u8[])
+    renderPack, //(size:vint, bytes:u8[])
     append_offset_many, //(count:vint, size:vint, bytes:(count*size):u8[])
     append_offset_many_sizes, //(count:vint, bytes:count*(size:vint,u8[]))
     extendComponent_bits, //(bitCount:vint, size:vint, bytes:u8[])
     magicNumber, //always 7 bytes //0xD9D9F8 (non-unicode bytes derived from cbor tag 55800) + 0x42494E4C44 ("BINLD") or ("BXXLD") for beta
-    f16, //(v:f16)
-    f32, //(v:f32)
-    f64, //(v:f64)
+    false, //()
+    true, //()
+    null, //()
     extendedOps0param, //(i:vint)
     extendedOps1param, //(i:vint, p1:vint)
     extendedOpsNparam, //(i:vint, n:vint, p...)
@@ -41,12 +41,15 @@ export const enum extendedOps0param {
     indefiniteLength_Array, //()
     indefiniteLength_Map, //()
     endIndefiniteLength, //()
+    garbageCollect, //() dest -> src
     setComponentIANAPrivateEnterpriseOID, //() 1.3.6.1.4.1
 }
 export const enum extendedOps1param {
     shortenComponent_bits, //(count:vint)
     draftRevision, //(i:vint)
     cborTag, //(i:vint)
+    cborSimple, //(i:vint)
+    IEEE754_binary_v, //(i:vint) [f16, 3 bytes] [f32, 5 bytes] [f64, 10 bytes] [f128, 19 bytes] [f256, 37 bytes]
 }
 export const enum plane {
     standard,
