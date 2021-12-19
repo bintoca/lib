@@ -3,33 +3,33 @@ export const enum op {
     setDestinationPlane, //(i:vint)
     setSourceList, //(i:vint)
     setDestinationList, //(i:vint)
-    setOffset, //(i:vint)
     append_offset_range, //(i:vint)
     append_single, //(i:vint)
-    setComponentType, //(i:vint)
-    shortenComponent, //(count:vint)
+    append_many, //(count:vint, i...)
+    append_many_sizes, //(count:vint, [size:vint,bytes:u8[]]...)
     uint, //(i:vint)
     array, //(size:vint)
     map, //(size:vint)
     uft8, //(size:vint, bytes:u8[])
+    setComponentType, //(i:vint)
     special, //D_13
     extendComponent, //(size:vint, bytes:u8[])
-    renderPack, //(size:vint, bytes:u8[])
+    shortenComponent, //(count:vint)
 }
 export const enum D_13 {
     incrementDestinationList, //()
+    null, //()
     false, //()
     true, //()
-    null, //()
     nint, //(i:vint)
-    IEEE754_binary_v, //(i:vint) [f16, 3 bytes] [f32, 5 bytes] [f64, 10 bytes] [f128, 19 bytes] [f256, 37 bytes]
-    byteString, //(size:vint, bytes:u8[])
-    extendComponent_bits, //(bitCount:vint, bytes:u8[]) size of bytes is bitCount / 8
-    shortenComponent_bits, //(count:vint)
-    magicNumber, //always 7 bytes //0xD9D9F8 (non-unicode bytes derived from cbor tag 55800) + 0x42494E4C44 ("BINLD") or ("BXXLD") for beta
+    IEEE754_binary_v, //(i:vint) [f16, 3 bytes] [f32, 5 bytes] [f64, 10 bytes] [f128, 19 bytes] [f256, 37 bytes]  
+    setOffset, //(i:vint)
     setOffset_scale, //(scalingFactor:vint, i:vint)
     append_offset_range_scale, //(scalingFactor:vint, range:vint)
-    append_many, //(count:vint, i...)
+    magicNumber, //always 7 bytes //0xD9D9F8 (non-unicode bytes derived from cbor tag 55800) + 0x42494E4C44 ("BINLD") or ("BXXLD") for beta
+    extendComponent_bits, //(count:vint, bits:vint)
+    shortenComponent_bits, //(count:vint)
+    byteString, //(size:vint, bytes:u8[])
     extendedOps0param, //(i:vint)
     extendedOps1param, //(i:vint, p1:vint)
     extendedOpsNparam, //(i:vint, n:vint, p...)
