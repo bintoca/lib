@@ -4,35 +4,49 @@ export const enum op {
     setSourceList, //(i:vint)
     setDestinationList, //(i:vint)
     setOffset, //(i:vint)
-    setOffset_scale, //(scalingFactor:vint4, i:vint)
     setComponentType, //(c:vint)
-    extendComponent, //(size:vint, bytes:u8[])
     shortenComponent, //(count:vint)
-    append_offset, //(size:vint, bytes:size)
-    append_offset_many, //(count:vint, size:vint, bytes:(count*size):u8[])
     append_offset_range, //(range:vint)
-    append_offset_range_scale, //(scalingFactor:vint4, range:vint)
+    sint, //(i:svint)
+    map_or_array, //(typesize:svint)
+    string, //(typesize:svint, bytes:u8[])
+    append_offset, //(size:vint, bytes:u8[])
+    extendComponent, //(size:vint, bytes:u8[])
     special, //D_13
-    extendedOps1param, //(i:vint, p1:vint)
-    extendedOps2param, //(i:vint, p1:vint, p2:vint)
+    setOffset_scale, //(scalingFactor:vint4, i:vint)
+    append_offset_range_scale, //(scalingFactor:vint4, range:vint)
 }
 export const enum D_13 {
-    incrementDestinationList, //()
+    false, //()
+    true, //()
+    null, //()
     noop, //()
-    draftRevision, //(i:vint)
-    setComponentIANAPrivateEnterpriseOID, //() 1.3.6.1.4.1
+    incrementDestinationList, //()
+    garbageCollect, //() dest -> src
+    append_offset_many, //(count:vint, size:vint, bytes:(count*size):u8[])
     append_offset_many_sizes, //(count:vint, bytes:count*(size:vint,u8[]))
-    extendedOps0param, //(i:vint)
     extendComponent_bits, //(bitCount:vint, size:vint, bytes:u8[])
+    magicNumber, //always 7 bytes //0xD9D9F8 (non-unicode bytes derived from cbor tag 55800) + 0x42494E4C44 ("BINLD") or ("BXXLD") for beta
+    f16, //(v:f16)
+    f32, //(v:f32)
+    f64, //(v:f64)
+    extendedOps0param, //(i:vint)
+    extendedOps1param, //(i:vint, p1:vint)
+    extendedOpsNparam, //(i:vint, n:vint, p...)
+}
+export const enum extendedOps0param {
+    undefined, //()
+    indefiniteLength_Bytes, //()
+    indefiniteLength_UTF8, //()
+    indefiniteLength_Array, //()
+    indefiniteLength_Map, //()
+    endIndefiniteLength, //()
+    setComponentIANAPrivateEnterpriseOID, //() 1.3.6.1.4.1
+}
+export const enum extendedOps1param {
     shortenComponent_bits, //(count:vint)
-    reserved0param8,
-    magicNumber, //0xD9D9F8 (non-unicode bytes derived from cbor tag 55800) + 0x42494E4C44 ("BINLD") or ("BXXLD") for beta
-    reserved0param10,
-    reserved0param11,
-    reserved0param12,
-    reserved0param13,
-    reserved0param14,
-    reserved0param15,
+    draftRevision, //(i:vint)
+    cborTag, //(i:vint)
 }
 export const enum plane {
     standard,
