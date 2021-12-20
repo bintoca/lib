@@ -43,12 +43,62 @@ export const enum extendedOps0param {
     endIndefiniteLength, //()
     garbageCollect, //() dest -> src
     setComponentIANAPrivateEnterpriseOID, //() 1.3.6.1.4.1
+    decrementDestinationList, //()
 }
 export const enum extendedOps1param {
     draftRevision, //(i:vint)
     IEEE754_decmial_v, //(i:vint) [d32, 5 bytes] [d64, 10 bytes] [d128, 19 bytes]
     cborTag, //(i:vint)
     cborSimple, //(i:vint)
+    addDestinationList, //(i:vint)
+    subtractDestinationList, //(i:vint)
+}
+export const enum mode {
+    declarativeNesting
+}
+export const enum declarativeNesting {
+    uint, //(i:vint)
+    nint, //(i:vint)
+    tag, //(i:vint) use cbor tag registry
+    utf8, //(i:vint)
+    array, //(i:vint)
+    map, //(i:vint)
+    special,
+    mode, //(i:vint)
+}
+export const enum declarativeSpecial {
+    cborSimple0, //()
+    cborSimple1, //()
+    cborSimple2, //()
+    cborSimple3, //()
+    cborSimple4, //()
+    cborSimple5, //()
+    cborSimple6, //()
+    cborSimple7, //()
+    cborSimpleOther, //1 byte
+    byteString, //(size:vint, bytes:u8[])
+    indefiniteLength_Bytes, //()
+    indefiniteLength_UTF8, //()
+    indefiniteLength_Array, //()
+    indefiniteLength_Map, //()
+    IEEE754_decimal32_BID,
+    IEEE754_decimal64_BID,
+    IEEE754_decimal128_BID,
+    IEEE754_decimal32_DPD,
+    IEEE754_decimal64_DPD,
+    IEEE754_decimal128_DPD,
+    false, //()
+    true, //()
+    null, //()
+    undefined, //()
+    cborSimpleOther24, //1 byte
+    magicNumber, //always 7 bytes //0xD9D9F8 (non-unicode bytes derived from cbor tag 55800) + 0x42494E4C44 ("BINLD") or ("BXXLD") for beta
+    IEEE754_binary32,
+    IEEE754_binary64,
+    IEEE754_binary128,
+    IEEE754_binary256,
+    IEEE754_binary16, // LE byte size for all IEEE754
+    endIndefiniteLength, //()
 }
 export const enum plane {
     standard,
