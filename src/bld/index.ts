@@ -1,8 +1,5 @@
 export const enum op {
-    setStandard_int, //()
-    setStandard_registry, //()
-    setStandard_unicode, //()
-    setStandard_sha256, //()
+    setStandard, //(i:vint)
     setSourceList, //(i:vint)
     addSourceList, //(i:vint)
     subSourceList, //(i:vint)
@@ -19,38 +16,55 @@ export const enum op {
     subSourceOffset_append_range, //(off:vint, range:vint)
     append_list_of_uint, //(bits:vint)
     append_list_of_sint, //(bits:vint)
-    append_list_of_IEEE754_binary, //(bits:vint)
-    append_list_of_IEEE754_decimal_BID, //(bits:vint)
-    append_list_of_IEEE754_decimal_DPD, //(bits:vint)
+    append_list_of_bit_standard, //(bitStandard:vint, bits:vint)
 
-    setComponent_OID, //() ASN.1 BER rules
-    setComponent_scheme, //()
-    setComponent_user, //()
-    setComponent_DNS, //()
-    setComponent_IPv6, //()
-    setComponent_IPv4, //()
-    setComponent_port, //()
-    setComponent_path, //()
-    setComponent_query, //()
-    setComponent_fragment, //()
-    setComponent_language, //()
+    setComponent, //(i:vint)
     extendComponent, //(size:vint, bytes:u8[])
     shortenComponent, //(count:vint)
     extendComponent_bits, //(count:vint, bits:vint)
     shortenComponent_bits, //(count:vint)
 
+    load_links, //() all of destination list
+
     byteString, //(size:vint, bytes:u8[])
     garbageCollect, //() dest -> src
 
+    magicNumber = 217, //always 7 bytes //0xD9D9F8 (non-unicode bytes derived from cbor tag 55800) + 0x42494E4C44 ("BINLD") or ("BXXLD") for beta
+}
+export const enum standard {
+    setStandard_int, //()
+    setStandard_registry, //()
+    setStandard_unicode, //()
+    setStandard_sha256, //()
+}
+export const enum bitStandard {
+    append_list_of_IEEE754_binary, //(bits:vint)
+    append_list_of_IEEE754_decimal_BID, //(bits:vint)
+    append_list_of_IEEE754_decimal_DPD, //(bits:vint)
+}
+export const enum component {
+    setComponent_OID, //() ASN.1 BER rules
+    setComponent_scheme, //()
+    setComponent_DNS, //()
+    setComponent_path, //()
+
+    setComponent_user, //()
+    setComponent_IPv6, //()
+    setComponent_IPv4, //()
+    setComponent_port, //()
+    setComponent_query, //()
+    setComponent_fragment, //()
+    setComponent_language, //()
+}
+export const enum ext {
+    draftRevision, //(i:vint)
+    majorVersion, //(i:vint)
     extendedOps0param, //(i:vint)
     extendedOps1param, //(i:vint, p1:vint)
     extendedOpsNparam, //(i:vint, n:vint, p...)
     extendedOps0paramPrivate, //(i:vint)
     extendedOps1paramPrivate, //(i:vint, p1:vint)
     extendedOpsNparamPrivate, //(i:vint, n:vint, p...)
-    magicNumber, //always 7 bytes //0xD9D9F8 (non-unicode bytes derived from cbor tag 55800) + 0x42494E4C44 ("BINLD") or ("BXXLD") for beta
-    draftRevision, //(i:vint)
-    majorVersion, //(i:vint)
 }
 export const enum registryID {
     id,
