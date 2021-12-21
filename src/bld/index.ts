@@ -1,35 +1,41 @@
 export const enum op {
     setStandard, //(i:vint)
     setSourceList, //(i:vint)
-    addSourceList, //(i:vint)
-    subSourceList, //(i:vint)
+    addSourceList, //(i:vint1)
+    subSourceList, //(i:vint1)
     setDestinationList, //(i:vint)
-    addDestinationList, //(i:vint)
-    subDestinationList, //(i:vint)
+    addDestinationList, //(i:vint1)
+    subDestinationList, //(i:vint1)
 
+    append, //()
     append_single, //(i:vint)
-    append_many, //(count:vint, i...)
-    append_many_size, //(count:vint, size:vint, bytes:u8[])
-    append_many_sizes, //(count:vint, [size:vint,bytes:u8[]]...)
-    setSourceOffset_append_range, //(off:vint, range:vint)
-    addSourceOffset_append_range, //(off:vint, range:vint)
-    subSourceOffset_append_range, //(off:vint, range:vint)
-    append_list_of_uint, //(bits:vint)
-    append_list_of_sint, //(bits:vint)
-    append_list_of_bit_standard, //(bitStandard:vint, bits:vint)
+    append_many, //(count:vint1, i...)
+    append_many_size, //(count:vint1, size:vint, bytes:u8[])
+    append_many_sizes, //(count:vint1, [size:vint,bytes:u8[]]...)
+    setSourceOffset_append_range, //(i:vint, range:vint1)
+    addSourceOffset_append_range, //(i:vint, range:vint1)
+    subSourceOffset_append_range, //(i:vint, range:vint1)
+    append_list_of_uint, //(bits:vint1)
+    append_list_of_sint, //(bits:vint1)
+    append_list_of_bit_standard, //(bitStandard:vint, bits:vint1)
+    append_SourceList, //()
 
     setComponent, //(i:vint)
-    extendComponent, //(size:vint, bytes:u8[])
-    shortenComponent, //(count:vint)
-    extendComponent_bits, //(count:vint, bits:vint)
-    shortenComponent_bits, //(count:vint)
+    extendComponent, //(size:vint1, bytes:u8[])
+    shortenComponent, //(count:vint1)
+    extendComponent_bits, //(count:vint1, bits:vint)
+    shortenComponent_bits, //(count:vint1)
 
     load_links, //() all of destination list
 
-    byteString, //(size:vint, bytes:u8[])
-    garbageCollect, //() dest -> src
-
-    magicNumber = 217, //always 7 bytes //0xD9D9F8 (non-unicode bytes derived from cbor tag 55800) + 0x42494E4C44 ("BINLD") or ("BXXLD") for beta
+    setCount, //(i:vint)
+    byteString, //(size:vint1, bytes:u8[])
+    
+    magicNumber, //27 //D8 //always 7 bytes //0xD9D9F8 (non-unicode bytes derived from cbor tag 55800) + 0x42494E4C44 ("BINLD") or ("BXXLD") for beta
+    deleteList, //(i:vint)
+    load_context, //(i:vint)
+    save_context, //(i:vint)
+    delete_context, //(i:vint)
 }
 export const enum standard {
     setStandard_int, //()
@@ -41,20 +47,21 @@ export const enum bitStandard {
     append_list_of_IEEE754_binary, //(bits:vint)
     append_list_of_IEEE754_decimal_BID, //(bits:vint)
     append_list_of_IEEE754_decimal_DPD, //(bits:vint)
+    unorm,
+    snorm,
 }
 export const enum component {
     setComponent_OID, //() ASN.1 BER rules
     setComponent_scheme, //()
     setComponent_DNS, //()
-    setComponent_path, //()
-
-    setComponent_user, //()
     setComponent_IPv6, //()
-    setComponent_IPv4, //()
-    setComponent_port, //()
+    setComponent_path, //()
     setComponent_query, //()
     setComponent_fragment, //()
+    setComponent_IPv4, //()
+    setComponent_port, //()
     setComponent_language, //()
+    setComponent_user, //()
 }
 export const enum ext {
     draftRevision, //(i:vint)
