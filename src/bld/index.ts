@@ -1,4 +1,5 @@
 export const enum op {
+    magicNumber, //(count:vint1, bytes:"BLD"[])
     setStandard, //(i:vint)
     setSourceList, //(i:vint)
     addSourceList, //(i:vint1)
@@ -16,22 +17,24 @@ export const enum op {
     subSourceOffset_append_range, //(i:vint, range:vint1)
     append_list_of_uint, //(bits:vint1)
     append_list_of_sint, //(bits:vint1)
-    append_list_of_IEEE754_binary, //(bits:vint)
     append_list_of_bit_standard, //(bitStandard:vint, bits:vint1)
     append_List, //(negOffset:vint1)
+    create_prefix_list, //(i:vint)
 
     setComponent, //(i:vint)
     extendComponent, //(size:vint1, bytes:u8[])
     shortenComponent, //(count:vint1)
-    extendComponent_bits, //(count:vint1, bits:vint)
-    shortenComponent_bits, //(count:vint1)
+    //extendComponent_bits, //(count:vint1, bits:vint)
+    //shortenComponent_bits, //(count:vint1)
+    adjustComponent_bits, //shorten and extend
 
+    compression, //
+    
     list_load_links, //(i:vint)
 
     setCount, //(i:vint)
     byteString, //(size:vint1, bytes:u8[])
     
-    magicNumber, //27 //D8 //(size:vint1, bytes:u8[]) //0xD9D9F8 (non-unicode bytes derived from cbor tag 55800) + 0x42494E4C44 ("BINLD") or ("BXXLD") for beta
     deleteList, //(i:vint)
     load_context, //(i:vint)
     save_context, //(i:vint)
@@ -44,7 +47,7 @@ export const enum standard {
     setStandard_sha256, //()
 }
 export const enum bitStandard {
-    
+    append_list_of_IEEE754_binary, //(bits:vint)
     append_list_of_IEEE754_decimal_BID, //(bits:vint)
     append_list_of_IEEE754_decimal_DPD, //(bits:vint)
     unorm,
