@@ -57,12 +57,13 @@ export const enum component {
     setComponent_OID, //() ASN.1 BER rules
     setComponent_scheme, //()
     setComponent_DNS, //() and LDAP dc
-    setComponent_IPv6, //()
     setComponent_path, //()
+    UUID,
     BLD_blob,
     sha256,
     setComponent_query, //()
     setComponent_fragment, //()
+    setComponent_IPv6, //()
     setComponent_IPv4, //()
     setComponent_port, //()
     setComponent_language, //()
