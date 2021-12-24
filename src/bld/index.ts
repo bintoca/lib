@@ -10,13 +10,12 @@ export const enum op {
 
     append_single, //(i:vint)
     append_many, //(count:vint1, i...)
-    append_many_size, //(count:vint1, size:vint, bytes:u8[])
-    append_many_sizes, //(count:vint1, [size:vint,bytes:u8[]]...)
     setSourceOffset_append_range, //(i:vint, range:vint1)
     addSourceOffset_append_range, //(i:vint, range:vint1)
     subSourceOffset_append_range, //(i:vint, range:vint1)
     append_list_of_uint, //(bits:vint1)
     append_list_of_sint, //(bits:vint1)
+    append_list_of_IEEE754_binary, //(bits:vint)
     append_list_of_bit_standard, //(bitStandard:vint, bits:vint1)
     append_List, //(negOffset:vint1)
     create_prefix_list, //(i:vint)
@@ -24,9 +23,9 @@ export const enum op {
     setComponent, //(i:vint)
     extendComponent, //(size:vint1, bytes:u8[])
     shortenComponent, //(count:vint1)
-    //extendComponent_bits, //(count:vint1, bits:vint)
-    //shortenComponent_bits, //(count:vint1)
-    adjustComponent_bits, //shorten and extend
+    extendComponent_bits, //(count:vint1, bits:vint)
+    shortenComponent_bits, //(count:vint1)
+    //adjustComponent_bits, //shorten and extend
 
     compression, //(type:vint, size:vint, value:u8[])
 
@@ -46,8 +45,6 @@ export const enum standard {
     setStandard_unicode, //()
 }
 export const enum bitStandard {
-    
-    append_list_of_IEEE754_binary, //(bits:vint)
     append_list_of_IEEE754_decimal_BID, //(bits:vint)
     append_list_of_IEEE754_decimal_DPD, //(bits:vint)
     unorm,
