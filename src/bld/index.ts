@@ -16,10 +16,10 @@ export const enum op {
     addSourceOffset_append_range, //(i:vint, range:vint1)
     subSourceOffset_append_range, //(i:vint, range:vint1)
     append_list_of_uint, //(bits:vint1)
+    append_list_of_sint, //(bits:vint1)
     append_list_of_bit_standard, //(bitStandard:vint, bits:vint1)
     append_List, //(negOffset:vint1)
     create_prefix_list, //(i:vint)
-    attach_component, //(compType:vint)
 
     setComponent, //(i:vint)
     extendComponent, //(size:vint1, bytes:u8[])
@@ -44,10 +44,9 @@ export const enum standard {
     setStandard_int, //()
     setStandard_registry, //()
     setStandard_unicode, //()
-    setStandard_sha256, //()
 }
 export const enum bitStandard {
-    append_list_of_sint, //(bits:vint1)
+    
     append_list_of_IEEE754_binary, //(bits:vint)
     append_list_of_IEEE754_decimal_BID, //(bits:vint)
     append_list_of_IEEE754_decimal_DPD, //(bits:vint)
@@ -61,7 +60,7 @@ export const enum component {
     setComponent_IPv6, //()
     setComponent_path, //()
     BLD_blob,
-    integrity,
+    sha256,
     setComponent_query, //()
     setComponent_fragment, //()
     setComponent_IPv4, //()
