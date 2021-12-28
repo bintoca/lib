@@ -11,19 +11,19 @@ export const enum op {
     subOffset, //(i:vint1)
 
     append_single, //(i:vint)
+    append_single_size, //(size:vint1, bytes:u8[])
     append_many, //(count:vint1, i:vint...)
     append_many_size, //(count:vint1, size:vint1, bytes:u8[])
     append_many_sizes, //(count:vint1, [size:vint1, bytes:u8[]]...)
     append_range, //(range:vint1)
     append_list, //(negOffset:vint1)
-    create_list_of_uint, //(bits:vint1)
-    create_list_of_sint, //(bits:vint1)
-    create_list_of_IEEE754_binary, //(bits:vint)
-    create_list_of_bit_standard, //(bitStandard:vint, bits:vint1)
-    create_list_within_prefix, //(i:vint)
+    append_list_size, //(bits:vint1)
     nest_next_appends, //(i:vint)
 
-    compression, //(i:vint)
+    compression_huffman, //(size:vint1, bytes:u8[])
+    compression_arithmetic, //(size:vint1, bytes:u8[])
+    encryption, //(hint:vint, size:vint1, bytes:u8[])
+    embedded_item, //(id:vint, size:vint1, bytes:u8[])
 
     list_load_links, //(i:vint)
 
@@ -34,6 +34,7 @@ export const enum op {
     load_context, //(i:vint)
     save_context, //(i:vint)
     delete_context, //(i:vint)
+    ack_context, //(code:vint)
 }
 export const enum standard {
     setStandard_int, //()
@@ -41,6 +42,9 @@ export const enum standard {
     setStandard_unicode, //()
 }
 export const enum bitStandard {
+    create_list_of_uint, //(bits:vint1)
+    create_list_of_sint, //(bits:vint1)
+    create_list_of_IEEE754_binary, //(bits:vint)
     append_list_of_IEEE754_decimal_BID, //(bits:vint)
     append_list_of_IEEE754_decimal_DPD, //(bits:vint)
     unorm,
