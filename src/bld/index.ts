@@ -3,7 +3,7 @@ export const enum op {
     setSourceList, //(i:vint)
     addSourceList, //(i:vint1)
     subSourceList, //(i:vint1)
-    setDestinationList, //(i:vint3)
+    setDestinationList, //(i:vint1)
     addDestinationList, //(i:vint1)
     subDestinationList, //(i:vint1)
     setOffset, //(i:vint)
@@ -19,22 +19,23 @@ export const enum op {
     append_list, //(negOffset:vint1)
     append_list_size, //(bits:vint1)
     nest_next_appends, //(i:vint)
+    update_single, //(destinationIndex:vint, sourceIndex:vint) 
 
-    compression_huffman, //(size:vint1, bytes:u8[])
-    compression_arithmetic, //(size:vint1, bytes:u8[])
-    encryption, //(hint:vint, size:vint1, bytes:u8[])
-    embedded_item, //(id:vint, size:vint1, bytes:u8[])
-
-    list_load_links, //(i:vint)
-
-    setCount, //(i:vint)
-    packedData, //(size:vint1, bytes:u8[])
+    data_frame, //(size:vint, bytes:u8[])
 
     deleteList, //(i:vint)
     load_context, //(i:vint)
     save_context, //(i:vint)
     delete_context, //(i:vint)
-    ack_context, //(code:vint)
+}
+export const enum frame {
+    load_links,
+    fixed_width_pack,
+    embedded_stream,
+    compression_huffman,
+    compression_arithmetic,
+    encryption,
+    init_stream_context_list,
 }
 export const enum standard {
     setStandard_int, //()
