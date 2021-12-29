@@ -3,12 +3,15 @@ export const enum op {
     setSourceList, //(i:vint)
     addSourceList, //(i:vint1)
     subSourceList, //(i:vint1)
+    setSourceOffset, //(i:vint)
+    addSourceOffset, //(i:vint1)
+    subSourceOffset, //(i:vint1)
     setDestinationList, //(i:vint1)
     addDestinationList, //(i:vint1)
     subDestinationList, //(i:vint1)
-    setOffset, //(i:vint)
-    addOffset, //(i:vint1)
-    subOffset, //(i:vint1)
+    setDestinationOffset, //(i:vint)
+    addDestinationOffset, //(i:vint1)
+    subDestinationOffset, //(i:vint1)
 
     append_single, //(i:vint)
     append_single_size, //(size:vint1, bytes:u8[])
@@ -18,8 +21,7 @@ export const enum op {
     append_range, //(range:vint1)
     append_list, //(negOffset:vint1)
     append_list_size, //(bits:vint1)
-    nest_next_appends, //(i:vint)
-    update_single, //(destinationIndex:vint, sourceIndex:vint) 
+    nest_next_appends, //(i:vint) 
 
     data_frame, //(size:vint, bytes:u8[])
 
