@@ -1,5 +1,5 @@
 export const enum op {
-    magicNumber, //(count:vint1, bytes:"BLD"[])
+    magicNumber_noop, //(count:vint, bytes:"BLD"[])
     setSourceList, //(i:vint)
     addSourceList, //(i:vint1)
     subSourceList, //(i:vint1)
@@ -20,24 +20,34 @@ export const enum op {
     append_many_sizes, //(count:vint1, [size:vint1, bytes:u8[]]...)
     append_range, //(range:vint1)
     append_list, //(negOffset:vint1)
+    append_list_snapshot, //(negOffset:vint1)
     append_list_size, //(bits:vint1)
-    nest_next_appends, //(i:vint) 
+    nest_next_appends, //(i:vint)
+    set_dest_offset_stack, //(count:vint1, i:vint...)
+    push_dest_offset_stack, //(i:vint)
+    push_dest_offset_stack_many, //(count:vint1, i:vint...)
+    pop_dest_offset_stack, //(count:vint1)
 
     data_frame, //(size:vint, bytes:u8[])
 
-    deleteList, //(i:vint)
+    delete_list, //(negOffset_from_current_destination:vint)
     load_context, //(i:vint)
     save_context, //(i:vint)
     delete_context, //(i:vint)
 }
 export const enum frame {
     load_links,
-    fixed_width_pack,
+    init_stream_context_list,
+    encoded,
     embedded_stream,
+    embedded_stream_encoded,
+}
+export const enum encoding {
+    fixed_width_pack,
+    fixed_width_multi_pack,
     compression_huffman,
     compression_arithmetic,
     encryption,
-    init_stream_context_list,
 }
 export const enum standard {
     setStandard_int, //()
