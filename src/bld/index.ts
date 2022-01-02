@@ -21,8 +21,9 @@ export const enum op {
     append_range, //(range:vint1)
     append_list, //(negOffset:vint1)
     append_list_snapshot, //(negOffset:vint1)
-    append_list_size, //(bits:vint1)
-    nest_next_appends, //(i:vint)
+    nest_next_appends, //(i:vint1)
+    nest_next_appends_deep, //(i:vint1)
+    next_appends_insert_before, //(i:vint1)
     set_dest_offset_stack, //(count:vint1, i:vint...)
     push_dest_offset_stack, //(i:vint)
     push_dest_offset_stack_many, //(count:vint1, i:vint...)
@@ -30,7 +31,7 @@ export const enum op {
 
     data_frame, //(size:vint, bytes:u8[])
 
-    delete_list, //(negOffset_from_current_destination:vint)
+    shorten_from_offset, //(count:vint1)
     load_context, //(i:vint)
     save_context, //(i:vint)
     delete_context, //(i:vint)
