@@ -17,10 +17,12 @@ export const enum op {
     append_single_size, //(size:vint1, bytes:u8[])
     append_many, //(count:vint1, i:vint...)
     append_many_size, //(count:vint1, size:vint1, bytes:u8[])
+    append_many_size_count, //(size:vint1, count:vint1, bytes:u8[])
     append_many_sizes, //(count:vint1, [size:vint1, bytes:u8[]]...)
     append_range, //(range:vint1)
     append_list, //(negOffset:vint1)
     append_list_snapshot, //(negOffset:vint1)
+    append_list_suffix, //(negOffset:vint1)
     nest_next_appends, //(i:vint1)
     nest_next_appends_deep, //(i:vint1)
     next_appends_insert_before, //(i:vint1)
@@ -28,15 +30,14 @@ export const enum op {
     push_dest_offset_stack, //(i:vint)
     push_dest_offset_stack_many, //(count:vint1, i:vint...)
     pop_dest_offset_stack, //(count:vint1)
+    shorten_from_offset, //(count:vint1)
 
     data_frame, //(size:vint, bytes:u8[])
-
-    shorten_from_offset, //(count:vint1)
+}
+export const enum frame {
     load_context, //(i:vint)
     save_context, //(i:vint)
     delete_context, //(i:vint)
-}
-export const enum frame {
     load_links,
     init_stream_context_list,
     encoded,
