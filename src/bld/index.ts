@@ -34,6 +34,69 @@ export const enum op {
 
     data_frame, //(size:vint, bytes:u8[])
 }
+export type DecoderState = {
+    position: number, decodeItemFunc: (op: op, additionalInformation: number, dv: DataView, src: DecoderState) => any, decodeMainFunc: (dv: DataView, state: DecoderState) => any,
+    queue: BufferSource[], stopPosition?: number, tempBuffer: Uint8Array
+}
+export const bufferSourceToDataView = (b: BufferSource, offset: number = 0, length?: number): DataView => b instanceof ArrayBuffer ? new DataView(b, offset, length !== undefined ? length : b.byteLength - offset) : new DataView(b.buffer, b.byteOffset + offset, length !== undefined ? length : b.byteLength - offset)
+export const bufferSourceToUint8Array = (b: BufferSource, offset: number = 0, length?: number): Uint8Array => b instanceof ArrayBuffer ? new Uint8Array(b, offset, length !== undefined ? length : b.byteLength - offset) : new Uint8Array(b.buffer, b.byteOffset + offset, length !== undefined ? length : b.byteLength - offset)
+export const decodeLoop = (state: DecoderState) => {
+    let dv: DataView
+    const first = state.queue[0]
+    if (first) {
+        if (first.byteLength < state.tempBuffer.byteLength) {
+            let count = 0
+            let i = 0
+            while (count < state.tempBuffer.byteLength && i < state.queue.length) {
+                const b = state.queue[i]
+                const d = bufferSourceToDataView(b)
+                for (let j = 0; j < b.byteLength; j++) {
+                    if (count < state.tempBuffer.byteLength) {
+                        state.tempBuffer[count] = d.getUint8(j)
+                        count++
+                    }
+                }
+                i++
+            }
+            dv = bufferSourceToDataView(state.tempBuffer, 0, count)
+        }
+        else {
+            dv = bufferSourceToDataView(first)
+        }
+    }
+    else {
+        throw new Error('no data supplied to decodeLoop')
+    }
+    const start = state.position = 0
+    state.stopPosition = undefined
+    let result
+    const dm = state.decodeMainFunc
+    while (state.position < dv.byteLength) {
+        result = dm(dv, state)
+    }
+    const consumed = (state.stopPosition === undefined ? state.position : state.stopPosition) - start
+    let count = 0
+    while (count < consumed) {
+        const x = state.queue[0]
+        if (x.byteLength + count <= consumed) {
+            count += x.byteLength
+            state.queue.shift()
+        }
+        else {
+            const newOffset = consumed - count
+            count = consumed
+            state.queue[0] = bufferSourceToUint8Array(x, newOffset)
+        }
+    }
+    return result
+}
+export const decodeMain = (dv: DataView, state: DecoderState): any => {
+    const c = dv.getUint8(state.position)
+    state.position++;
+    const p = c >> 5
+    const op = c & 31
+    state.decodeItemFunc(op, p, dv, state)
+}
 export const enum frame {
     load_context, //(i:vint)
     save_context, //(i:vint)
