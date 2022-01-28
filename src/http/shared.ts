@@ -1,5 +1,6 @@
 export type PageConfig = { title: string, docs: string, isDev: boolean }
-export type PlatformManifest = { [k: string]: { fileURL?: URL, path?: string, deps?: string[], content?: Buffer, ct: string } }
+export type PlatformManifestItem = { fileURL?: URL, path?: string, deps?: string[], content?: Buffer, ct: string, module?: string, hash?: string, headers?: { [header: string]: number | string }, htmlOptions?: HtmlOptions }
+export type PlatformManifest = { [k: string]: PlatformManifestItem }
 export type HtmlOptions = { base?: string, scripts?: string[], embedData?, preconnects?: string[], stylesheets?: string[] }
 export type HtmlRoutes = { [k: string]: HtmlOptions }
 const apiVersion = 1
@@ -20,13 +21,13 @@ const indexHtml = (pageConfig: PageConfig, manifest: PlatformManifest, op: HtmlO
         </head>
         <body>
         <noscript>Javascript is required <a href="${pageConfig.docs}">See documentation</a></noscript>
-        <script>if('serviceWorker' in navigator){
+        <script>if('serviceWorker' in navigator && ${manifest['sw'] ? 1 : 0}){
             navigator.serviceWorker.addEventListener('message', ev => {
                 if ((ev.data.apiVersion && ev.data.apiVersion > ${apiVersion}) || ev.data.force) {
                     location.reload()
                 }
             })
-            navigator.serviceWorker.register('/sw.js')
+            navigator.serviceWorker.register('${manifest['sw'] ? manifest['sw'].path : ''}')
         }else{document.write('This browser is not supported <a href="${pageConfig.docs}">See documentation</a>')}</script>
         </body>
       </html>`

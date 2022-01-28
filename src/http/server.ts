@@ -7,20 +7,20 @@ import * as fs from 'fs'
 import * as path from 'path'
 import open from 'open'
 import { cwd } from 'process'
-import { HtmlRoutes, PageConfig, PlatformManifest, matchHtmlRoute, indexHtml, indexHtmlHeaders } from '@bintoca/http/shared'
+import { HtmlRoutes, PageConfig, PlatformManifest, matchHtmlRoute, indexHtml, indexHtmlHeaders, PlatformManifestItem } from '@bintoca/http/shared'
 
 const TD = new TextDecoder()
 const TE = new TextEncoder()
 export const defaultPlatformManifest: PlatformManifest = {
-    '@bintoca/http/shared': { ct: 'text/javascript' },
-    '@bintoca/http/home': { ct: 'text/javascript' },
-    '@bintoca/http/sw': { ct: 'text/javascript' },
+    'shared': { ct: 'text/javascript', module: '@bintoca/http/shared' },
+    'home': { ct: 'text/javascript', module: '@bintoca/http/home' },
     'favicon': { ct: 'image/x-icon', fileURL: new URL('./favicon.ico', import.meta.url) },
+    'faviconBare': { ct: 'image/x-icon', fileURL: new URL('./favicon.ico', import.meta.url), path: '/favicon.ico' },
     'apple-touch-icon': { ct: 'image/png', fileURL: new URL('./apple-touch-icon.png', import.meta.url) },
     'css': { ct: 'text/css', fileURL: new URL('./main.css', import.meta.url) }
 }
 export const defaultRoutes: HtmlRoutes = {
-    "/": { scripts: ['@bintoca/http/home'], stylesheets: ['css'] }
+    "/": { scripts: ['home'], stylesheets: ['css'] }
 }
 const fus: FileURLSystemSync = {
     exists: (p: URL) => existsSync(p as any),
@@ -28,86 +28,86 @@ const fus: FileURLSystemSync = {
     jsonCache: {},
     conditions: defaultConditionsSync
 }
-export const initPlatformManifest = (manifest: PlatformManifest, pageConfig: PageConfig, routes: HtmlRoutes) => {
+export const readFile = (item: PlatformManifestItem) => readFileSync(item.fileURL || ESM_RESOLVE(item.module, new URL(import.meta.url), fus) as any)
+export const initPlatformManifest = (manifest: PlatformManifest) => {
     for (let k in manifest) {
-        const u = manifest[k].fileURL || ESM_RESOLVE(k, new URL(import.meta.url), fus)
-        let b: Buffer = readFileSync(u as any)
+        let b: Buffer = readFile(manifest[k])
         if (manifest[k].deps) {
             let s = TD.decode(b)
             for (let d of manifest[k].deps) {
-                s = s.replace(new RegExp(d, 'g'), manifest[d].path)
+                s = s.replace(new RegExp("'" + manifest[d].module + "'", 'g'), "'" + manifest[d].path + "'")
             }
             b = Buffer.from(s)
         }
         manifest[k].content = b
-        manifest[k].path = '/' + k + '.' + crypto.createHash('sha256').update(b).digest().toString('hex')
-    }
-    const shared = manifest['@bintoca/http/shared']
-    const sw = manifest['@bintoca/http/sw']
-    const liteManifest = {}
-    for (let k in manifest) {
-        if (k != '@bintoca/http/sw') {
-            liteManifest[k] = { ct: manifest[k].ct, path: manifest[k].path }
+        if (!manifest[k].path) {
+            manifest[k].path = '/' + k + '.' + crypto.createHash('sha256').update(b).digest().toString('hex')
         }
     }
-    sw.content = Buffer.from(TD.decode(shared.content).split('\n')
-        .concat(TD.decode(sw.content)
-            .replace('const manifest = {}', 'const manifest = ' + JSON.stringify(liteManifest))
-            .replace('const pageConfig = {}', 'const pageConfig = ' + JSON.stringify(pageConfig))
-            .replace('const routes = {}', 'const routes = ' + JSON.stringify(routes))
-            .split('\n'))
-        .filter(x => !x.startsWith('import ') && !x.startsWith('export ')).join('\n'))
-    sw.path = crypto.createHash('sha256').update(sw.content).digest().toString('hex')
     return manifest
 }
+export const initInline = (item: PlatformManifestItem, deps: PlatformManifestItem[], replace: { [k: string]: string }) => {
+    const b = readFile(item)
+    let rb = TD.decode(b)
+    for (let k in replace) {
+        rb = rb.replace(k, replace[k])
+    }
+    item.content = Buffer.from(deps.map(x => TD.decode(x.content).split('\n')).flat()
+        .concat(rb.split('\n'))
+        .filter(x => !x.startsWith('import ') && !x.startsWith('export '))
+        .join('\n'))
+    item.hash = crypto.createHash('sha256').update(item.content).digest().toString('hex')
+}
+export const serviceWorkerReplace = (manifest: PlatformManifest, pageConfig: PageConfig, routes: HtmlRoutes) => {
+    return {
+        'const manifest = {}': 'const manifest = ' + JSON.stringify(manifest),
+        'const pageConfig = {}': 'const pageConfig = ' + JSON.stringify(pageConfig),
+        'const routes = {}': 'const routes = ' + JSON.stringify(routes)
+    }
+}
+export const initServiceWorker = (manifest: PlatformManifest, pageConfig: PageConfig, routes: HtmlRoutes) =>
+    initInline({ ct: 'text/javascript', path: '/sw.js', module: '@bintoca/http/sw' }, [manifest['shared']], serviceWorkerReplace(manifest, pageConfig, routes))
 export const defaultConfig: Config = {
     hostname: 'localhost',
     port: 3000,
-    ignore: [/(^|[\/\\])\../, 'node_modules'], // ignore dotfiles
-    awaitWriteFinish: { stabilityThreshold: 100, pollInterval: 50 },
     open: true,
-    watch: true,
     configFile: './bintoca.config.js',
-    path: '.',
     pageConfig: { title: 'bintoca', docs: 'https://docs.bintoca.com', isDev: false }
 }
-export type Config = { hostname: string, port: number, ignore, awaitWriteFinish, open: boolean, watch: boolean, configFile, path: string, pageConfig: PageConfig }
-export type State = { readlineInterface: readline.Interface, config: Config, platformManifest: PlatformManifest }
+export type Config = { hostname: string, port: number, open: boolean, configFile, pageConfig: PageConfig }
+export type State = { readlineInterface: readline.Interface, config: Config, platformManifest: PlatformManifest, routes: HtmlRoutes, log: (x: { type: string, [k: string]: any }) => any }
 export type RequestFields = { method: string, url: string, headers: { [header: string]: string | string[] | undefined }, body: Buffer }
 export type ResponseFields = { statusCode: number, body: string | Buffer, headers: { [header: string]: number | string } }
-export const contentType = (res: ResponseFields, ct: string) => res.headers['Content-Type'] = ct
+export const matchURL = (url: string, manifest: PlatformManifest, routes: HtmlRoutes, pageConfig: PageConfig): PlatformManifestItem => {
+    const route = matchHtmlRoute(url, routes)
+    if (route) {
+        return { ct: 'text/html', headers: indexHtmlHeaders(), content: Buffer.from(indexHtml(pageConfig, manifest, route)) }
+    }
+    const manifestMatch = Object.keys(manifest).map(x => manifest[x]).filter(x => x.path == url)[0]
+    if (manifestMatch) {
+        manifestMatch.headers = Object.assign({ 'Content-Type': manifestMatch.ct }, manifestMatch.headers)
+        if(manifestMatch.path.length > 64){
+            manifestMatch.headers['Cache-Control'] = 'public, max-age=31536000'
+        }
+        return manifestMatch
+    }
+}
 export const httpHandler = async (req: RequestFields, state: State): Promise<ResponseFields> => {
     const res: ResponseFields = { statusCode: 200, body: '', headers: {} }
     switch (req.method) {
         case 'GET': {
-            const route = matchHtmlRoute(req.url, defaultRoutes)
-            const manifestMatch = Object.keys(state.platformManifest).map(x => state.platformManifest[x]).filter(x => x.path == req.url)[0]
-            if (route) {
-                res.headers = indexHtmlHeaders()
-                res.body = indexHtml(state.config.pageConfig, state.platformManifest, route)
-            }
-            else if (manifestMatch) {
-                contentType(res, manifestMatch.ct)
-                res.body = manifestMatch.content
-            }
-            else if (req.url == '/sw.js') {
-                if (state.config.pageConfig.isDev) {
-                    state.platformManifest = initPlatformManifest(state.platformManifest, state.config.pageConfig, defaultRoutes)
-                }
-                const sw = state.platformManifest['@bintoca/http/sw']
-                if (req.headers['if-none-match'] == sw.path) {
+            const m = matchURL(req.url, state.platformManifest, state.routes, state.config.pageConfig)
+            if (m) {
+                if (m.hash && req.headers['if-none-match'] == m.hash) {
                     res.statusCode = 304
                 }
                 else {
-                    contentType(res, sw.ct)
-                    res.headers['ETag'] = sw.path
-                    res.body = sw.content
+                    res.headers = m.headers
+                    res.body = m.content
+                    if (m.hash) {
+                        res.headers['ETag'] = m.hash
+                    }
                 }
-            }
-            else if (req.url == '/favicon.ico') {
-                const x = state.platformManifest['favicon']
-                contentType(res, x.ct)
-                res.body = x.content
             }
             else {
                 res.statusCode = 404
@@ -141,10 +141,6 @@ export const readlineHandler = (line, state: State) => {
     }
     state.readlineInterface.prompt()
 }
-export const log = (state: State, ...x) => {
-    console.log(...x)
-    state.readlineInterface.prompt()
-}
 export const applyConfigFile = async (state: State) => {
     if (fs.existsSync(state.config.configFile)) {
         const dev = await import(path.join('file://' + cwd(), state.config.configFile))
@@ -152,11 +148,7 @@ export const applyConfigFile = async (state: State) => {
     }
 }
 export const getRootURL = (state: State) => 'http://' + state.config.hostname + ':' + state.config.port
-export const init = async (config?: Config) => {
-    const state: State = {
-        readlineInterface: readline.createInterface({ input: process.stdin, output: process.stdout, prompt: 'bintoca> ' }), config: config || Object.assign({}, defaultConfig),
-        platformManifest: initPlatformManifest(defaultPlatformManifest, defaultConfig.pageConfig, defaultRoutes)
-    }
+export const init = async (state: State) => {
     if (state.config.configFile) {
         await applyConfigFile(state)
     }
@@ -176,18 +168,18 @@ export const init = async (config?: Config) => {
                 }
                 res.end(r.body)
                 if (res.statusCode == 404) {
-                    log(state, 404, req.url)
+                    state.log({ type: '404', url: req.url })
                 }
             }
             catch (e) {
                 res.statusCode = 500
-                log(state, e)
+                state.log({ type: '500', url: req.url, e })
                 res.end()
             }
         })
     })
     httpServer.listen(state.config.port)
-    log(state, 'Listening on ' + getRootURL(state))
+    state.log({ type: 'listen', text: 'Listening on ' + getRootURL(state) })
     if (state.config.open) {
         open(getRootURL(state))
     }

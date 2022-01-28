@@ -5,14 +5,14 @@ const selfOrigin = new URL(_self.location.href).origin
 const pageConfig: PageConfig = {} as any
 const manifest: PlatformManifest = {}
 const routes: HtmlRoutes = {}
-const cachedURLs = Object.keys(manifest).map(x => manifest[x].path)
+const cachedURLs = new Set(Object.keys(manifest).map(x => manifest[x].path))
 
 _self.addEventListener('install', function (event) {
     _self.skipWaiting();
     event.waitUntil(
         self.caches.open('cache1')
             .then(function (cache) {
-                return Promise.all(cachedURLs.map(x => cache.match(x).then(m => m ? undefined : cache.add(x))))
+                return Promise.all(Array.from(cachedURLs).map(x => cache.match(x).then(m => m ? undefined : cache.add(x))))
             })
     );
 });
@@ -27,14 +27,13 @@ _self.addEventListener('activate', event => {
         })
         .then(cache => {
             return cache.keys().then(keys => {
-                return Promise.all(keys.map(k => cachedURLs.includes(new URL(k.url).pathname) ? undefined : cache.delete(k)))
+                return Promise.all(keys.map(k => cachedURLs.has(new URL(k.url).pathname) ? undefined : cache.delete(k)))
             })
         })
     )
 });
-
 _self.addEventListener('fetch', function (event) {
-    if (cachedURLs.some(x => x == event.request.url)) {
+    if (cachedURLs.has(event.request.url)) {
         event.respondWith(caches.match(event.request))
     }
     else {

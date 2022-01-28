@@ -8,14 +8,10 @@
   },
   "exports": {
     ".": "./index.js",
-    "./client": "./client.js",
-    "./core": "./core.js",
-    "./dynamic": "./dynamic.js",
     "./home": "./home.js",
-    "./init": "./init.js",
-    "./primordial": "./primordial.js",
     "./resolve": "./resolve.js",
     "./shared": "./shared.js",
+    "./server": "./server.js",
     "./sw": "./sw.js"
   },
   "types": "./index.d.ts",
