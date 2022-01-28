@@ -21,13 +21,15 @@ const indexHtml = (pageConfig: PageConfig, manifest: PlatformManifest, op: HtmlO
         </head>
         <body>
         <noscript>Javascript is required <a href="${pageConfig.docs}">See documentation</a></noscript>
-        <script>if('serviceWorker' in navigator && ${manifest['sw'] ? 1 : 0}){
+        <script>if('serviceWorker' in navigator){
+            if(${manifest['sw'] ? 1 : 0}){
             navigator.serviceWorker.addEventListener('message', ev => {
                 if ((ev.data.apiVersion && ev.data.apiVersion > ${apiVersion}) || ev.data.force) {
                     location.reload()
                 }
             })
             navigator.serviceWorker.register('${manifest['sw'] ? manifest['sw'].path : ''}')
+        }
         }else{document.write('This browser is not supported <a href="${pageConfig.docs}">See documentation</a>')}</script>
         </body>
       </html>`

@@ -12,7 +12,6 @@ import { HtmlRoutes, PageConfig, PlatformManifest, matchHtmlRoute, indexHtml, in
 const TD = new TextDecoder()
 const TE = new TextEncoder()
 export const defaultPlatformManifest: PlatformManifest = {
-    'shared': { ct: 'text/javascript', module: '@bintoca/http/shared' },
     'home': { ct: 'text/javascript', module: '@bintoca/http/home' },
     'favicon': { ct: 'image/x-icon', fileURL: new URL('./favicon.ico', import.meta.url) },
     'faviconBare': { ct: 'image/x-icon', fileURL: new URL('./favicon.ico', import.meta.url), path: '/favicon.ico' },
@@ -29,12 +28,36 @@ const fus: FileURLSystemSync = {
     conditions: defaultConditionsSync
 }
 export const readFile = (item: PlatformManifestItem) => readFileSync(item.fileURL || ESM_RESOLVE(item.module, new URL(import.meta.url), fus) as any)
+export const initRootsJS = (manifest: PlatformManifest) => {
+    const roots = Object.keys(manifest).filter(x => manifest[x].ct == 'text/javascript').map(x => manifest[x])
+    function scan(item: PlatformManifestItem) {
+        const imp = TD.decode(readFile(item)).split('\n').filter(x => x.startsWith('import ')).map(x => x.substring(x.indexOf("'") + 1, x.lastIndexOf("'")))
+        for (let x of imp) {
+            if (!Object.keys(manifest).some(k => manifest[k].module == x)) {
+                const it = { ct: 'text/javascript', module: x }
+                manifest[x] = it
+                scan(it)
+            }
+            if (!item.deps) {
+                item.deps = []
+            }
+            item.deps.push(x)
+        }
+    }
+    for (let r of roots) {
+        scan(r)
+    }
+    return manifest
+}
 export const initPlatformManifest = (manifest: PlatformManifest) => {
-    for (let k in manifest) {
+    function rec(k) {
         let b: Buffer = readFile(manifest[k])
         if (manifest[k].deps) {
             let s = TD.decode(b)
             for (let d of manifest[k].deps) {
+                if (!manifest[d].path) {
+                    rec(d)
+                }
                 s = s.replace(new RegExp("'" + manifest[d].module + "'", 'g'), "'" + manifest[d].path + "'")
             }
             b = Buffer.from(s)
@@ -44,15 +67,19 @@ export const initPlatformManifest = (manifest: PlatformManifest) => {
             manifest[k].path = '/' + k + '.' + crypto.createHash('sha256').update(b).digest().toString('hex')
         }
     }
+    for (let k in manifest) {
+        rec(k)
+    }
     return manifest
 }
-export const initInline = (item: PlatformManifestItem, deps: PlatformManifestItem[], replace: { [k: string]: string }) => {
+export const initInline = (k: string, manifest: PlatformManifest, replace: { [k: string]: string }) => {
+    const item = manifest[k]
     const b = readFile(item)
     let rb = TD.decode(b)
     for (let k in replace) {
         rb = rb.replace(k, replace[k])
     }
-    item.content = Buffer.from(deps.map(x => TD.decode(x.content).split('\n')).flat()
+    item.content = Buffer.from(item.deps.map(x => TD.decode(manifest[x].content).split('\n')).flat()
         .concat(rb.split('\n'))
         .filter(x => !x.startsWith('import ') && !x.startsWith('export '))
         .join('\n'))
@@ -65,8 +92,6 @@ export const serviceWorkerReplace = (manifest: PlatformManifest, pageConfig: Pag
         'const routes = {}': 'const routes = ' + JSON.stringify(routes)
     }
 }
-export const initServiceWorker = (manifest: PlatformManifest, pageConfig: PageConfig, routes: HtmlRoutes) =>
-    initInline({ ct: 'text/javascript', path: '/sw.js', module: '@bintoca/http/sw' }, [manifest['shared']], serviceWorkerReplace(manifest, pageConfig, routes))
 export const defaultConfig: Config = {
     hostname: 'localhost',
     port: 3000,
@@ -86,7 +111,7 @@ export const matchURL = (url: string, manifest: PlatformManifest, routes: HtmlRo
     const manifestMatch = Object.keys(manifest).map(x => manifest[x]).filter(x => x.path == url)[0]
     if (manifestMatch) {
         manifestMatch.headers = Object.assign({ 'Content-Type': manifestMatch.ct }, manifestMatch.headers)
-        if(manifestMatch.path.length > 64){
+        if (manifestMatch.path.length > 64) {
             manifestMatch.headers['Cache-Control'] = 'public, max-age=31536000'
         }
         return manifestMatch
