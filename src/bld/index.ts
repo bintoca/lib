@@ -277,3 +277,73 @@ export const enum registryID {
 }
 type token = op | number | string | Uint8Array
 const registry: token[] = []
+
+export const enum reg {
+    end,
+    octets, //(len:vint, bytes:u8[])
+    octetsTyped, //(len:vint, type:var, bytes:u8[])
+    false, //single byte
+    true, //single byte
+    null, //single byte
+    id, //single byte
+    type, //single byte
+    idna_utf8, //single byte
+    embedded_BLD, //single byte
+    array, //(type:var, ...var)
+    map,
+    uint,
+    nint,
+    sint,
+    IEEE754_binary,
+    IEEE754_decimal_BID,
+    IEEE754_decimal_DPD,
+    unorm,
+    snorm,
+    size_bits1,
+    size_bytes1,
+    vint,
+    unicode,
+    utf8,
+    set,
+    authority,
+    
+    request = 64,
+    response,
+    hexDumpId, // ascii B followed by 123 0x313233
+
+    integrity = 128,
+    sha256,
+    port,
+    IPv4,
+    IPv6,
+    UUID,
+    dc, //LDAP domain
+    ou, //LDAP organizational unit
+    cn, //LDAP common name
+    o, //LDAP organization
+    c, //LDAP country
+    l, //LDAP locality
+
+    rational,
+    biasedExponentBase2,
+    biasedExponentWithSignBase2,
+    fixedPointScalingBase2,
+    fixedPointScalingBase10,
+
+    undefined = 512,
+    Infinity,
+    NegativeInfinity,
+    sNaN,
+    qNaN,
+    NegativeZero,
+    Math_E,
+    Math_LN10,
+    Math_LN2,
+    Math_LOG10E,
+    Math_LOG2E,
+    Math_PI,
+    Math_SQRT1_2,
+    Math_SQRT2,
+    OID, //ASN.1 BER rules
+    IRI_utf8,
+}
