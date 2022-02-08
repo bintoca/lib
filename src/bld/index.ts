@@ -278,19 +278,19 @@ export const enum registryID {
 type token = op | number | string | Uint8Array
 const registry: token[] = []
 
-export const enum reg {
+export const enum r {
+    //no value
+    //0-20 subtract 10
+    false = 21, 
+    true, 
+    null,
     end,
-    octets, //(len:vint, bytes:u8[])
-    octetsTyped, //(len:vint, type:var, bytes:u8[])
-    false, //single byte
-    true, //single byte
-    null, //single byte
-    id, //single byte
-    type, //single byte
-    idna_utf8, //single byte
-    embedded_BLD, //single byte
-    array, //(type:var, ...var)
-    map,
+
+    //1 byte value
+    uintLen1,
+    nintLen1,
+
+    //varint length
     uint,
     nint,
     sint,
@@ -299,42 +299,41 @@ export const enum reg {
     IEEE754_decimal_DPD,
     unorm,
     snorm,
+    uintCents,
+    utf8,
+    idna_utf8,
+    IRI_utf8, 
+    embedded_BLD,
+    octets, //(len:vint, bytes:u8[])
+    octetsTyped, //(len:vint, type:var, bytes:u8[])
     size_bits1,
     size_bytes1,
-    vint,
-    unicode,
-    utf8,
-    set,
-    authority,
-    
-    request = 64,
-    response,
-    hexDumpId, // ascii B followed by 123 0x313233
-
-    integrity = 128,
+    OID, //ASN.1 BER
+    hexDumpId, // length 6 followed by ascii "BLDBLD"
     sha256,
     port,
     IPv4,
     IPv6,
     UUID,
-    dc, //LDAP domain
-    ou, //LDAP organizational unit
-    cn, //LDAP common name
-    o, //LDAP organization
-    c, //LDAP country
-    l, //LDAP locality
-
+    
+    //end marker
+    id, 
+    type,
+    array, //(type:var, ...var)
+    set,
+    keyValue,
+    request,
+    response,
+    authority,
+    integrity,
     rational,
-    biasedExponentBase2,
-    biasedExponentWithSignBase2,
-    fixedPointScalingBase2,
-    fixedPointScalingBase10,
+    float, //(base2Exponent:var, m:var)
+    decimal, //(base10Exponent:var, m:var)
 
-    undefined = 512,
+    //no value
+    undefined = 128,
     Infinity,
     NegativeInfinity,
-    sNaN,
-    qNaN,
     NegativeZero,
     Math_E,
     Math_LN10,
@@ -344,6 +343,11 @@ export const enum reg {
     Math_PI,
     Math_SQRT1_2,
     Math_SQRT2,
-    OID, //ASN.1 BER rules
-    IRI_utf8,
+
+    //varint length
+
+
+    //end marker
+    sNaN,
+    qNaN,
 }
