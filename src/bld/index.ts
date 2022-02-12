@@ -281,14 +281,19 @@ const registry: token[] = []
 export const enum r {
     //no value
     //0-20 subtract 10
-    false = 21, 
+    end = 21,
+    false, 
     true, 
     null,
-    end,
+    rootIndex,
 
     //1 byte value
     uintLen1,
     nintLen1,
+
+    //varint
+    globalSlot,
+    localSlot,
 
     //varint length
     uint,
@@ -300,41 +305,53 @@ export const enum r {
     unorm,
     snorm,
     uintCents,
+    nintCents,
     utf8,
     idna_utf8,
-    IRI_utf8, 
     embedded_BLD,
     octets, //(len:vint, bytes:u8[])
     octetsTyped, //(len:vint, type:var, bytes:u8[])
     size_bits1,
     size_bytes1,
-    OID, //ASN.1 BER
     hexDumpId, // length 6 followed by ascii "BLDBLD"
     sha256,
     port,
     IPv4,
     IPv6,
     UUID,
-    
+
     //end marker
-    id, 
-    type,
-    array, //(type:var, ...var)
+    id,
+    list,
+    listTyped,
+    listOfType,
     set,
-    keyValue,
-    request,
-    response,
-    authority,
-    integrity,
+    setTyped,
+    setOfType,
+
     rational,
+    complex,
     float, //(base2Exponent:var, m:var)
     decimal, //(base10Exponent:var, m:var)
+
+    request,
+    response,
+    locator,
+    integrity,
+
+    assignment,
+    function,
+    call,
+    return,
+    
 
     //no value
     undefined = 128,
     Infinity,
     NegativeInfinity,
     NegativeZero,
+    sNaN,
+    qNaN,
     Math_E,
     Math_LN10,
     Math_LN2,
@@ -344,10 +361,13 @@ export const enum r {
     Math_SQRT1_2,
     Math_SQRT2,
 
-    //varint length
+    IRI_utf8,
+    OID, //ASN.1 BER
+    relative_OID,
 
-
-    //end marker
-    sNaN,
-    qNaN,
+    mediaType,
+    encoding,
+    
+    latitude,
+    longitude,
 }
