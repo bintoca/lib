@@ -159,7 +159,7 @@ export const enum ext {
     extendedOps1paramPrivate, //(i:vint, p1:vint)
     extendedOpsNparamPrivate, //(i:vint, n:vint, p...)
 }
-export const enum registryID {
+export const enum old_registryID {
     id,
     type,
     container,
@@ -281,58 +281,39 @@ const registry: token[] = []
 export const enum r {
     //no value
     //0-20 subtract 10
-    end = 21,
+    end = 21, //put somewhere to make an ascii
     false, 
     true, 
     null,
-    rootIndex,
-
-    //1 byte value
-    uintLen1,
-    nintLen1,
+    uint,
+    sint,
+    IEEE754_binary16,
+    IEEE754_binary32,
+    IEEE754_binary64,
 
     //varint
-    globalSlot,
-    localSlot,
-
-    //varint length
-    uint,
-    nint,
-    sint,
-    IEEE754_binary,
-    IEEE754_decimal_BID,
-    IEEE754_decimal_DPD,
-    unorm,
-    snorm,
+    uintV,
+    nintV,
     uintCents,
     nintCents,
+    size_bits,
+    size_bytes,
+    globalSlot,
+    localSlot,
+    
+
+    //varint length
     utf8,
     idna_utf8,
-    embedded_BLD,
-    octets, //(len:vint, bytes:u8[])
     octetsTyped, //(len:vint, type:var, bytes:u8[])
-    size_bits1,
-    size_bytes1,
-    hexDumpId, // length 6 followed by ascii "BLDBLD"
-    sha256,
-    port,
-    IPv4,
-    IPv6,
-    UUID,
 
     //end marker
+    hexDumpId, //put somewhere to make an ascii 
     id,
     list,
     listTyped,
-    listOfType,
     set,
     setTyped,
-    setOfType,
-
-    rational,
-    complex,
-    float, //(base2Exponent:var, m:var)
-    decimal, //(base10Exponent:var, m:var)
 
     request,
     response,
@@ -360,10 +341,27 @@ export const enum r {
     Math_PI,
     Math_SQRT1_2,
     Math_SQRT2,
+    IEEE754_binary128,
+    IEEE754_binary256,
+    IEEE754_decimal_BID32,
+    IEEE754_decimal_BID64,
+    IEEE754_decimal_BID128,
+    IEEE754_decimal_DPD32,
+    IEEE754_decimal_DPD64,
+    IEEE754_decimal_DPD128,
+    unorm,
+    snorm,
 
+    port, //big endian
+    IPv4, //big endian
+    IPv6, //big endian
+    UUID,
+    sha256,
     IRI_utf8,
     OID, //ASN.1 BER
     relative_OID,
+
+    embedded_BLD,
 
     mediaType,
     encoding,
