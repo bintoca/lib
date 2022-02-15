@@ -70,9 +70,16 @@ export const enum registryID {
     nintV,
     size_bits1,
     size_bytes1,
-    globalSlot,
-    localSlot,
-    indexSlot,
+    copy, //backref
+
+    //varint, varint
+    op1, //(op:backref, p1:backref)
+
+    //varint, varint, varint
+    op2, //(op:backref, p1:backref, p2:backref)
+
+    //...varint
+    opn, //(op:backref, len:varint, ...p:backref)
 
     //varint length + 1
     utf8,
@@ -103,14 +110,14 @@ export const enum registryID {
     function,
     call,
     return,
-    
+
     request,
     response,
     locator,
     integrity,
-    
+
     hexDumpId, //put somewhere to make ascii
-    
+
     //no value
     //-10 to 10
     end, //put somewhere to make ascii
@@ -119,7 +126,7 @@ export const enum registryID {
     id,
     false,
     true,
-    
+
     uint, //blocks
     sint,
 
@@ -141,7 +148,7 @@ export const enum registryID {
     stencil,
     imaginary,
     unicode,
-    
+
     //no value
     Infinity = 128,
     NegativeInfinity,
@@ -183,7 +190,7 @@ export const enum registryID {
 
     mediaType,
     encoding,
-    
+
     //???
     seconds,
     minutes,
@@ -208,4 +215,30 @@ export const enum registryID {
     longitude,
 
     //TODO language tags BCP47
+}
+const enum r {
+    zero,
+    one,
+    neg_one,
+    copy, //backref_v4
+
+    //varint, varint
+    op1, //(op:backref_v4, p1:backref_v4)
+
+    //varint, varint, varint
+    op2, //(op:backref_v4, p1:backref_v4, p2:backref_v4)
+    conditional,
+
+    block, //(len:v4+1, val:u4[])
+
+    //
+    _2,
+    _3,
+    _4,
+    _5,
+    _6,
+    _7,
+    _8,
+    _9,
+    _10,
 }
