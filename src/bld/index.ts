@@ -220,13 +220,13 @@ const enum r {
     zero,
     one,
     neg_one,
-    copy, //backref_v4
+    copy, //backref_u4
 
     //varint, varint
-    op1, //(op:backref_v4, p1:backref_v4)
+    op1, //(op:backref_u4, p1:backref_u4)
 
     //varint, varint, varint
-    op2, //(op:backref_v4, p1:backref_v4, p2:backref_v4)
+    op2, //(op:backref_u4, p1:backref_u4, p2:backref_u4)
     conditional,
 
     block, //(len:v4+1, val:u4[])
@@ -241,4 +241,57 @@ const enum r {
     _8,
     _9,
     _10,
+    n_2,
+    n_3,
+    n_4,
+    n_5,
+
+    e,
+    pi,
+    imaginary,
+
+    //1 param ops
+
+    //2 param ops
+    add,
+    subtract,
+    multiply,
+    divide,
+    exponent,
+    logarithm,
+    nth_root,
+
+    attach_unit,
+    attach_dimension,
+
+    _11 = 64,
+    _32 = 64 + 32 - 11,
+    //
+    n_16,
+
+    _33 = 512,
+    _256 = 512 + 256 - 33,
+    //
+    n_128,
+
+    _257 = 4096,
+    _2048 = 4096 + 2048 - 257,
+    //
+    n_1024,
+}
+const enum unicode_shuffle {
+    a,
+    e,
+    i,
+    o,
+    u,
+    y,
+    space,
+    dot,
+
+    //2nd chunk - numbers, most letters, most common puncuation
+
+    //3rd chunk - remaining ascii then continue according to unicode
+
+    //language tags composed by unit within unit of unicode
 }
