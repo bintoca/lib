@@ -217,21 +217,26 @@ export const enum registryID {
     //TODO language tags BCP47
 }
 const enum r {
+    push_next_token,
+    push_next_result, 
+    pop_next_token,
+    start_collection,
+    end_collection,
+    
+    block, //(len:v4+1, type:var, val:u4[])
+    function, //(param_count_push_slots:v4)
+    conditional, //condition, true_op, false_op
+
+    statement_block,
+    call, //func, ...params
+    return, //single or collection
+    quote_next_token,
+    reset_slots,
+    rest_params,
+    run_length_encoding, //(next_token_count:v4)
+
     zero,
     one,
-    neg_one,
-    copy, //backref_u4
-
-    //varint, varint
-    op1, //(op:backref_u4, p1:backref_u4)
-
-    //varint, varint, varint
-    op2, //(op:backref_u4, p1:backref_u4, p2:backref_u4)
-    conditional,
-
-    block, //(len:v4+1, val:u4[])
-
-    //
     _2,
     _3,
     _4,
@@ -241,6 +246,7 @@ const enum r {
     _8,
     _9,
     _10,
+    neg_one,
     n_2,
     n_3,
     n_4,
@@ -250,9 +256,8 @@ const enum r {
     pi,
     imaginary,
 
-    //1 param ops
+    sqrt,
 
-    //2 param ops
     add,
     subtract,
     multiply,
@@ -260,9 +265,6 @@ const enum r {
     exponent,
     logarithm,
     nth_root,
-
-    attach_unit,
-    attach_dimension,
 
     _11 = 64,
     _32 = 64 + 32 - 11,
