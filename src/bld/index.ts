@@ -1,5 +1,5 @@
 export type DecoderState = {
-    position: number, decodeItemFunc: (op: registryID, additionalInformation: number, dv: DataView, src: DecoderState) => any, decodeMainFunc: (dv: DataView, state: DecoderState) => any,
+    position: number, decodeItemFunc: (op: r, additionalInformation: number, dv: DataView, src: DecoderState) => any, decodeMainFunc: (dv: DataView, state: DecoderState) => any,
     queue: BufferSource[], stopPosition?: number, tempBuffer: Uint8Array
 }
 export const bufferSourceToDataView = (b: BufferSource, offset: number = 0, length?: number): DataView => b instanceof ArrayBuffer ? new DataView(b, offset, length !== undefined ? length : b.byteLength - offset) : new DataView(b.buffer, b.byteOffset + offset, length !== undefined ? length : b.byteLength - offset)
@@ -61,76 +61,113 @@ export const decodeMain = (dv: DataView, state: DecoderState): any => {
     const op = c & 31
     state.decodeItemFunc(op, p, dv, state)
 }
-type token = registryID | number | string | Uint8Array
+type token = r | number | string | Uint8Array
 const registry: token[] = []
+const enum r {
+    start_collection,
+    end_collection,
+    push_item,
+    pop_item,
+    reuse_stack_1,
+    reuse_stack_2,
+    reuse_stack_3,
+    data_frame, //(type:var, len:v4+1, val:u4[])
+    
+    run_length_encoding, //(next_item_count:v4)
+    function, //(param_count_push_slots:v4)
+    conditional, //condition, true_op, false_op
+    statement_block,
+    call, //func, ...params
+    call_sync, //func, ...params
+    return, //single or collection
+    prop_accessor, //object, prop
+    
+    size_bits1, //(v4+1)
+    bld_utf4,
+    bld_idna_utf4,
+    embedded_bld,
+    IEEE754_binary16,
+    IEEE754_binary32,
+    IEEE754_decimal_BID32,
+    IEEE754_decimal_DPD32,
+    IPv4,
+    port,
 
-export const enum registryID {
-    //varint
-    uintV,
-    nintV,
-    size_bits1,
-    size_bytes1,
-    copy, //backref
-
-    //varint, varint
-    op1, //(op:backref, p1:backref)
-
-    //varint, varint, varint
-    op2, //(op:backref, p1:backref, p2:backref)
-
-    //...varint
-    opn, //(op:backref, len:varint, ...p:backref)
-
-    //varint length + 1
-    utf8,
-    idna_utf8,
-    octetsTyped, //(len:vint, type:var, bytes:u8[])
-
-    //end marker
-    collection,
-    collection_ordered,
-    collection_sorted,
-    collection_unique,
-    collection_ordered_sorted,
-    collection_ordered_unique,
-    collection_sorted_unique,
-    collection_ordered_sorted_unique,
-    dimension,
-    unit,
-    value,
+    zero,
+    one,
+    _2,
+    _3,
+    _4,
+    _5,
+    _6,
+    _7,
+    _8,
+    _9,
+    _10,
+    reuse_stack_4,
+    reuse_stack_5,
+    reuse_stack_6,
+    reuse_stack_7,
+    reuse_stack_8,
 
     add,
     subtract,
     multiply,
     divide,
+
+    _11 = 64,
+    _32 = 64 + 32 - 11,
+    //
+    n_16, 
+    reuse_stack_16,
+    
+    module, //(param_count_push_slots:v4)
+    try,
+    catch,
+    finally,
+    throw,
+    promise_all,
+    promise_all_settled,
+    promise_any,
+    promise_race,
+
     exponent,
     logarithm,
-
-    assignment,
-    function,
-    call,
-    return,
-
-    request,
-    response,
-    locator,
-    integrity,
-
-    hexDumpId, //put somewhere to make ascii
-
-    //no value
-    //-10 to 10
-    end, //put somewhere to make ascii
-    skip,
-    type,
-    id,
-    false,
-    true,
-
-    uint, //blocks
+    nth_root,
+    sqrt,
+    Infinity,
+    NegativeInfinity,
+    NegativeZero,
+    sNaN,
+    qNaN,
+    Math_E,
+    Math_LN10,
+    Math_LN2,
+    Math_LOG10E,
+    Math_LOG2E,
+    Math_PI,
+    Math_SQRT1_2,
+    Math_SQRT2,
+    imaginary,
+    IEEE754_binary64,
+    IEEE754_binary128,
+    IEEE754_binary256,
+    IEEE754_decimal_BID64,
+    IEEE754_decimal_BID128,
+    IEEE754_decimal_DPD64,
+    IEEE754_decimal_DPD128,
+    unorm,
+    snorm,
+    uint,
     sint,
+    IPv6,
+    UUID,
+    sha256,
+    IRI_utf4,
+    OID,
+    relative_OID,
+    content_type_utf4,
 
-    boolean, //units
     second,
     meter,
     kilogram,
@@ -146,52 +183,47 @@ export const enum registryID {
     alpha,
     depth,
     stencil,
-    imaginary,
+
+    private_namespace, //(v4)
+
+    _33 = 512,
+    _256 = 512 + 32 * 7 - 1,
+    //
+    n_128,
+    reuse_stack_128,
+    
+    _257 = 4096,
+    _2048 = 4096 + 256 * 7 - 1,
+    //
+    n_1024,
+    reuse_stack_1024,
+
+    //????????????????????????
+    skip,
+    type,
+    id,
+    false,
+    true,
+    boolean,
     unicode,
 
-    //no value
-    Infinity = 128,
-    NegativeInfinity,
-    NegativeZero,
-    sNaN,
-    qNaN,
-    Math_E,
-    Math_LN10,
-    Math_LN2,
-    Math_LOG10E,
-    Math_LOG2E,
-    Math_PI,
-    Math_SQRT1_2,
-    Math_SQRT2,
-    IEEE754_binary16,
-    IEEE754_binary32,
-    IEEE754_binary64,
-    IEEE754_binary128,
-    IEEE754_binary256,
-    IEEE754_decimal_BID32,
-    IEEE754_decimal_BID64,
-    IEEE754_decimal_BID128,
-    IEEE754_decimal_DPD32,
-    IEEE754_decimal_DPD64,
-    IEEE754_decimal_DPD128,
-    unorm,
-    snorm,
+    collection,
+    collection_ordered,
+    collection_sorted,
+    collection_unique,
+    collection_ordered_sorted,
+    collection_ordered_unique,
+    collection_sorted_unique,
+    collection_ordered_sorted_unique,
+    dimension,
+    unit,
+    value,
 
-    port, //big endian
-    IPv4, //big endian
-    IPv6, //big endian
-    UUID,
-    sha256,
-    IRI_utf8,
-    OID, //ASN.1 BER
-    relative_OID,
+    request,
+    response,
+    locator,
+    integrity,
 
-    embedded_BLD,
-
-    mediaType,
-    encoding,
-
-    //???
     seconds,
     minutes,
     hours,
@@ -215,71 +247,6 @@ export const enum registryID {
     longitude,
 
     //TODO language tags BCP47
-}
-const enum r {
-    push_next_token,
-    push_next_result, 
-    pop_next_token,
-    start_collection,
-    end_collection,
-    
-    block, //(len:v4+1, type:var, val:u4[])
-    function, //(param_count_push_slots:v4)
-    conditional, //condition, true_op, false_op
-
-    statement_block,
-    call, //func, ...params
-    return, //single or collection
-    quote_next_token,
-    reset_slots,
-    rest_params,
-    run_length_encoding, //(next_token_count:v4)
-
-    zero,
-    one,
-    _2,
-    _3,
-    _4,
-    _5,
-    _6,
-    _7,
-    _8,
-    _9,
-    _10,
-    neg_one,
-    n_2,
-    n_3,
-    n_4,
-    n_5,
-
-    e,
-    pi,
-    imaginary,
-
-    sqrt,
-
-    add,
-    subtract,
-    multiply,
-    divide,
-    exponent,
-    logarithm,
-    nth_root,
-
-    _11 = 64,
-    _32 = 64 + 32 - 11,
-    //
-    n_16,
-
-    _33 = 512,
-    _256 = 512 + 256 - 33,
-    //
-    n_128,
-
-    _257 = 4096,
-    _2048 = 4096 + 2048 - 257,
-    //
-    n_1024,
 }
 const enum unicode_shuffle {
     a,
