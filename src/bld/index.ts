@@ -68,60 +68,53 @@ const enum r {
     end_collection,
     push_item,
     pop_item,
-    reuse_stack_1,
-    reuse_stack_2,
-    reuse_stack_3,
+    reuse_stack, //if it starts a collection then (count:v4, ...v4, [no end_collection]) otherwise v4
+    reuse_stack_first,
+    reuse_stack_second,
     data_frame, //(type:var, len:v4+1, val:u4[])
-    
-    run_length_encoding, //(next_item_count:v4)
-    function, //(param_count_push_slots:v4)
-    conditional, //condition, true_op, false_op
+
+    uint, //if it starts a collection then (count:v4, ...v4, [no end_collection]) otherwise v4
+    run_length_encoding, //(next_item_count:v4+1)
+    function, //if it starts a collection (param_count_push_slots:v4)
+    conditional, //if it starts a collection then (condition, ...statements) otherwise (condition, true_op, false_op)
     statement_block,
     call, //func, ...params
     call_sync, //func, ...params
     return, //single or collection
     prop_accessor, //object, prop
-    
-    size_bits1, //(v4+1)
-    bld_utf4,
-    bld_idna_utf4,
-    embedded_bld,
-    IEEE754_binary16,
-    IEEE754_binary32,
-    IEEE754_decimal_BID32,
-    IEEE754_decimal_DPD32,
-    IPv4,
-    port,
-
-    zero,
-    one,
-    _2,
-    _3,
-    _4,
-    _5,
-    _6,
-    _7,
-    _8,
-    _9,
-    _10,
-    reuse_stack_4,
-    reuse_stack_5,
-    reuse_stack_6,
-    reuse_stack_7,
-    reuse_stack_8,
 
     add,
     subtract,
     multiply,
     divide,
+    equal,
+    not_equal,
+    greater_than,
+    greater_than_or_equal,
+    less_than,
+    less_than_or_equal,
+    logical_and,
+    logical_or,
+    logical_not,
+    unary_negation,
 
-    _11 = 64,
-    _32 = 64 + 32 - 11,
-    //
-    n_16, 
-    reuse_stack_16,
-    
-    module, //(param_count_push_slots:v4)
+
+    min,
+    max,
+
+    size_bits1, //(v4+1)
+    bld_utf4,
+    bld_idna_utf4,
+    embedded_bld,
+    nominal_type,
+    id,
+    ignore,
+
+
+    //12-bit
+    module, //if it starts a collection (param_count_push_slots:v4)
+    spread_params,
+    rest_params,
     try,
     catch,
     finally,
@@ -130,11 +123,50 @@ const enum r {
     promise_all_settled,
     promise_any,
     promise_race,
+    bitwise_and,
+    bitwise_not,
+    bitwise_or,
+    bitwise_xor,
+    shift_left,
+    shift_right,
+    remainder,
 
-    exponent,
-    logarithm,
-    nth_root,
+    abs,
+    acos,
+    acosh,
+    asin,
+    asinh,
+    atan,
+    atanh,
+    atan2,
+    cbrt,
+    ceil,
+    clz32,
+    cos,
+    cosh,
+    exp,
+    expm1,
+    floor,
+    fround,
+    hypot,
+    imul,//??
+    log,
+    log1p,
+    log10,
+    log2,
+    pow,
+    round,
+    sign,
+    sin,
+    sinh,
     sqrt,
+    tan,
+    tanh,
+    trunc,
+
+    log_base,
+    nth_root,
+
     Infinity,
     NegativeInfinity,
     NegativeZero,
@@ -148,18 +180,27 @@ const enum r {
     Math_PI,
     Math_SQRT1_2,
     Math_SQRT2,
-    imaginary,
+    real_imaginary_dimension, //if it starts a collection then (count:v4, ...v4, [no end_collection]) otherwise v4 //0 is real
+    complex, //(real, i)
+    quaternion, //(real, i, j, k)
+
+    IEEE754_binary16,
+    IEEE754_binary32,
     IEEE754_binary64,
     IEEE754_binary128,
     IEEE754_binary256,
+    IEEE754_decimal_BID32,
     IEEE754_decimal_BID64,
     IEEE754_decimal_BID128,
+    IEEE754_decimal_DPD32,
     IEEE754_decimal_DPD64,
     IEEE754_decimal_DPD128,
     unorm,
     snorm,
-    uint,
-    sint,
+    sint, //if it starts a collection then (count:v4, ...v4, [no end_collection]) otherwise v4
+
+    IPv4,
+    port,
     IPv6,
     UUID,
     sha256,
@@ -186,27 +227,7 @@ const enum r {
 
     private_namespace, //(v4)
 
-    _33 = 512,
-    _256 = 512 + 32 * 7 - 1,
-    //
-    n_128,
-    reuse_stack_128,
-    
-    _257 = 4096,
-    _2048 = 4096 + 256 * 7 - 1,
-    //
-    n_1024,
-    reuse_stack_1024,
-
     //????????????????????????
-    skip,
-    type,
-    id,
-    false,
-    true,
-    boolean,
-    unicode,
-
     collection,
     collection_ordered,
     collection_sorted,
