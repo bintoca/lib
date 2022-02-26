@@ -70,13 +70,12 @@ const enum r {
     reuse_stack_first,
     reuse_stack_second,
     reuse_stack_third,
-    reuse_stack, //if it starts a scope then (count:v4, ...v4, [no end_scope]) otherwise v4
-    uint, //if it starts a scope then (count:v4, ...v4, [no end_scope]) otherwise v4
-    
-    data_frame, //(type:var, len:v4, val:u4[])
+    reuse_stack, //(v4)
+    data_frame, //(len:v4, val:u4[])
+
     run_length_encoding, //(next_item_count:v4)
-    function, //if it starts a scope (param_count_push_slots:v4)
-    conditional, //if it starts a scope then (condition, ...statements) otherwise (condition, true_op, false_op)
+    function, //implies one item pushed to reuse stack for param
+    conditional, //(condition, true_op, false_op)
     statement_block,
     call, //func, ...params
     call_sync, //func, ...params
@@ -106,18 +105,19 @@ const enum r {
     min,
     max,
 
-    size_bits1, //(v4)
-    bld_utf4,
+    uint, 
+    utf4,
+    size_bits1,
     bld_idna_utf4,
     embedded_bld,
-    float2, //(exp:v4, frac:v4)
-    float10, //(exp:v4, frac:v4)
-    float2_inv, //(inverse_exp:v4, frac:v4)
-    float10_inv, //(inverse_exp:v4, frac:v4)
-    normalized, //(v4)
+    float2,
+    float10,
+    float2_inv,
+    float10_inv,
+    normalized,
 
     //12-bit
-    module, //if it starts a scope (param_count_push_slots:v4)
+    module, //implies one item pushed to reuse stack for param
     spread_params,
     rest_params,
     try,
@@ -179,6 +179,7 @@ const enum r {
     Math_SQRT1_2,
     Math_SQRT2,
 
+    big_uint,
     IPv4,
     port,
     IPv6,
