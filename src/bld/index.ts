@@ -64,24 +64,30 @@ export const decodeMain = (dv: DataView, state: DecoderState): any => {
 type token = r | number | string | Uint8Array
 const registry: token[] = []
 const enum r {
-    start_collection,
-    end_collection,
+    start_scope,
+    end_scope,
     push_item,
-    pop_item,
-    reuse_stack, //if it starts a collection then (count:v4, ...v4, [no end_collection]) otherwise v4
     reuse_stack_first,
     reuse_stack_second,
-    data_frame, //(type:var, len:v4+1, val:u4[])
-
-    uint, //if it starts a collection then (count:v4, ...v4, [no end_collection]) otherwise v4
-    run_length_encoding, //(next_item_count:v4+1)
-    function, //if it starts a collection (param_count_push_slots:v4)
-    conditional, //if it starts a collection then (condition, ...statements) otherwise (condition, true_op, false_op)
+    reuse_stack_third,
+    reuse_stack, //if it starts a scope then (count:v4, ...v4, [no end_scope]) otherwise v4
+    uint, //if it starts a scope then (count:v4, ...v4, [no end_scope]) otherwise v4
+    
+    data_frame, //(type:var, len:v4, val:u4[])
+    run_length_encoding, //(next_item_count:v4)
+    function, //if it starts a scope (param_count_push_slots:v4)
+    conditional, //if it starts a scope then (condition, ...statements) otherwise (condition, true_op, false_op)
     statement_block,
     call, //func, ...params
     call_sync, //func, ...params
-    return, //single or collection
     prop_accessor, //object, prop
+    prop_has,
+    dimension,
+    unit,
+    value,
+    ignore,
+    nominal_type,
+    id,
 
     add,
     subtract,
@@ -96,23 +102,22 @@ const enum r {
     logical_and,
     logical_or,
     logical_not,
-    unary_negation,
-
 
     min,
     max,
 
-    size_bits1, //(v4+1)
+    size_bits1, //(v4)
     bld_utf4,
     bld_idna_utf4,
     embedded_bld,
-    nominal_type,
-    id,
-    ignore,
-
+    float2, //(exp:v4, frac:v4)
+    float10, //(exp:v4, frac:v4)
+    float2_inv, //(inverse_exp:v4, frac:v4)
+    float10_inv, //(inverse_exp:v4, frac:v4)
+    normalized, //(v4)
 
     //12-bit
-    module, //if it starts a collection (param_count_push_slots:v4)
+    module, //if it starts a scope (param_count_push_slots:v4)
     spread_params,
     rest_params,
     try,
@@ -131,7 +136,6 @@ const enum r {
     shift_right,
     remainder,
 
-    abs,
     acos,
     acosh,
     asin,
@@ -156,7 +160,6 @@ const enum r {
     log2,
     pow,
     round,
-    sign,
     sin,
     sinh,
     sqrt,
@@ -167,11 +170,6 @@ const enum r {
     log_base,
     nth_root,
 
-    Infinity,
-    NegativeInfinity,
-    NegativeZero,
-    sNaN,
-    qNaN,
     Math_E,
     Math_LN10,
     Math_LN2,
@@ -180,24 +178,6 @@ const enum r {
     Math_PI,
     Math_SQRT1_2,
     Math_SQRT2,
-    real_imaginary_dimension, //if it starts a collection then (count:v4, ...v4, [no end_collection]) otherwise v4 //0 is real
-    complex, //(real, i)
-    quaternion, //(real, i, j, k)
-
-    IEEE754_binary16,
-    IEEE754_binary32,
-    IEEE754_binary64,
-    IEEE754_binary128,
-    IEEE754_binary256,
-    IEEE754_decimal_BID32,
-    IEEE754_decimal_BID64,
-    IEEE754_decimal_BID128,
-    IEEE754_decimal_DPD32,
-    IEEE754_decimal_DPD64,
-    IEEE754_decimal_DPD128,
-    unorm,
-    snorm,
-    sint, //if it starts a collection then (count:v4, ...v4, [no end_collection]) otherwise v4
 
     IPv4,
     port,
@@ -236,9 +216,6 @@ const enum r {
     collection_ordered_unique,
     collection_sorted_unique,
     collection_ordered_sorted_unique,
-    dimension,
-    unit,
-    value,
 
     request,
     response,
