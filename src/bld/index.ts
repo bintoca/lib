@@ -64,29 +64,24 @@ export const decodeMain = (dv: DataView, state: DecoderState): any => {
 type token = r | number | string | Uint8Array
 const registry: token[] = []
 const enum r {
-    start_scope,
     end_scope,
-    push_item,
-    reuse_stack_first,
-    reuse_stack_second,
-    reuse_stack_third,
-    reuse_stack, //(v4)
-    data_frame, //(len:v4, val:u4[])
-
-    run_length_encoding, //(next_item_count:v4)
-    function, //implies one item pushed to reuse stack for param
-    conditional, //(condition, true_op, false_op)
-    statement_block,
-    call, //func, ...params
-    call_sync, //func, ...params
-    prop_accessor, //object, prop
-    prop_has,
-    dimension,
-    unit,
-    value,
     ignore,
+    set_slot, //(v4)
+    get_slot, //(v4)
+    back_ref, //(v4)
+    run_length_encoding, //(v4)
+    next_length, //(x:v4, len:v4, val:u4[])
+
+    conditional, //(condition, true_op, false_op)
+    function, //implies one item pushed to reuse stack for param, end_scope
+    statement_block, //end_scope
+    call, //func, param
+    call_sync, //func, param
+    prop_accessor, //object, prop
+    prop_has, //object, prop
     nominal_type,
     id,
+    unit,
 
     add,
     subtract,
@@ -102,6 +97,11 @@ const enum r {
     logical_or,
     logical_not,
 
+    filter,
+    map,
+    reduce,
+    skip,
+    take,
     min,
     max,
 
@@ -116,10 +116,13 @@ const enum r {
     float10_inv,
     normalized,
 
+    next_singular,
+    next_scope,
+    private_namespace, //(v4)
+
     //12-bit
+    reuse_buffer_window, //(v4)
     module, //implies one item pushed to reuse stack for param
-    spread_params,
-    rest_params,
     try,
     catch,
     finally,
@@ -128,12 +131,6 @@ const enum r {
     promise_all_settled,
     promise_any,
     promise_race,
-    bitwise_and,
-    bitwise_not,
-    bitwise_or,
-    bitwise_xor,
-    shift_left,
-    shift_right,
     remainder,
 
     acos,
@@ -179,7 +176,6 @@ const enum r {
     Math_SQRT1_2,
     Math_SQRT2,
 
-    big_uint,
     IPv4,
     port,
     IPv6,
@@ -205,8 +201,6 @@ const enum r {
     alpha,
     depth,
     stencil,
-
-    private_namespace, //(v4)
 
     //????????????????????????
     collection,
