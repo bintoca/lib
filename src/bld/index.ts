@@ -61,16 +61,15 @@ export const decodeMain = (dv: DataView, state: DecoderState): any => {
     const op = c & 31
     state.decodeItemFunc(op, p, dv, state)
 }
-type token = r | number | string | Uint8Array
-const registry: token[] = []
-const enum r {
+export const enum r {
     end_scope,
-    ignore,
+    placeholder,
     set_slot, //(v4)
     get_slot, //(v4)
     back_ref, //(v4)
     run_length_encoding, //(v4)
-    next_length, //(x:v4, len:v4, val:u4[])
+    next_length, //(x:any, len:v4, val:u4[])
+    next_v4, //(x:any, val:v4)
 
     conditional, //(condition, true_op, false_op)
     function, //implies one item pushed to reuse stack for param, end_scope
@@ -82,6 +81,12 @@ const enum r {
     nominal_type,
     id,
     unit,
+    entity, //pairs, end_scope
+    template,
+    reify,
+    merge,
+    subset,
+    choice,
 
     add,
     subtract,
@@ -105,7 +110,7 @@ const enum r {
     min,
     max,
 
-    uint, 
+    uint,
     utf4,
     size_bits1,
     bld_idna_utf4,
@@ -256,4 +261,64 @@ const enum unicode_shuffle {
     //3rd chunk - remaining ascii then continue according to unicode
 
     //language tags composed by unit within unit of unicode
+}
+type scope = { type: 'set_slot' | 'function', needed: number, items: any[], p?: number }
+export const interp = (code: any[]) => {
+    const slot_stack = [[]]
+    const scope_stack: scope[] = []
+    let next_set_slot_index
+    function check_top_scope() {
+        if (scope_stack.length) {
+            const top = scope_stack[scope_stack.length - 1]
+            return top
+        }
+        throw new Error('empty scope_stack')
+    }
+    function collapse_scope(x) {
+        let loop = true
+        let i = x
+        while (loop) {
+            const t = check_top_scope()
+            t.items.push(i)
+            if (t.items.length == t.needed) {
+                const y = scope_stack.pop()
+                i = y
+                if (y.type == 'set_slot') {
+
+                }
+            }
+            else {
+                loop = false
+            }
+        }
+    }
+    for (let x of code) {
+        if (next_set_slot_index) {
+            next_set_slot_index = false
+            scope_stack.push({ type: 'set_slot', needed: 1, items: [], p: x })
+        }
+        else {
+            switch (x) {
+                case r.set_slot: {
+                    next_set_slot_index = true
+                    break
+                }
+                case r.function: {
+                    scope_stack.push({ type: 'function', needed: 0, items: [] })
+                    break
+                }
+                case r.end_scope: {
+                    const top = scope_stack.pop()// check_top_scope()
+                    if (!top || top.needed) {
+                        throw new Error('top of scope_stack invalid for end_scope')
+                    }
+                    collapse_scope(top)
+                    break
+                }
+                default:
+                    collapse_scope(x)
+            }
+        }
+    }
+    return { slot_stack }
 }
