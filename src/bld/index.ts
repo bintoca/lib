@@ -115,10 +115,9 @@ export const enum r {
     size_bits1,
     bld_idna_utf4,
     embedded_bld,
-    float2,
-    float10,
-    float2_inv,
-    float10_inv,
+    float2_exponent, //default bias: 9
+    float10_exponent, //default bias: 9
+    extra_bias,
     normalized,
 
     next_singular,
@@ -264,7 +263,7 @@ const enum unicode_shuffle {
 }
 type scope = { type: 'set_slot' | 'function', needed: number, items: any[], p?: number }
 export const interp = (code: any[]) => {
-    const slot_stack = [[]]
+    const slots = []
     const scope_stack: scope[] = []
     let next_set_slot_index
     function check_top_scope() {
@@ -274,20 +273,27 @@ export const interp = (code: any[]) => {
         }
         throw new Error('empty scope_stack')
     }
+    const scope_top = () => scope_stack[scope_stack.length - 1]
     function collapse_scope(x) {
         let loop = true
         let i = x
         while (loop) {
-            const t = check_top_scope()
-            t.items.push(i)
-            if (t.items.length == t.needed) {
-                const y = scope_stack.pop()
-                i = y
-                if (y.type == 'set_slot') {
+            const t = scope_top()
+            if (t) {
+                t.items.push(i)
+                if (t.items.length == t.needed) {
+                    const y = scope_stack.pop()
+                    i = y
+                    if (y.type == 'set_slot') {
 
+                    }
+                }
+                else {
+                    loop = false
                 }
             }
             else {
+                slots.push(i)
                 loop = false
             }
         }
@@ -320,5 +326,5 @@ export const interp = (code: any[]) => {
             }
         }
     }
-    return { slot_stack }
+    return { slots }
 }
