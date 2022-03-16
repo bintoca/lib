@@ -64,12 +64,9 @@ export const decodeMain = (dv: DataView, state: DecoderState): any => {
 export const enum r {
     end_scope,
     placeholder,
-    set_slot, //(v4)
-    get_slot, //(v4)
     back_ref, //(v4)
-    run_length_encoding, //(v4)
-    next_length, //(x:any, len:v4, val:u4[])
-    next_v4, //(x:any, val:v4)
+    run_length_encoding, //(v4,any)
+    next_v4, //(v4,any)
 
     conditional, //(condition, true_op, false_op)
     function, //implies one item pushed to reuse stack for param, end_scope
@@ -261,20 +258,14 @@ const enum unicode_shuffle {
 
     //language tags composed by unit within unit of unicode
 }
-type scope = { type: 'set_slot' | 'function', needed: number, items: any[], p?: number }
-export const interp = (code: any[]) => {
-    const slots = []
+type scope = { type: r, needed: number, items: slot[], result?, ref?: slot, isFuncParam?: boolean }
+type slot = scope | number
+export const parse = (code: any[]) => {
+    const slots: slot[] = []
     const scope_stack: scope[] = []
-    let next_set_slot_index
-    function check_top_scope() {
-        if (scope_stack.length) {
-            const top = scope_stack[scope_stack.length - 1]
-            return top
-        }
-        throw new Error('empty scope_stack')
-    }
+    let next_literal_item: boolean
     const scope_top = () => scope_stack[scope_stack.length - 1]
-    function collapse_scope(x) {
+    function collapse_scope(x: slot) {
         let loop = true
         let i = x
         while (loop) {
@@ -284,8 +275,33 @@ export const interp = (code: any[]) => {
                 if (t.items.length == t.needed) {
                     const y = scope_stack.pop()
                     i = y
-                    if (y.type == 'set_slot') {
-
+                    if (y.type == r.back_ref) {
+                        const scopeItems = scope_stack.filter(x => !x.needed)
+                        let back = y.items[0] as number
+                        for (let l = scopeItems.length - 1; l >= 0; l--) {
+                            const s = scopeItems[l]
+                            if (s.items.length >= back) {
+                                y.ref = s.items[s.items.length - back]
+                                break
+                            }
+                            back -= s.items.length
+                            if (s.type == r.function) {
+                                if (back == 1) {
+                                    y.ref = s
+                                    y.isFuncParam = true
+                                    break
+                                }
+                                back--
+                            }
+                        }
+                        if (!y.ref) {
+                            if (slots.length >= back) {
+                                y.ref = slots[slots.length - back]
+                            }
+                            else {
+                                throw new Error('invalid back_ref')
+                            }
+                        }
                     }
                 }
                 else {
@@ -299,26 +315,43 @@ export const interp = (code: any[]) => {
         }
     }
     for (let x of code) {
-        if (next_set_slot_index) {
-            next_set_slot_index = false
-            scope_stack.push({ type: 'set_slot', needed: 1, items: [], p: x })
+        if (next_literal_item) {
+            next_literal_item = false
+            collapse_scope(x + 1)
         }
         else {
             switch (x) {
-                case r.set_slot: {
-                    next_set_slot_index = true
-                    break
-                }
                 case r.function: {
-                    scope_stack.push({ type: 'function', needed: 0, items: [] })
+                    if (scope_stack.length) {
+                        throw new Error('functions can only be declared in top level scope')
+                    }
+                    scope_stack.push({ type: x, needed: 0, items: [] })
                     break
                 }
                 case r.end_scope: {
-                    const top = scope_stack.pop()// check_top_scope()
+                    const top = scope_stack.pop()
                     if (!top || top.needed) {
                         throw new Error('top of scope_stack invalid for end_scope')
                     }
+                    if (top.type == r.function && top.items.length == 0) {
+                        throw new Error('function body cannot be empty')
+                    }
                     collapse_scope(top)
+                    break
+                }
+                case r.next_v4:
+                case r.run_length_encoding: {
+                    next_literal_item = true
+                    scope_stack.push({ type: x, needed: 2, items: [] })
+                    break
+                }
+                case r.back_ref: {
+                    next_literal_item = true
+                    scope_stack.push({ type: x, needed: 1, items: [] })
+                    break
+                }
+                case r.call: {
+                    scope_stack.push({ type: x, needed: 2, items: [] })
                     break
                 }
                 default:
@@ -327,4 +360,45 @@ export const interp = (code: any[]) => {
         }
     }
     return { slots }
+}
+export const evaluate = (x: scope, funcParam?: slot) => {
+    switch (x.type) {
+        case r.call: {
+            const f = x.items[0]
+            if (typeof f == 'object') {
+                switch (f.type) {
+                    case r.back_ref: {
+                        x.result = evaluate(f.ref as scope, x.items[1])
+                        break
+                    }
+                    default:
+                        throw new Error('not implemented' + f.type)
+                }
+            }
+            else {
+                switch (f) {
+                    case 222: {
+                        break
+                    }
+                    default:
+                        throw new Error('not implemented x1 ' + f)
+                }
+            }
+            break
+        }
+        case r.function: {
+            evaluateAll(x.items)
+            const last = x.items[x.items.length - 1]
+            return typeof last == 'object' && last.result ? last.result : last
+        }
+        default:
+            throw new Error('not implemented' + x.type)
+    }
+}
+export const evaluateAll = (slots: slot[]) => {
+    for (let x of slots) {
+        if (typeof x == 'object' && x.type == r.call) {
+            evaluate(x)
+        }
+    }
 }
