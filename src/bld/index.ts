@@ -63,10 +63,12 @@ export const decodeMain = (dv: DataView, state: DecoderState): any => {
 }
 export const enum r {
     end_scope,
-    placeholder,
+    unicode, //end_scope
     back_ref, //(v4)
     run_length_encoding, //(v4,any)
+    placeholder,
     next_v4, //(v4,any)
+
 
     conditional, //(condition, true_op, false_op)
     function, //implies one item pushed to reuse stack for param, end_scope
@@ -108,7 +110,6 @@ export const enum r {
     max,
 
     uint,
-    utf4,
     size_bits1,
     bld_idna_utf4,
     embedded_bld,
@@ -242,7 +243,11 @@ export const enum r {
 
     //TODO language tags BCP47
 }
-const enum unicode_shuffle {
+export const enum u {
+    end_scope,
+    unicode,
+    back_ref, //(v4)
+    run_length_encoding, //(v4,any)
     a,
     e,
     i,
@@ -252,15 +257,12 @@ const enum unicode_shuffle {
     space,
     dot,
 
-    //2nd chunk - numbers, most letters, most common puncuation
-
-    //3rd chunk - remaining ascii then continue according to unicode
-
-    //language tags composed by unit within unit of unicode
+    //2nd chunk - remaining ascii then continue according to unicode
 }
 type scope = { type: r, needed: number, items: slot[], result?, ref?: slot, isFuncParam?: boolean }
-type slot = scope | number
-export const parse = (code: any[]) => {
+type slot = scope | number | Uint8Array
+type code = number | Uint8Array
+export const parse = (code: code[]) => {
     const slots: slot[] = []
     const scope_stack: scope[] = []
     let next_literal_item: boolean
@@ -280,18 +282,28 @@ export const parse = (code: any[]) => {
                         let back = y.items[0] as number
                         for (let l = scopeItems.length - 1; l >= 0; l--) {
                             const s = scopeItems[l]
-                            if (s.items.length >= back) {
-                                y.ref = s.items[s.items.length - back]
-                                break
-                            }
-                            back -= s.items.length
-                            if (s.type == r.function) {
-                                if (back == 1) {
-                                    y.ref = s
-                                    y.isFuncParam = true
+                            if (s.type == r.unicode) {
+                                const scopes = s.items.filter(x => typeof x == 'object')
+                                if (scopes.length >= back) {
+                                    y.ref = scopes[scopes.length - back]
                                     break
                                 }
-                                back--
+                                back -= scopes.length
+                            }
+                            else {
+                                if (s.items.length >= back) {
+                                    y.ref = s.items[s.items.length - back]
+                                    break
+                                }
+                                back -= s.items.length
+                                if (s.type == r.function) {
+                                    if (back == 1) {
+                                        y.ref = s
+                                        y.isFuncParam = true
+                                        break
+                                    }
+                                    back--
+                                }
                             }
                         }
                         if (!y.ref) {
@@ -315,9 +327,40 @@ export const parse = (code: any[]) => {
         }
     }
     for (let x of code) {
-        if (next_literal_item) {
+        if (x instanceof Uint8Array) {
+            collapse_scope(x)
+        }
+        else if (next_literal_item) {
             next_literal_item = false
             collapse_scope(x + 1)
+        }
+        else if (scope_stack.filter(x => x.type == r.unicode).length) {
+            switch (x) {
+                case r.unicode: {
+                    scope_stack.push({ type: x, needed: 0, items: [] })
+                    break
+                }
+                case r.run_length_encoding: {
+                    next_literal_item = true
+                    scope_stack.push({ type: x, needed: 2, items: [] })
+                    break
+                }
+                case r.back_ref: {
+                    next_literal_item = true
+                    scope_stack.push({ type: x, needed: 1, items: [] })
+                    break
+                }
+                case u.end_scope: {
+                    const top = scope_stack.pop()
+                    if (top.items.length == 0) {
+                        throw new Error('end_scope cannot be empty')
+                    }
+                    collapse_scope(top)
+                    break
+                }
+                default:
+                    collapse_scope(x)
+            }
         }
         else {
             switch (x) {
@@ -328,13 +371,17 @@ export const parse = (code: any[]) => {
                     scope_stack.push({ type: x, needed: 0, items: [] })
                     break
                 }
+                case r.unicode: {
+                    scope_stack.push({ type: x, needed: 0, items: [] })
+                    break
+                }
                 case r.end_scope: {
                     const top = scope_stack.pop()
                     if (!top || top.needed) {
                         throw new Error('top of scope_stack invalid for end_scope')
                     }
-                    if (top.type == r.function && top.items.length == 0) {
-                        throw new Error('function body cannot be empty')
+                    if (top.items.length == 0) {
+                        throw new Error('end_scope cannot be empty')
                     }
                     collapse_scope(top)
                     break
@@ -365,7 +412,10 @@ export const evaluate = (x: scope, funcParam?: slot) => {
     switch (x.type) {
         case r.call: {
             const f = x.items[0]
-            if (typeof f == 'object') {
+            if (f instanceof Uint8Array) {
+                throw new Error('not implemented x0 ' + f)
+            }
+            else if (typeof f == 'object') {
                 switch (f.type) {
                     case r.back_ref: {
                         x.result = evaluate(f.ref as scope, x.items[1])
@@ -389,6 +439,9 @@ export const evaluate = (x: scope, funcParam?: slot) => {
         case r.function: {
             evaluateAll(x.items)
             const last = x.items[x.items.length - 1]
+            if (last instanceof Uint8Array) {
+                throw new Error('not implemented x2 ' + last)
+            }
             return typeof last == 'object' && last.result ? last.result : last
         }
         default:
@@ -397,8 +450,81 @@ export const evaluate = (x: scope, funcParam?: slot) => {
 }
 export const evaluateAll = (slots: slot[]) => {
     for (let x of slots) {
-        if (typeof x == 'object' && x.type == r.call) {
+        if (x instanceof Uint8Array) {
+
+        }
+        else if (typeof x == 'object' && x.type == r.call) {
             evaluate(x)
         }
     }
+}
+export const decode = (b: BufferSource) => {
+    if (b.byteLength % 4 != 0) {
+        throw new Error('data must be multiple of 4 bytes')
+    }
+    const out: code[] = []
+    let prev: number = 0
+    let prevSize: number = 0
+    const dv = bufferSourceToDataView(b)
+    for (let i = 0; i < dv.byteLength; i += 4) {
+        const x = dv.getUint32(i)
+        const type = x >>> 30
+        const mesh = (x >>> 24) & 63
+        switch (mesh) {
+            case 0: {
+                if (prevSize) {
+                    out.push(prev)
+                }
+                prev = x & 0xFFFFFF
+                prevSize = 6
+                break
+            }
+            default:
+                throw new Error('not implemented decode mesh ' + mesh)
+        }
+        switch (type) {
+            case 0: {
+                break
+            }
+            case 1: {
+                i = dv.byteLength
+                break
+            }
+            case 2: {
+                prevSize = 0
+                break
+            }
+            case 3: {
+                out.push(new Uint8Array(dv.buffer, dv.byteOffset + i + 4, prev * 4))
+                prevSize = 0
+                i += prev * 4
+                break
+            }
+        }
+    }
+    if (prevSize) {
+        out.push(prev)
+    }
+    return out
+}
+export const encode = (code: code[]) => {
+    const len = code.map(x => x instanceof Uint8Array ? x.byteLength + 4 : 4).reduce((a, b) => a + b, 0)
+    const dv = new DataView(new ArrayBuffer(len))
+    let o = 0
+    for (let x of code) {
+        if (x instanceof Uint8Array) {
+            dv.setUint32(o, (x.byteLength / 4) + 0xc0000000)
+            o += 4
+            const d2 = bufferSourceToDataView(x)
+            for (let i = 0; i < d2.byteLength; i += 4) {
+                dv.setUint32(o, d2.getUint32(i))
+                o += 4
+            }
+        }
+        else {
+            dv.setUint32(o, x)
+            o += 4
+        }
+    }
+    return dv
 }
