@@ -67,7 +67,7 @@ export const enum r {
     back_ref, //(v4)
     run_length_encoding, //(v4,any)
     placeholder,
-    next_v4, //(v4,any)
+    next_describe, //(any, v4|Uint8Array)
 
 
     conditional, //(condition, true_op, false_op)
@@ -315,8 +315,14 @@ export const parse = (code: code[]) => {
                             }
                         }
                     }
+                    else if (t.type == r.next_describe) {
+                        next_literal_item = false
+                    }
                 }
                 else {
+                    if (t.type == r.next_describe && t.items.length == 1) {
+                        next_literal_item = true
+                    }
                     loop = false
                 }
             }
@@ -386,7 +392,10 @@ export const parse = (code: code[]) => {
                     collapse_scope(top)
                     break
                 }
-                case r.next_v4:
+                case r.next_describe: {
+                    scope_stack.push({ type: x, needed: 2, items: [] })
+                    break
+                }
                 case r.run_length_encoding: {
                     next_literal_item = true
                     scope_stack.push({ type: x, needed: 2, items: [] })
@@ -458,54 +467,595 @@ export const evaluateAll = (slots: slot[]) => {
         }
     }
 }
+type State = { out: code[], prev: number, prevSize: number, dv: DataView, offset: number, max: number, type: number }
+export const decodeChunk = (s: State) => {
+    const x = s.dv.getUint32(s.offset)
+    s.type = x >>> 30
+    const mesh = (x >>> 24) & 63
+    if (mesh < 32 && s.prevSize) {
+        s.out.push(s.prev)
+    }
+    switch (mesh) {
+        case 0: {
+            s.prev = x & 0xFFFFFF
+            s.prevSize = 6
+            break
+        }
+        case 1: {
+            s.out.push((x & 0xFFFFF0) >>> 4)
+            s.prev = x & 0xF
+            s.prevSize = 1
+            break
+        }
+        case 2: {
+            s.out.push((x & 0xFFFF00) >>> 8)
+            s.out.push((x & 0x0000F0) >>> 4)
+            s.prev = x & 0xF
+            s.prevSize = 1
+            break
+        }
+        case 3: {
+            s.out.push((x & 0xFFFF00) >>> 8)
+            s.prev = x & 0xFF
+            s.prevSize = 2
+            break
+        }
+        case 4: {
+            s.out.push((x & 0xFFF000) >>> 12)
+            s.out.push((x & 0x000F00) >>> 8)
+            s.prev = x & 0xFF
+            s.prevSize = 2
+            break
+        }
+        case 5: {
+            s.out.push((x & 0xFFF000) >>> 12)
+            s.out.push((x & 0x000F00) >>> 8)
+            s.out.push((x & 0x0000F0) >>> 4)
+            s.prev = x & 0xF
+            s.prevSize = 1
+            break
+        }
+        case 6: {
+            s.out.push((x & 0xFFF000) >>> 12)
+            s.out.push((x & 0x000FF0) >>> 4)
+            s.prev = x & 0xF
+            s.prevSize = 1
+            break
+        }
+        case 7: {
+            s.out.push((x & 0xFFF000) >>> 12)
+            s.prev = x & 0xFFF
+            s.prevSize = 3
+            break
+        }
+        case 8: {
+            s.out.push((x & 0xFF0000) >>> 16)
+            s.out.push((x & 0x00F000) >>> 12)
+            s.prev = x & 0xFFF
+            s.prevSize = 3
+            break
+        }
+        case 9: {
+            s.out.push((x & 0xFF0000) >>> 16)
+            s.out.push((x & 0x00F000) >>> 12)
+            s.out.push((x & 0x000FF0) >>> 4)
+            s.prev = x & 0xF
+            s.prevSize = 1
+            break
+        }
+        case 10: {
+            s.out.push((x & 0xFF0000) >>> 16)
+            s.out.push((x & 0x00F000) >>> 12)
+            s.out.push((x & 0x000F00) >>> 8)
+            s.out.push((x & 0x0000F0) >>> 4)
+            s.prev = x & 0xF
+            s.prevSize = 1
+            break
+        }
+        case 11: {
+            s.out.push((x & 0xFF0000) >>> 16)
+            s.out.push((x & 0x00F000) >>> 12)
+            s.out.push((x & 0x000F00) >>> 8)
+            s.prev = x & 0xFF
+            s.prevSize = 2
+            break
+        }
+        case 12: {
+            s.out.push((x & 0xFF0000) >>> 16)
+            s.out.push((x & 0x00FF00) >>> 8)
+            s.prev = x & 0xFF
+            s.prevSize = 2
+            break
+        }
+        case 13: {
+            s.out.push((x & 0xFF0000) >>> 16)
+            s.out.push((x & 0x00FF00) >>> 8)
+            s.out.push((x & 0x0000F0) >>> 4)
+            s.prev = x & 0xF
+            s.prevSize = 1
+            break
+        }
+        case 14: {
+            s.out.push((x & 0xFF0000) >>> 16)
+            s.out.push((x & 0x00FFF0) >>> 4)
+            s.prev = x & 0xF
+            s.prevSize = 1
+            break
+        }
+        case 15: {
+            s.out.push((x & 0xFF0000) >>> 16)
+            s.prev = x & 0xFFFF
+            s.prevSize = 4
+            break
+        }
+        case 16: {
+            s.out.push((x & 0xF00000) >>> 20)
+            s.out.push((x & 0x0F0000) >>> 16)
+            s.prev = x & 0xFFFF
+            s.prevSize = 4
+            break
+        }
+        case 17: {
+            s.out.push((x & 0xF00000) >>> 20)
+            s.out.push((x & 0x0F0000) >>> 16)
+            s.out.push((x & 0x00FFF0) >>> 4)
+            s.prev = x & 0xF
+            s.prevSize = 1
+            break
+        }
+        case 18: {
+            s.out.push((x & 0xF00000) >>> 20)
+            s.out.push((x & 0x0F0000) >>> 16)
+            s.out.push((x & 0x00FF00) >>> 8)
+            s.out.push((x & 0x0000F0) >>> 4)
+            s.prev = x & 0xF
+            s.prevSize = 1
+            break
+        }
+        case 19: {
+            s.out.push((x & 0xF00000) >>> 20)
+            s.out.push((x & 0x0F0000) >>> 16)
+            s.out.push((x & 0x00FF00) >>> 8)
+            s.prev = x & 0xFF
+            s.prevSize = 2
+            break
+        }
+        case 20: {
+            s.out.push((x & 0xF00000) >>> 20)
+            s.out.push((x & 0x0F0000) >>> 16)
+            s.out.push((x & 0x00F000) >>> 12)
+            s.out.push((x & 0x000F00) >>> 8)
+            s.prev = x & 0xFF
+            s.prevSize = 2
+            break
+        }
+        case 21: {
+            s.out.push((x & 0xF00000) >>> 20)
+            s.out.push((x & 0x0F0000) >>> 16)
+            s.out.push((x & 0x00F000) >>> 12)
+            s.out.push((x & 0x000F00) >>> 8)
+            s.out.push((x & 0x0000F0) >>> 4)
+            s.prev = x & 0xF
+            s.prevSize = 1
+            break
+        }
+        case 22: {
+            s.out.push((x & 0xF00000) >>> 20)
+            s.out.push((x & 0x0F0000) >>> 16)
+            s.out.push((x & 0x00F000) >>> 12)
+            s.out.push((x & 0x000FF0) >>> 4)
+            s.prev = x & 0xF
+            s.prevSize = 1
+            break
+        }
+        case 23: {
+            s.out.push((x & 0xF00000) >>> 20)
+            s.out.push((x & 0x0F0000) >>> 16)
+            s.out.push((x & 0x00F000) >>> 12)
+            s.prev = x & 0xFFF
+            s.prevSize = 3
+            break
+        }
+        case 24: {
+            s.out.push((x & 0xF00000) >>> 20)
+            s.out.push((x & 0x0FF000) >>> 12)
+            s.prev = x & 0xFFF
+            s.prevSize = 3
+            break
+        }
+        case 25: {
+            s.out.push((x & 0xF00000) >>> 20)
+            s.out.push((x & 0x0FF000) >>> 12)
+            s.out.push((x & 0x000FF0) >>> 4)
+            s.prev = x & 0xF
+            s.prevSize = 1
+            break
+        }
+        case 26: {
+            s.out.push((x & 0xF00000) >>> 20)
+            s.out.push((x & 0x0FF000) >>> 12)
+            s.out.push((x & 0x000F00) >>> 8)
+            s.out.push((x & 0x0000F0) >>> 4)
+            s.prev = x & 0xF
+            s.prevSize = 1
+            break
+        }
+        case 27: {
+            s.out.push((x & 0xF00000) >>> 20)
+            s.out.push((x & 0x0FF000) >>> 12)
+            s.out.push((x & 0x000F00) >>> 8)
+            s.prev = x & 0xFF
+            s.prevSize = 2
+            break
+        }
+        case 28: {
+            s.out.push((x & 0xF00000) >>> 20)
+            s.out.push((x & 0x0FFF00) >>> 8)
+            s.prev = x & 0xFF
+            s.prevSize = 2
+            break
+        }
+        case 29: {
+            s.out.push((x & 0xF00000) >>> 20)
+            s.out.push((x & 0x0FFF00) >>> 8)
+            s.out.push((x & 0x0000F0) >>> 4)
+            s.prev = x & 0xF
+            s.prevSize = 1
+            break
+        }
+        case 30: {
+            s.out.push((x & 0xF00000) >>> 20)
+            s.out.push((x & 0x0FFFF0) >>> 4)
+            s.prev = x & 0xF
+            s.prevSize = 1
+            break
+        }
+        case 31: {
+            s.out.push((x & 0xF00000) >>> 20)
+            s.prev = x & 0xFFFFF
+            s.prevSize = 5
+            break
+        }
+        case 32: {
+            const a = 1
+            checkMax(s, a)
+            s.out.push(s.prev * 2 ** (a * 4) + ((x & 0xF00000) >>> 20))
+            s.prev = x & 0xFFFFF
+            s.prevSize = 5
+            break
+        }
+        case 33: {
+            const a = 1
+            checkMax(s, a)
+            s.out.push(s.prev * 2 ** (a * 4) + ((x & 0xF00000) >>> 20))
+            s.out.push((x & 0x0FFFF0) >>> 4)
+            s.prev = x & 0xF
+            s.prevSize = 1
+            break
+        }
+        case 34: {
+            const a = 1
+            checkMax(s, a)
+            s.out.push(s.prev * 2 ** (a * 4) + ((x & 0xF00000) >>> 20))
+            s.out.push((x & 0x0FFF00) >>> 8)
+            s.out.push((x & 0x0000F0) >>> 4)
+            s.prev = x & 0xF
+            s.prevSize = 1
+            break
+        }
+        case 35: {
+            const a = 1
+            checkMax(s, a)
+            s.out.push(s.prev * 2 ** (a * 4) + ((x & 0xF00000) >>> 20))
+            s.out.push((x & 0x0FFF00) >>> 8)
+            s.prev = x & 0xFF
+            s.prevSize = 2
+            break
+        }
+        case 36: {
+            const a = 1
+            checkMax(s, a)
+            s.out.push(s.prev * 2 ** (a * 4) + ((x & 0xF00000) >>> 20))
+            s.out.push((x & 0x0FF000) >>> 12)
+            s.out.push((x & 0x000F00) >>> 8)
+            s.prev = x & 0xFF
+            s.prevSize = 2
+            break
+        }
+        case 37: {
+            const a = 1
+            checkMax(s, a)
+            s.out.push(s.prev * 2 ** (a * 4) + ((x & 0xF00000) >>> 20))
+            s.out.push((x & 0x0FF000) >>> 12)
+            s.out.push((x & 0x000F00) >>> 8)
+            s.out.push((x & 0x0000F0) >>> 4)
+            s.prev = x & 0xF
+            s.prevSize = 1
+            break
+        }
+        case 38: {
+            const a = 1
+            checkMax(s, a)
+            s.out.push(s.prev * 2 ** (a * 4) + ((x & 0xF00000) >>> 20))
+            s.out.push((x & 0x0FF000) >>> 12)
+            s.out.push((x & 0x000FF0) >>> 4)
+            s.prev = x & 0xF
+            s.prevSize = 1
+            break
+        }
+        case 39: {
+            const a = 1
+            checkMax(s, a)
+            s.out.push(s.prev * 2 ** (a * 4) + ((x & 0xF00000) >>> 20))
+            s.out.push((x & 0x0FF000) >>> 12)
+            s.prev = x & 0xFFF
+            s.prevSize = 3
+            break
+        }
+        case 40: {
+            const a = 1
+            checkMax(s, a)
+            s.out.push(s.prev * 2 ** (a * 4) + ((x & 0xF00000) >>> 20))
+            s.out.push((x & 0x0F0000) >>> 16)
+            s.out.push((x & 0x00F000) >>> 12)
+            s.prev = x & 0xFFF
+            s.prevSize = 3
+            break
+        }
+        case 41: {
+            const a = 1
+            checkMax(s, a)
+            s.out.push(s.prev * 2 ** (a * 4) + ((x & 0xF00000) >>> 20))
+            s.out.push((x & 0x0F0000) >>> 16)
+            s.out.push((x & 0x00F000) >>> 12)
+            s.out.push((x & 0x000FF0) >>> 4)
+            s.prev = x & 0xF
+            s.prevSize = 1
+            break
+        }
+        case 42: {
+            const a = 1
+            checkMax(s, a)
+            s.out.push(s.prev * 2 ** (a * 4) + ((x & 0xF00000) >>> 20))
+            s.out.push((x & 0x0F0000) >>> 16)
+            s.out.push((x & 0x00F000) >>> 12)
+            s.out.push((x & 0x000F00) >>> 8)
+            s.out.push((x & 0x0000F0) >>> 4)
+            s.prev = x & 0xF
+            s.prevSize = 1
+            break
+        }
+        case 43: {
+            const a = 1
+            checkMax(s, a)
+            s.out.push(s.prev * 2 ** (a * 4) + ((x & 0xF00000) >>> 20))
+            s.out.push((x & 0x0F0000) >>> 16)
+            s.out.push((x & 0x00F000) >>> 12)
+            s.out.push((x & 0x000F00) >>> 8)
+            s.prev = x & 0xFF
+            s.prevSize = 2
+            break
+        }
+        case 44: {
+            const a = 1
+            checkMax(s, a)
+            s.out.push(s.prev * 2 ** (a * 4) + ((x & 0xF00000) >>> 20))
+            s.out.push((x & 0x0F0000) >>> 16)
+            s.out.push((x & 0x00FF00) >>> 8)
+            s.prev = x & 0xFF
+            s.prevSize = 2
+            break
+        }
+        case 45: {
+            const a = 1
+            checkMax(s, a)
+            s.out.push(s.prev * 2 ** (a * 4) + ((x & 0xF00000) >>> 20))
+            s.out.push((x & 0x0F0000) >>> 16)
+            s.out.push((x & 0x00FF00) >>> 8)
+            s.out.push((x & 0x0000F0) >>> 4)
+            s.prev = x & 0xF
+            s.prevSize = 1
+            break
+        }
+        case 46: {
+            const a = 1
+            checkMax(s, a)
+            s.out.push(s.prev * 2 ** (a * 4) + ((x & 0xF00000) >>> 20))
+            s.out.push((x & 0x0F0000) >>> 16)
+            s.out.push((x & 0x00FFF0) >>> 4)
+            s.prev = x & 0xF
+            s.prevSize = 1
+            break
+        }
+        case 47: {
+            const a = 1
+            checkMax(s, a)
+            s.out.push(s.prev * 2 ** (a * 4) + ((x & 0xF00000) >>> 20))
+            s.out.push((x & 0x0F0000) >>> 16)
+            s.prev = x & 0xFFFF
+            s.prevSize = 4
+            break
+        }
+        case 48: {
+            const a = 2
+            checkMax(s, a)
+            s.out.push(s.prev * 2 ** (a * 4) + ((x & 0xFF0000) >>> 16))
+            s.prev = x & 0xFFFF
+            s.prevSize = 4
+            break
+        }
+        case 49: {
+            const a = 2
+            checkMax(s, a)
+            s.out.push(s.prev * 2 ** (a * 4) + ((x & 0xFF0000) >>> 16))
+            s.out.push((x & 0x00FFF0) >>> 4)
+            s.prev = x & 0xF
+            s.prevSize = 1
+            break
+        }
+        case 50: {
+            const a = 2
+            checkMax(s, a)
+            s.out.push(s.prev * 2 ** (a * 4) + ((x & 0xFF0000) >>> 16))
+            s.out.push((x & 0x00FF00) >>> 8)
+            s.out.push((x & 0x0000F0) >>> 4)
+            s.prev = x & 0xF
+            s.prevSize = 1
+            break
+        }
+        case 51: {
+            const a = 2
+            checkMax(s, a)
+            s.out.push(s.prev * 2 ** (a * 4) + ((x & 0xFF0000) >>> 16))
+            s.out.push((x & 0x00FF00) >>> 8)
+            s.prev = x & 0xFF
+            s.prevSize = 2
+            break
+        }
+        case 52: {
+            const a = 2
+            checkMax(s, a)
+            s.out.push(s.prev * 2 ** (a * 4) + ((x & 0xFF0000) >>> 16))
+            s.out.push((x & 0x00F000) >>> 12)
+            s.out.push((x & 0x000F00) >>> 8)
+            s.prev = x & 0xFF
+            s.prevSize = 2
+            break
+        }
+        case 53: {
+            const a = 2
+            checkMax(s, a)
+            s.out.push(s.prev * 2 ** (a * 4) + ((x & 0xFF0000) >>> 16))
+            s.out.push((x & 0x00F000) >>> 12)
+            s.out.push((x & 0x000F00) >>> 8)
+            s.out.push((x & 0x0000F0) >>> 4)
+            s.prev = x & 0xF
+            s.prevSize = 1
+            break
+        }
+        case 54: {
+            const a = 2
+            checkMax(s, a)
+            s.out.push(s.prev * 2 ** (a * 4) + ((x & 0xFF0000) >>> 16))
+            s.out.push((x & 0x00F000) >>> 12)
+            s.out.push((x & 0x000FF0) >>> 4)
+            s.prev = x & 0xF
+            s.prevSize = 1
+            break
+        }
+        case 55: {
+            const a = 2
+            checkMax(s, a)
+            s.out.push(s.prev * 2 ** (a * 4) + ((x & 0xFF0000) >>> 16))
+            s.out.push((x & 0x00F000) >>> 12)
+            s.prev = x & 0xFFF
+            s.prevSize = 3
+            break
+        }
+        case 56: {
+            const a = 3
+            checkMax(s, a)
+            s.out.push(s.prev * 2 ** (a * 4) + ((x & 0xFFF000) >>> 12))
+            s.prev = x & 0xFFF
+            s.prevSize = 3
+            break
+        }
+        case 57: {
+            const a = 3
+            checkMax(s, a)
+            s.out.push(s.prev * 2 ** (a * 4) + ((x & 0xFFF000) >>> 12))
+            s.out.push((x & 0x000FF0) >>> 4)
+            s.prev = x & 0xF
+            s.prevSize = 1
+            break
+        }
+        case 58: {
+            const a = 3
+            checkMax(s, a)
+            s.out.push(s.prev * 2 ** (a * 4) + ((x & 0xFFF000) >>> 12))
+            s.out.push((x & 0x000F00) >>> 8)
+            s.out.push((x & 0x0000F0) >>> 4)
+            s.prev = x & 0xF
+            s.prevSize = 1
+            break
+        }
+        case 59: {
+            const a = 3
+            checkMax(s, a)
+            s.out.push(s.prev * 2 ** (a * 4) + ((x & 0xFFF000) >>> 12))
+            s.out.push((x & 0x000F00) >>> 8)
+            s.prev = x & 0xFF
+            s.prevSize = 2
+            break
+        }
+        case 60: {
+            const a = 4
+            checkMax(s, a)
+            s.out.push(s.prev * 2 ** (a * 4) + ((x & 0xFFFF00) >>> 8))
+            s.prev = x & 0xFF
+            s.prevSize = 2
+            break
+        }
+        case 61: {
+            const a = 4
+            checkMax(s, a)
+            s.out.push(s.prev * 2 ** (a * 4) + ((x & 0xFFFF00) >>> 8))
+            s.out.push((x & 0x0000F0) >>> 4)
+            s.prev = x & 0xF
+            s.prevSize = 1
+            break
+        }
+        case 62: {
+            const a = 5
+            checkMax(s, a)
+            s.out.push(s.prev * 2 ** (a * 4) + ((x & 0xFFFFF0) >>> 4))
+            s.prev = x & 0xF
+            s.prevSize = 1
+            break
+        }
+        case 63: {
+            const a = 6
+            checkMax(s, a)
+            s.prev = s.prev * 2 ** (a * 4) + (x & 0xFFFFFF)
+            s.prevSize += a
+            break
+        }
+    }
+}
+export const checkMax = (s: State, add: number) => {
+    if (s.prevSize + add > s.max) {
+        throw new Error('too many continuation chunks')
+    }
+}
 export const decode = (b: BufferSource) => {
     if (b.byteLength % 4 != 0) {
         throw new Error('data must be multiple of 4 bytes')
     }
-    const out: code[] = []
-    let prev: number = 0
-    let prevSize: number = 0
-    const dv = bufferSourceToDataView(b)
-    for (let i = 0; i < dv.byteLength; i += 4) {
-        const x = dv.getUint32(i)
-        const type = x >>> 30
-        const mesh = (x >>> 24) & 63
-        switch (mesh) {
-            case 0: {
-                if (prevSize) {
-                    out.push(prev)
-                }
-                prev = x & 0xFFFFFF
-                prevSize = 6
-                break
-            }
-            default:
-                throw new Error('not implemented decode mesh ' + mesh)
-        }
-        switch (type) {
-            case 0: {
-                break
-            }
+    const s: State = { out: [], prev: 0, prevSize: 0, dv: bufferSourceToDataView(b), offset: 0, max: 13, type: 0 }
+    while (s.offset < s.dv.byteLength) {
+        decodeChunk(s)
+        switch (s.type) {
             case 1: {
-                i = dv.byteLength
+                s.offset = s.dv.byteLength
                 break
             }
             case 2: {
-                prevSize = 0
+                s.prevSize = 0
                 break
             }
             case 3: {
-                out.push(new Uint8Array(dv.buffer, dv.byteOffset + i + 4, prev * 4))
-                prevSize = 0
-                i += prev * 4
+                s.out.push(new Uint8Array(s.dv.buffer, s.dv.byteOffset + s.offset + 4, s.prev * 4))
+                s.prevSize = 0
+                s.offset += s.prev * 4
                 break
             }
         }
+        s.offset += 4
     }
-    if (prevSize) {
-        out.push(prev)
+    if (s.prevSize) {
+        s.out.push(s.prev)
     }
-    return out
+    return s.out
 }
 export const encode = (code: code[]) => {
     const len = code.map(x => x instanceof Uint8Array ? x.byteLength + 4 : 4).reduce((a, b) => a + b, 0)
