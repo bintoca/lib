@@ -30,7 +30,7 @@ test.each([
 ])('evaluate', (i, o) => {
     const s = parse(decode(encode(i)))
     evaluateAll(s.slots)
-    expect(s.slots.map(x => typeof x == 'object' && !(x instanceof Uint8Array) && x.result ? x.result : null).filter(x => x)).toEqual(o)
+    expect(s.slots.map(x => typeof x == 'object' && !(x instanceof Uint8Array) && !Array.isArray(x) && x.result ? x.result : null).filter(x => x)).toEqual(o)
 })
 test.each([
     [[r.call, 6000, r.placeholder], 'not implemented x1 6000'],
@@ -103,6 +103,7 @@ const mesh = [
     [[2 ** 16 + 2 ** 12 + 2 * 2 ** 8 + 3 * 2 ** 4 + 4, 5, 6]],
     [[2 ** 20 + 2 ** 16 + 2 * 2 ** 12 + 3 * 2 ** 8 + 4 * 2 ** 4 + 5, 6]],
     [[2 ** 24 + 2 ** 20 + 2 * 2 ** 16 + 3 * 2 ** 12 + 4 * 2 ** 8 + 5 * 2 ** 4 + 6]],
+    //[[2 ** 8 + 2 ** 4 + 2, 3, 4, 5, 6], new Uint8Array([])],
 ]
 for (let i = 0; i < 64; i++) {
     const dv = new DataView(new ArrayBuffer(8))
