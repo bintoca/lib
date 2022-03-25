@@ -980,70 +980,349 @@ export const decodeContinue = (s: State, x: number, a: number) => {
         }
     }
 }
-export const decode = (b: BufferSource) => {
-    if (b.byteLength % 4 != 0) {
-        throw new Error('data must be multiple of 4 bytes')
+export const concat = (buffers: BufferSource[]): Uint8Array => {
+    if (buffers.length == 1) {
+        return buffers[0] instanceof Uint8Array ? buffers[0] : bufferSourceToUint8Array(buffers[0])
     }
-    const s: State = { out: [], last: 0, lastSize: 0, type: 0, decodeContinue }
-    const dv = bufferSourceToDataView(b)
+    const u = new Uint8Array(buffers.reduce((a, b) => a + b.byteLength, 0))
     let offset = 0
+    for (let b of buffers) {
+        u.set(b instanceof Uint8Array ? b : bufferSourceToUint8Array(b), offset)
+        offset += b.byteLength
+    }
+    return u
+}
+export const decode = (b: BufferSource | BufferSource[]) => {
+    const buffers = Array.isArray(b) ? b : [b]
+    const s: State = { out: [], last: 0, lastSize: 0, type: 0, decodeContinue }
     const outStack = []
-    while (offset < dv.byteLength) {
-        decodeChunk(s, dv.getUint32(offset))
-        switch (s.type) {
-            case 1: {
-                if (outStack.length) {
-                    if (s.lastSize) {
-                        s.out.push(s.last)
-                    }
+    let nest = 0
+    let nestU = 0
+    let nestUall = false
+    let nestUBuf
+    for (let bu of buffers) {
+        if (bu.byteLength % 4 != 0) {
+            throw new Error('data must be multiple of 4 bytes')
+        }
+        const dv = bufferSourceToDataView(bu)
+        let offset = 0
+        while (offset < dv.byteLength) {
+            if (nest) {
+                if (nest > dv.byteLength - offset) {
+                    const a = decode(bufferSourceToUint8Array(dv, dv.byteOffset + offset))
+                    s.out.push(...a)
+                    nest -= dv.byteLength - offset
+                    offset = dv.byteLength
+                }
+                else {
+                    const a = decode(bufferSourceToUint8Array(dv, dv.byteOffset + offset, nest))
+                    s.out.push(...a)
+                    offset += nest
+                    nest = 0
                     const o = outStack.pop()
                     o.push(s.out)
                     s.out = o
                 }
-                else {
+            }
+            else if (nestU || nestUall) {
+                if (nestU > dv.byteLength - offset || nestUall) {
+                    nestUBuf = concat([nestUBuf, bufferSourceToUint8Array(dv, dv.byteOffset + offset)])
+                    if (nestU) {
+                        nestU -= dv.byteLength - offset
+                    }
                     offset = dv.byteLength
                 }
-                break
+                else {
+                    nestUBuf = concat([nestUBuf, bufferSourceToUint8Array(dv, dv.byteOffset + offset, nestU)])
+                    offset += nestU
+                    nestU = 0
+                    s.out.push(nestUBuf)
+                    nestUBuf = null
+                }
             }
-            case 2: {
-                outStack.push(s.out)
-                s.out = []
-                s.lastSize = 0
-                break
-            }
-            case 3: {
-                const len = s.last as number * 4 + 4
-                s.out.push(new Uint8Array(dv.buffer, dv.byteOffset + offset + 4, len))
-                s.lastSize = 0
-                offset += len
-                break
+            else {
+                decodeChunk(s, dv.getUint32(offset))
+                switch (s.type) {
+                    case 1: {
+                        if (outStack.length) {
+                            if (s.lastSize) {
+                                s.out.push(s.last)
+                                s.lastSize = 0
+                            }
+                            const o = outStack.pop()
+                            o.push(s.out)
+                            s.out = o
+                        }
+                        else {
+                            offset = dv.byteLength
+                        }
+                        break
+                    }
+                    case 2: {
+                        if (s.last as number != 0) {
+                            nest = s.last as number * 4
+                        }
+                        outStack.push(s.out)
+                        s.out = []
+                        s.lastSize = 0
+                        break
+                    }
+                    case 3: {
+                        if (s.last as number != 0) {
+                            nestU = s.last as number * 4
+                        }
+                        else {
+                            nestUall = true   
+                        }
+                        nestUBuf = new Uint8Array()
+                        s.lastSize = 0
+                        break
+                    }
+                }
+                offset += 4
             }
         }
-        offset += 4
     }
     if (s.lastSize) {
         s.out.push(s.last)
     }
+    if (nestUBuf) {
+        s.out.push(nestUBuf)
+    }
     return s.out
 }
 export const encode = (code: code[]) => {
-    const len = code.map(x => x instanceof Uint8Array ? x.byteLength + 4 : 4).reduce((a, b) => a + b, 0)
-    const dv = new DataView(new ArrayBuffer(len))
+    const buffers: Uint8Array[] = []
+    let dv = new DataView(new ArrayBuffer(4096))
     let o = 0
+    let chunkSpace = 6
+    let chunk = 0
+    let mesh = 0
+    let mesh1 = false
     for (let x of code) {
         if (x instanceof Uint8Array) {
-            dv.setUint32(o, (x.byteLength / 4 - 1) + 0xc0000000)
-            o += 4
+            if (x.byteLength == 0) {
+                throw new Error('invalid Uint8Array')
+            }
+            let len = x.byteLength / 4
+            let n = 8 - (Math.clz32(len) >>> 2)
+            if (n > chunkSpace) {
+                n = chunkSpace + (n > chunkSpace + 6 ? 12 : 6)
+                chunk += len >>> ((n - chunkSpace) * 4)
+                if (mesh1) {
+                    mesh += (2 ** chunkSpace - 1)
+                }
+                n -= chunkSpace
+                len = len & (2 ** (n * 4) - 1)
+                dv.setUint32(o, (mesh << 24) + chunk)
+                o += 4
+                if (dv.byteLength == o) {
+                    buffers.push(new Uint8Array(dv.buffer))
+                    dv = new DataView(new ArrayBuffer(4096))
+                }
+                if (n == 12) {
+                    dv.setUint32(o, (63 << 24) + (len >>> 24))
+                    o += 4
+                    len = len & 0xFFFFFF
+                    if (dv.byteLength == o) {
+                        buffers.push(new Uint8Array(dv.buffer))
+                        dv = new DataView(new ArrayBuffer(4096))
+                    }
+                }
+                dv.setUint32(o, (255 << 24) + len)
+                o += 4
+                chunkSpace = 6
+                chunk = 0
+                mesh = 0
+                mesh1 = false
+                if (dv.byteLength == o) {
+                    buffers.push(new Uint8Array(dv.buffer))
+                    dv = new DataView(new ArrayBuffer(4096))
+                }
+            }
+            else {
+                if (mesh1) {
+                    mesh += (2 ** chunkSpace - 1)
+                }
+                dv.setUint32(o, ((192 + mesh) << 24) + chunk + len)
+                o += 4
+                chunkSpace = 6
+                chunk = 0
+                mesh = 0
+                mesh1 = false
+                if (dv.byteLength == o) {
+                    buffers.push(new Uint8Array(dv.buffer))
+                    dv = new DataView(new ArrayBuffer(4096))
+                    o = 0
+                }
+            }
             const d2 = bufferSourceToDataView(x)
             for (let i = 0; i < d2.byteLength; i += 4) {
                 dv.setUint32(o, d2.getUint32(i))
                 o += 4
+                if (dv.byteLength == o) {
+                    buffers.push(new Uint8Array(dv.buffer))
+                    dv = new DataView(new ArrayBuffer(4096))
+                    o = 0
+                }
             }
         }
+        else if (Array.isArray(x)) {
+            const b = encode(x)
+            let len = b.reduce((a, b) => a + b.byteLength, 0) / 4
+            let n = 8 - (Math.clz32(len) >>> 2)
+            if (n > chunkSpace) {
+                n = chunkSpace + (n > chunkSpace + 6 ? 12 : 6)
+                chunk += len >>> ((n - chunkSpace) * 4)
+                if (mesh1) {
+                    mesh += (2 ** chunkSpace - 1)
+                }
+                n -= chunkSpace
+                len = len & (2 ** (n * 4) - 1)
+                dv.setUint32(o, (mesh << 24) + chunk)
+                o += 4
+                if (dv.byteLength == o) {
+                    buffers.push(new Uint8Array(dv.buffer))
+                    dv = new DataView(new ArrayBuffer(4096))
+                    o = 0
+                }
+                if (n == 12) {
+                    dv.setUint32(o, (63 << 24) + (len >>> 24))
+                    o += 4
+                    len = len & 0xFFFFFF
+                    if (dv.byteLength == o) {
+                        buffers.push(new Uint8Array(dv.buffer))
+                        dv = new DataView(new ArrayBuffer(4096))
+                        o = 0
+                    }
+                }
+                dv.setUint32(o, (191 << 24) + len)
+                o += 4
+                chunkSpace = 6
+                chunk = 0
+                mesh = 0
+                mesh1 = false
+                if (dv.byteLength == o) {
+                    buffers.push(new Uint8Array(dv.buffer))
+                    dv = new DataView(new ArrayBuffer(4096))
+                    o = 0
+                }
+            }
+            else {
+                if (mesh1) {
+                    mesh += (2 ** chunkSpace - 1)
+                }
+                dv.setUint32(o, ((128 + mesh) << 24) + chunk + len)
+                o += 4
+                chunkSpace = 6
+                chunk = 0
+                mesh = 0
+                mesh1 = false
+                if (dv.byteLength == o) {
+                    buffers.push(new Uint8Array(dv.buffer))
+                    dv = new DataView(new ArrayBuffer(4096))
+                    o = 0
+                }
+            }
+            buffers.push(new Uint8Array(dv.buffer, 0, o))
+            dv = new DataView(new ArrayBuffer(4096))
+            o = 0
+            buffers.push(...b)
+        }
         else {
-            dv.setUint32(o, x as number)
-            o += 4
+            if (x < 0 || (typeof x == 'number' && (x > Number.MAX_SAFE_INTEGER || isNaN(x) || !isFinite(x)))) {
+                throw new Error('invalid number')
+            }
+            if (x <= 0xFFFFFFF) {
+                let n = x == 0 ? 1 : 8 - (Math.clz32(x as number) >>> 2)
+                if (n > chunkSpace) {
+                    chunk += x as number >>> ((n - chunkSpace) * 4)
+                    if (mesh1) {
+                        mesh += (2 ** chunkSpace - 1)
+                    }
+                    n -= chunkSpace
+                    x = (x as number) & (2 ** (n * 4) - 1)
+                    dv.setUint32(o, (mesh << 24) + chunk)
+                    o += 4
+                    chunkSpace = 6
+                    chunk = 0
+                    mesh = 0
+                    mesh1 = true
+                    if (dv.byteLength == o) {
+                        buffers.push(new Uint8Array(dv.buffer))
+                        dv = new DataView(new ArrayBuffer(4096))
+                        o = 0
+                    }
+                }
+                chunk += x as number << ((chunkSpace - n) * 4)
+                if (mesh1) {
+                    mesh += (2 ** n - 1) << (chunkSpace - n)
+                    mesh1 = false
+                }
+                else {
+                    mesh1 = true
+                }
+                chunkSpace -= n
+                if (chunkSpace == 0) {
+                    dv.setUint32(o, (mesh << 24) + chunk)
+                    o += 4
+                    chunkSpace = 6
+                    chunk = 0
+                    mesh = 0
+                    mesh1 = false
+                    if (dv.byteLength == o) {
+                        buffers.push(new Uint8Array(dv.buffer))
+                        dv = new DataView(new ArrayBuffer(4096))
+                        o = 0
+                    }
+                }
+            }
+            else {
+                const s = x.toString(16)
+                let i = 0
+                while (true) {
+                    const len = chunkSpace > s.length - i ? s.length - i : chunkSpace
+                    chunk += parseInt(s.substring(i, i + len), 16) << ((chunkSpace - len) * 4)
+                    if (mesh1) {
+                        mesh += (2 ** len - 1) << (chunkSpace - len)
+                    }
+                    chunkSpace -= len
+                    if (chunkSpace == 0) {
+                        dv.setUint32(o, (mesh << 24) + chunk)
+                        o += 4
+                        chunkSpace = 6
+                        chunk = 0
+                        mesh = 0
+                        mesh1 = true
+                        if (dv.byteLength == o) {
+                            buffers.push(new Uint8Array(dv.buffer))
+                            dv = new DataView(new ArrayBuffer(4096))
+                            o = 0
+                        }
+                    }
+                    i += len
+                    if (i == s.length) {
+                        mesh1 = false
+                        break
+                    }
+                }
+
+            }
         }
     }
-    return dv
+    if (chunkSpace < 6) {
+        for (let i = chunkSpace - 1; i >= 0; i--) {
+            chunk += r.placeholder << (i * 4)
+            if (mesh1) {
+                mesh += 2 ** i
+            }
+            mesh1 = !mesh1
+        }
+        dv.setUint32(o, (mesh << 24) + chunk)
+        o += 4
+    }
+    if (o) {
+        buffers.push(new Uint8Array(dv.buffer, 0, o))
+    }
+    return buffers
 }

@@ -13,9 +13,9 @@ export default {
   },
   testPathIgnorePatterns: [
     'half.test.ts',
-    //'<rootDir>/cbor/',
-    //'<rootDir>/dev/',
-    //'<rootDir>/http/',
-    //'<rootDir>/package/',
+    '<rootDir>/cbor/',
+    '<rootDir>/dev/',
+    '<rootDir>/http/',
+    '<rootDir>/package/',
   ]
 };

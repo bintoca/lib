@@ -10,11 +10,12 @@ test('float', () => {
     expect(dv.getUint8(3)).toBe(63)
 })
 test.each([
-    [[], []],
-    [[r.next_describe, r.uint, 0, new Uint8Array(12)], [{ type: r.next_describe, items: [r.uint, 1], needed: 2 }, new Uint8Array(12)]],
+    [[r.next_describe, r.uint, 0, new Uint8Array(12), 0xFFFF, 0xFFFFFF], [{ type: r.next_describe, items: [r.uint, 1], needed: 2 }, new Uint8Array(12), 0xFFFF, 0xFFFFFF, r.placeholder, r.placeholder]],
+    [[r.next_describe, r.uint, 0, [new Uint8Array(12), 0xFFFF, 0xFFFFFF]], [{ type: r.next_describe, items: [r.uint, 1], needed: 2 }, [new Uint8Array(12), 0xFFFF, 0xFFFFFF, r.placeholder, r.placeholder]]],
+    [[r.next_describe, r.uint, 0, new Uint8Array(256 * 4), 0xFFFFF, 0xFFFFFF, 0xFFFFFFF, 0xFFFFFFFFFF, BigInt(0xFFFFFFFFFF) * BigInt(2 ** 16), 0xFFFFFF], [{ type: r.next_describe, items: [r.uint, 1], needed: 2 }, new Uint8Array(256 * 4), 0xFFFFF, 0xFFFFFF, 0xFFFFFFF, 0xFFFFFFFFFF, BigInt(0xFFFFFFFFFF) * BigInt(2 ** 16), 0xFFFFFF]],
 ])('parse', (i, o) => {
-    const ei = encode(i)
-    const di = decode(ei)
+    const b = encode(i)
+    const di = decode(b)
     const s = parse(di)
     expect(s.slots).toEqual(o)
 })
@@ -28,7 +29,8 @@ test.each([
     [[r.function, r.unicode, u.a, u.unicode, u.e, u.end_scope, u.i, u.back_ref, 0, r.end_scope, r.end_scope, r.call, r.back_ref, 0, r.placeholder],
     [{ type: r.unicode, needed: 0, items: [u.a, { type: u.unicode, needed: 0, items: [u.e] }, u.i, { type: u.back_ref, needed: 1, items: [1], ref: { type: u.unicode, needed: 0, items: [u.e] } }] }]],
 ])('evaluate', (i, o) => {
-    const s = parse(decode(encode(i)))
+    const b = encode(i)
+    const s = parse(decode(b[0]))
     evaluateAll(s.slots)
     expect(s.slots.map(x => typeof x == 'object' && !(x instanceof Uint8Array) && !Array.isArray(x) && x.result ? x.result : null).filter(x => x)).toEqual(o)
 })
@@ -38,6 +40,13 @@ test.each([
     const s = parse(i)
     expect(() => evaluateAll(s.slots)).toThrowError(o)
 })
+const be = (n: number[]) => {
+    const dv = new DataView(new ArrayBuffer(n.length * 4))
+    for (let i = 0; i < n.length; i++) {
+        dv.setUint32(i * 4, n[i])
+    }
+    return dv
+}
 const mesh = [
     [[1, 6 + 5 * 2 ** 4 + 4 * 2 ** 8 + 3 * 2 ** 12 + 2 * 2 ** 16 + 2 ** 20]],
     [[1, 5 + 4 * 2 ** 4 + 3 * 2 ** 8 + 2 * 2 ** 12 + 2 ** 16, 6]],
@@ -103,7 +112,9 @@ const mesh = [
     [[2 ** 16 + 2 ** 12 + 2 * 2 ** 8 + 3 * 2 ** 4 + 4, 5, 6]],
     [[2 ** 20 + 2 ** 16 + 2 * 2 ** 12 + 3 * 2 ** 8 + 4 * 2 ** 4 + 5, 6]],
     [[2 ** 24 + 2 ** 20 + 2 * 2 ** 16 + 3 * 2 ** 12 + 4 * 2 ** 8 + 5 * 2 ** 4 + 6]],
-    //[[2 ** 8 + 2 ** 4 + 2, 3, 4, 5, 6], new Uint8Array([])],
+    [[BigInt(6) as any], be([0, 0x3F000000, 0x3F000006])],
+    [[0, 0, [0, 6]], be([0, 0x8F000000, 0x4F000006])],
+    [[0, 0, [0, 6]], be([0, 0x8F000001, 0x4F000006])],
 ]
 for (let i = 0; i < 64; i++) {
     const dv = new DataView(new ArrayBuffer(8))
