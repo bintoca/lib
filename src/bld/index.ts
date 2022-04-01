@@ -1,74 +1,11 @@
-export type DecoderState = {
-    position: number, decodeItemFunc: (op: r, additionalInformation: number, dv: DataView, src: DecoderState) => any, decodeMainFunc: (dv: DataView, state: DecoderState) => any,
-    queue: BufferSource[], stopPosition?: number, tempBuffer: Uint8Array
-}
 export const bufferSourceToDataView = (b: BufferSource, offset: number = 0, length?: number): DataView => b instanceof ArrayBuffer ? new DataView(b, offset, length !== undefined ? length : b.byteLength - offset) : new DataView(b.buffer, b.byteOffset + offset, length !== undefined ? length : b.byteLength - offset)
 export const bufferSourceToUint8Array = (b: BufferSource, offset: number = 0, length?: number): Uint8Array => b instanceof ArrayBuffer ? new Uint8Array(b, offset, length !== undefined ? length : b.byteLength - offset) : new Uint8Array(b.buffer, b.byteOffset + offset, length !== undefined ? length : b.byteLength - offset)
-export const decodeLoop = (state: DecoderState) => {
-    let dv: DataView
-    const first = state.queue[0]
-    if (first) {
-        if (first.byteLength < state.tempBuffer.byteLength) {
-            let count = 0
-            let i = 0
-            while (count < state.tempBuffer.byteLength && i < state.queue.length) {
-                const b = state.queue[i]
-                const d = bufferSourceToDataView(b)
-                for (let j = 0; j < b.byteLength; j++) {
-                    if (count < state.tempBuffer.byteLength) {
-                        state.tempBuffer[count] = d.getUint8(j)
-                        count++
-                    }
-                }
-                i++
-            }
-            dv = bufferSourceToDataView(state.tempBuffer, 0, count)
-        }
-        else {
-            dv = bufferSourceToDataView(first)
-        }
-    }
-    else {
-        throw new Error('no data supplied to decodeLoop')
-    }
-    const start = state.position = 0
-    state.stopPosition = undefined
-    let result
-    const dm = state.decodeMainFunc
-    while (state.position < dv.byteLength) {
-        result = dm(dv, state)
-    }
-    const consumed = (state.stopPosition === undefined ? state.position : state.stopPosition) - start
-    let count = 0
-    while (count < consumed) {
-        const x = state.queue[0]
-        if (x.byteLength + count <= consumed) {
-            count += x.byteLength
-            state.queue.shift()
-        }
-        else {
-            const newOffset = consumed - count
-            count = consumed
-            state.queue[0] = bufferSourceToUint8Array(x, newOffset)
-        }
-    }
-    return result
-}
-export const decodeMain = (dv: DataView, state: DecoderState): any => {
-    const c = dv.getUint8(state.position)
-    state.position++;
-    const p = c >> 5
-    const op = c & 31
-    state.decodeItemFunc(op, p, dv, state)
-}
 export const enum r {
     end_scope,
     unicode, //end_scope
     back_ref, //(v4)
     run_length_encoding, //(v4,any)
     placeholder,
-    next_describe, //(any, v4|Uint8Array)
-
 
     conditional, //(condition, true_op, false_op)
     function, //implies one item pushed to reuse stack for param, end_scope
@@ -248,6 +185,7 @@ export const enum u {
     unicode,
     back_ref, //(v4)
     run_length_encoding, //(v4,any)
+    placeholder,
     a,
     e,
     i,
@@ -259,13 +197,12 @@ export const enum u {
 
     //2nd chunk - remaining ascii then continue according to unicode
 }
-type scope = { type: r, needed: number, items: slot[], result?, ref?: slot, isFuncParam?: boolean }
+type scope = { type: r, needed: number, items: slot[], result?, ref?: slot, isFuncParam?: boolean, inUnicode?: boolean, next_literal_item?: boolean }
 type slot = scope | number | bigint | Uint8Array | code[]
 type code = number | bigint | Uint8Array | code[]
 export const parse = (code: code[]) => {
     const slots: slot[] = []
     const scope_stack: scope[] = []
-    let next_literal_item: boolean
     const scope_top = () => scope_stack[scope_stack.length - 1]
     function collapse_scope(x: slot) {
         let loop = true
@@ -279,7 +216,7 @@ export const parse = (code: code[]) => {
                     i = y
                     if (y.type == r.back_ref) {
                         const scopeItems = scope_stack.filter(x => !x.needed)
-                        let back = y.items[0] as number
+                        let back = y.items[0] as number + 1
                         for (let l = scopeItems.length - 1; l >= 0; l--) {
                             const s = scopeItems[l]
                             if (s.type == r.unicode) {
@@ -315,14 +252,8 @@ export const parse = (code: code[]) => {
                             }
                         }
                     }
-                    else if (t.type == r.next_describe) {
-                        next_literal_item = false
-                    }
                 }
                 else {
-                    if (t.type == r.next_describe && t.items.length == 1) {
-                        next_literal_item = true
-                    }
                     loop = false
                 }
             }
@@ -333,27 +264,25 @@ export const parse = (code: code[]) => {
         }
     }
     for (let x of code) {
-        if (typeof x == 'object') {
+        if (typeof x == 'object' || scope_top()?.next_literal_item) {
             collapse_scope(x)
         }
-        else if (next_literal_item) {
-            next_literal_item = false
-            collapse_scope(typeof x == 'number' ? x + 1 : x + BigInt(1))
-        }
-        else if (scope_stack.filter(x => x.type == r.unicode).length) {
+        else if (scope_top()?.inUnicode) {
             switch (x) {
                 case r.unicode: {
-                    scope_stack.push({ type: x, needed: 0, items: [] })
+                    scope_stack.push({ type: x, needed: 0, items: [], inUnicode: true })
                     break
                 }
                 case r.run_length_encoding: {
-                    next_literal_item = true
-                    scope_stack.push({ type: x, needed: 2, items: [] })
+                    scope_stack.push({ type: x, needed: 2, items: [], inUnicode: true, next_literal_item: true })
                     break
                 }
                 case r.back_ref: {
-                    next_literal_item = true
-                    scope_stack.push({ type: x, needed: 1, items: [] })
+                    scope_stack.push({ type: x, needed: 1, items: [], inUnicode: true, next_literal_item: true })
+                    break
+                }
+                case r.placeholder: {
+                    scope_stack.push({ type: x, needed: 0, items: [] })
                     break
                 }
                 case u.end_scope: {
@@ -378,7 +307,7 @@ export const parse = (code: code[]) => {
                     break
                 }
                 case r.unicode: {
-                    scope_stack.push({ type: x, needed: 0, items: [] })
+                    scope_stack.push({ type: x, needed: 0, items: [], inUnicode: true })
                     break
                 }
                 case r.end_scope: {
@@ -389,21 +318,17 @@ export const parse = (code: code[]) => {
                     if (top.items.length == 0) {
                         throw new Error('end_scope cannot be empty')
                     }
+
                     collapse_scope(top)
                     break
                 }
-                case r.next_describe: {
-                    scope_stack.push({ type: x, needed: 2, items: [] })
-                    break
-                }
                 case r.run_length_encoding: {
-                    next_literal_item = true
-                    scope_stack.push({ type: x, needed: 2, items: [] })
+                    scope_stack.push({ type: x, needed: 2, items: [], next_literal_item: true })
                     break
                 }
-                case r.back_ref: {
-                    next_literal_item = true
-                    scope_stack.push({ type: x, needed: 1, items: [] })
+                case r.back_ref:
+                case r.uint: {
+                    scope_stack.push({ type: x, needed: 1, items: [], next_literal_item: true })
                     break
                 }
                 case r.call: {
@@ -1072,7 +997,7 @@ export const decode = (b: BufferSource | BufferSource[]) => {
                             nestU = s.last as number * 4
                         }
                         else {
-                            nestUall = true   
+                            nestUall = true
                         }
                         nestUBuf = new Uint8Array()
                         s.lastSize = 0
