@@ -11,20 +11,22 @@ export const enum r {
 
     conditional, //(condition, true_op, false_op)
     function, //implies one item pushed to reuse stack for param, end_scope
-    statement_block, //end_scope
     call, //func, param
-    call_sync, //func, param
+    entity, //keys, end_scope, values
     prop_accessor, //object, prop
     prop_has, //object, prop
+    
+    template,
+    packed_data,
+    choice,
+    choice_type,
+    size_bits1,
+    merge,
+    subset,
+
     nominal_type,
     id,
     unit,
-    entity, //pairs, end_scope
-    template,
-    reify,
-    merge,
-    subset,
-    choice,
 
     add,
     subtract,
@@ -39,6 +41,7 @@ export const enum r {
     logical_and,
     logical_or,
     logical_not,
+    remainder,
 
     filter,
     map,
@@ -56,21 +59,15 @@ export const enum r {
     IEEE_binary64,
     IEEE_decimal32_BID,
     IEEE_decimal64_BID,
-    size_bits1,
-    bld_idna_utf4,
+    
+    bld_idna,
     embedded_bld,
-    float2_exponent, //default bias: 9
-    float10_exponent, //default bias: 9
-    extra_bias,
-    normalized,
+    binary_exponent,
+    decimal_exponent,
 
     next_singular,
     next_scope,
 
-
-    //12-bit
-    reuse_buffer_window, //(v4)
-    module, //implies one item pushed to reuse stack for param
     try,
     catch,
     finally,
@@ -79,8 +76,8 @@ export const enum r {
     promise_all_settled,
     promise_any,
     promise_race,
-    remainder,
 
+    abs,
     acos,
     acosh,
     asin,
@@ -98,13 +95,13 @@ export const enum r {
     floor,
     fround,
     hypot,
-    imul,//??
     log,
     log1p,
     log10,
     log2,
     pow,
     round,
+    sign,
     sin,
     sinh,
     sqrt,
@@ -125,14 +122,10 @@ export const enum r {
     Math_SQRT2,
 
     IPv4,
-    port,
     IPv6,
+    port,
     UUID,
     sha256,
-    IRI_utf4,
-    OID,
-    relative_OID,
-    content_type_utf4,
 
     second,
     meter,
@@ -312,7 +305,8 @@ export const parse = (code: code[]) => {
         }
         else {
             switch (x) {
-                case r.function: {
+                case r.function:
+                case r.entity: {
                     scope_stack.push({ type: x, needed: 0, items: [] })
                     break
                 }
@@ -321,14 +315,18 @@ export const parse = (code: code[]) => {
                     break
                 }
                 case r.end_scope: {
-                    const top = scope_stack.pop()
                     if (!top || top.needed) {
                         throw new Error('top of scope_stack invalid for end_scope')
                     }
                     if (top.items.length == 0) {
                         throw new Error('end_scope cannot be empty')
                     }
-                    collapse_scope(top)
+                    if (top.type == r.entity) {
+                        top.needed = top.items.length * 2
+                    }
+                    else {
+                        collapse_scope(scope_stack.pop())
+                    }
                     break
                 }
                 case r.run_length_encoding: {
