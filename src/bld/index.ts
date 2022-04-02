@@ -6,6 +6,8 @@ export const enum r {
     back_ref, //(v4)
     run_length_encoding, //(v4,any)
     placeholder,
+    uint,
+    private_namespace, //(v4)
 
     conditional, //(condition, true_op, false_op)
     function, //implies one item pushed to reuse stack for param, end_scope
@@ -46,7 +48,14 @@ export const enum r {
     min,
     max,
 
-    uint,
+    nint,
+    sint,
+    unorm,
+    snorm,
+    IEEE_binary32,
+    IEEE_binary64,
+    IEEE_decimal32_BID,
+    IEEE_decimal64_BID,
     size_bits1,
     bld_idna_utf4,
     embedded_bld,
@@ -57,7 +66,7 @@ export const enum r {
 
     next_singular,
     next_scope,
-    private_namespace, //(v4)
+
 
     //12-bit
     reuse_buffer_window, //(v4)
@@ -264,10 +273,14 @@ export const parse = (code: code[]) => {
         }
     }
     for (let x of code) {
-        if (typeof x == 'object' || scope_top()?.next_literal_item) {
+        const top = scope_top()
+        if (typeof x == 'object' || top?.next_literal_item) {
             collapse_scope(x)
+            if (top?.next_literal_item) {
+                top.next_literal_item = false
+            }
         }
-        else if (scope_top()?.inUnicode) {
+        else if (top?.inUnicode) {
             switch (x) {
                 case r.unicode: {
                     scope_stack.push({ type: x, needed: 0, items: [], inUnicode: true })
@@ -300,9 +313,6 @@ export const parse = (code: code[]) => {
         else {
             switch (x) {
                 case r.function: {
-                    if (scope_stack.length) {
-                        throw new Error('functions can only be declared in top level scope')
-                    }
                     scope_stack.push({ type: x, needed: 0, items: [] })
                     break
                 }
@@ -318,7 +328,6 @@ export const parse = (code: code[]) => {
                     if (top.items.length == 0) {
                         throw new Error('end_scope cannot be empty')
                     }
-
                     collapse_scope(top)
                     break
                 }
@@ -327,7 +336,14 @@ export const parse = (code: code[]) => {
                     break
                 }
                 case r.back_ref:
-                case r.uint: {
+                case r.uint:
+                case r.nint:
+                case r.unorm:
+                case r.snorm:
+                case r.IEEE_binary32:
+                case r.IEEE_binary64:
+                case r.IEEE_decimal32_BID:
+                case r.IEEE_decimal64_BID: {
                     scope_stack.push({ type: x, needed: 1, items: [], next_literal_item: true })
                     break
                 }
