@@ -13,7 +13,7 @@ test.each([
     [[r.uint, 0, new Uint8Array(12), 0xFFFF, 0xFFFFFF], [{ type: r.uint, items: [0], needed: 1, next_literal_item: false }, new Uint8Array(12), 0xFFFF, 0xFFFFFF, r.placeholder, r.placeholder]],
     [[r.uint, 0, [new Uint8Array(12), 0xFFFF, 0xFFFFFF]], [{ type: r.uint, items: [0], needed: 1, next_literal_item: false }, [new Uint8Array(12), 0xFFFF, 0xFFFFFF, r.placeholder, r.placeholder]]],
     [[r.run_length_encoding, 0, r.uint, 0], [{ type: r.run_length_encoding, items: [0, { type: r.uint, items: [0], needed: 1, next_literal_item: false }], needed: 2, next_literal_item: false }, r.placeholder, r.placeholder]],
-    [[r.entity, r.nominal_type, r.id, r.end_scope, r.Math_E, r.Math_PI], [{ type: r.entity, items: [r.nominal_type, r.id, r.Math_E, r.Math_PI], needed: 4 }, r.placeholder, r.placeholder, r.placeholder, r.placeholder]],
+    [[r.entity, r.nominal_type, r.id, r.end_scope, r.Math_E, r.Math_PI], [{ type: r.entity, items: [r.nominal_type, r.id, r.Math_E, r.Math_PI], needed: 4 }, r.placeholder, r.placeholder]],
     [[r.uint, 0, new Uint8Array(256 * 4), 0xFFFFF, 0xFFFFFF, 0xFFFFFFF, 0xFFFFFFFFFF, BigInt(0xFFFFFFFFFF) * BigInt(2 ** 16), 0xFFFFFF], [{ type: r.uint, items: [0], needed: 1, next_literal_item: false }, new Uint8Array(256 * 4), 0xFFFFF, 0xFFFFFF, 0xFFFFFFF, 0xFFFFFFFFFF, BigInt(0xFFFFFFFFFF) * BigInt(2 ** 16), 0xFFFFFF]],
 ])('parse', (i, o) => {
     const b = encode(i)
