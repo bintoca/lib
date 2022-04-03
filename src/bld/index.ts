@@ -1,117 +1,106 @@
 export const bufferSourceToDataView = (b: BufferSource, offset: number = 0, length?: number): DataView => b instanceof ArrayBuffer ? new DataView(b, offset, length !== undefined ? length : b.byteLength - offset) : new DataView(b.buffer, b.byteOffset + offset, length !== undefined ? length : b.byteLength - offset)
 export const bufferSourceToUint8Array = (b: BufferSource, offset: number = 0, length?: number): Uint8Array => b instanceof ArrayBuffer ? new Uint8Array(b, offset, length !== undefined ? length : b.byteLength - offset) : new Uint8Array(b.buffer, b.byteOffset + offset, length !== undefined ? length : b.byteLength - offset)
 export const enum r {
-    end_scope,
-    unicode, //end_scope
-    back_ref, //(v4)
-    run_length_encoding, //(v4,any)
-    placeholder,
-    uint,
-    private_namespace, //(v4)
+    end_scope,//*
+    unicode, //end_scope*
+    back_ref, //(v4)*
+    run_length_encoding, //(v4,any)*
+    placeholder,//*
+    uint,//*
+    private_namespace, //(v4)*
 
-    conditional, //(condition, true_op, false_op)
-    function, //implies one item pushed to reuse stack for param, end_scope
-    call, //func, param
-    entity, //keys, end_scope, values
-    prop_accessor, //object, prop
-    prop_has, //object, prop
-    
-    template,
-    packed_data,
-    choice,
-    choice_type,
-    size_bits1,
-    merge,
-    subset,
+    conditional, //(condition, true_op, false_op)*
+    function, //implies one item pushed to reuse stack for param, end_scope*
+    call, //func, param*
+    entity, //keys, end_scope, values*
+    prop_accessor, //object, prop*
+    prop_has, //object, prop*
 
-    nominal_type,
-    id,
-    unit,
+    choice,//*
+    choice_type,//*
+    merge,//*
+    subset,//*
 
-    add,
-    subtract,
-    multiply,
-    divide,
-    equal,
-    not_equal,
-    greater_than,
-    greater_than_or_equal,
-    less_than,
-    less_than_or_equal,
-    logical_and,
-    logical_or,
-    logical_not,
-    remainder,
-
+    compose_pipe,
     filter,
     map,
     reduce,
     skip,
     take,
-    min,
-    max,
+    min,//*
+    max,//*
 
-    nint,
-    sint,
-    unorm,
-    snorm,
-    IEEE_binary32,
-    IEEE_binary64,
-    IEEE_decimal32_BID,
-    IEEE_decimal64_BID,
-    
-    bld_idna,
-    embedded_bld,
-    binary_exponent,
-    decimal_exponent,
+    add,//*
+    subtract,//*
+    multiply,//*
+    divide,//*
+    equal,//*
+    not_equal,//*
+    greater_than,//*
+    greater_than_or_equal,//*
+    less_than,//*
+    less_than_or_equal,//*
+    logical_and,//*
+    logical_or,//*
+    logical_not,//*
+    remainder,//*
 
-    next_singular,
-    next_scope,
+    nint,//*
+    sint,//*
+    unorm,//*
+    snorm,//*
+    IEEE_binary32,//*
+    IEEE_binary64,//*
+    IEEE_decimal32_BID,//*
+    IEEE_decimal64_BID,//*
 
-    try,
-    catch,
-    finally,
-    throw,
-    promise_all,
-    promise_all_settled,
-    promise_any,
-    promise_race,
+    next_singular,//*
+    next_scope,//*
 
-    abs,
-    acos,
-    acosh,
-    asin,
-    asinh,
-    atan,
-    atanh,
-    atan2,
-    cbrt,
-    ceil,
-    clz32,
-    cos,
-    cosh,
-    exp,
-    expm1,
-    floor,
-    fround,
-    hypot,
-    log,
-    log1p,
-    log10,
-    log2,
-    pow,
-    round,
-    sign,
-    sin,
-    sinh,
-    sqrt,
-    tan,
-    tanh,
-    trunc,
+    try,//*
+    catch,//*
+    finally,//*
+    throw,//*
 
-    log_base,
-    nth_root,
+    IPv4,//*
+    IPv6,//*
+    port,//*
+    UUID,//*
+    sha256,//*
+    dns_idna,//*
 
+    abs,//*
+    acos,//*
+    acosh,//*
+    asin,//*
+    asinh,//*
+    atan,//*
+    atanh,//*
+    atan2,//*
+    cbrt,//*
+    ceil,//*
+    cos,//*
+    cosh,//*
+    exp,//*
+    expm1,//*
+    floor,//*
+    fround,//*
+    hypot,//*
+    log,//*
+    log1p,//*
+    log10,//*
+    log2,//*
+    pow,//*
+    round,//*
+    sign,//*
+    sin,//*
+    sinh,//*
+    sqrt,//*
+    tan,//*
+    tanh,//*
+    trunc,//*
+
+    //singular
     Math_E,
     Math_LN10,
     Math_LN2,
@@ -121,13 +110,26 @@ export const enum r {
     Math_SQRT1_2,
     Math_SQRT2,
 
-    IPv4,
-    IPv6,
-    port,
-    UUID,
-    sha256,
+    template,
+    packed_data,
+    size_bits1,
+    nominal_type,
+    id,
+    unit,
+    groupKey,
+    groupItems,
 
-    second,
+    locator,
+    integrity,
+    authority,
+    sub_authority,
+    all_data,
+    binary_exponent,
+    decimal_exponent,
+    numerator,
+    denominator,
+
+    second,//unit or attribute for dates
     meter,
     kilogram,
     ampere,
@@ -135,6 +137,13 @@ export const enum r {
     mole,
     candela,
     radians,
+
+    timeScale, //default:UTC
+    TAI,
+    UTC, //if only seconds is specified apply posix rules
+    leapSeconds,
+    timezoneOffset,
+    timezoneID,
 
     red,
     green,
@@ -155,21 +164,7 @@ export const enum r {
 
     request,
     response,
-    locator,
-    integrity,
 
-    seconds,
-    minutes,
-    hours,
-    days,
-    months,
-    years,
-    timeScale, //default:UTC
-    TAI,
-    UTC, //if only seconds is specified apply posix rules
-    leapSeconds,
-    timezoneOffset,
-    timezoneID,
     dateTime, //also used as start of interval
     dateTimeEnd,
     duration,
@@ -306,6 +301,20 @@ export const parse = (code: code[]) => {
         else {
             switch (x) {
                 case r.function:
+                case r.next_scope:
+                case r.try:
+                case r.catch:
+                case r.finally:
+                case r.hypot:
+                case r.min:
+                case r.max:
+                case r.add:
+                case r.prop_has:
+                case r.prop_accessor:
+                case r.choice:
+                case r.choice_type:
+                case r.merge:
+                case r.subset:
                 case r.entity: {
                     scope_stack.push({ type: x, needed: 0, items: [] })
                     break
@@ -334,6 +343,13 @@ export const parse = (code: code[]) => {
                     break
                 }
                 case r.back_ref:
+                case r.private_namespace:
+                case r.next_singular:
+                case r.IPv4:
+                case r.IPv6:
+                case r.port:
+                case r.UUID:
+                case r.sha256:
                 case r.uint:
                 case r.nint:
                 case r.unorm:
@@ -345,8 +361,59 @@ export const parse = (code: code[]) => {
                     scope_stack.push({ type: x, needed: 1, items: [], next_literal_item: true })
                     break
                 }
+                case r.dns_idna:
+                case r.throw:
+                case r.abs:
+                case r.acos:
+                case r.acosh:
+                case r.asin:
+                case r.asinh:
+                case r.atan:
+                case r.atanh:
+                case r.cbrt:
+                case r.ceil:
+                case r.cos:
+                case r.cosh:
+                case r.exp:
+                case r.expm1:
+                case r.floor:
+                case r.fround:
+                case r.log:
+                case r.log1p:
+                case r.log10:
+                case r.log2:
+                case r.round:
+                case r.sign:
+                case r.sin:
+                case r.sinh:
+                case r.sqrt:
+                case r.tan:
+                case r.tanh:
+                case r.trunc: {
+                    scope_stack.push({ type: x, needed: 1, items: [] })
+                    break
+                }
+                case r.subtract:
+                case r.multiply:
+                case r.divide:
+                case r.equal:
+                case r.not_equal:
+                case r.greater_than:
+                case r.greater_than_or_equal:
+                case r.less_than:
+                case r.less_than_or_equal:
+                case r.logical_and:
+                case r.logical_or:
+                case r.logical_not:
+                case r.remainder:
+                case r.atan2:
+                case r.pow:
                 case r.call: {
                     scope_stack.push({ type: x, needed: 2, items: [] })
+                    break
+                }
+                case r.conditional: {
+                    scope_stack.push({ type: x, needed: 3, items: [] })
                     break
                 }
                 default:
