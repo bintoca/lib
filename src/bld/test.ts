@@ -22,15 +22,15 @@ test.each([
     expect(s.slots).toEqual(o)
 })
 test.each([
-    [[r.function, r.end_scope], 'end_scope cannot be empty'],
+    [[r.function, r.end_scope, r.end_scope], 'top of scope_stack invalid for end_scope'],
 ])('parseError', (i, o) => {
     expect(() => parse(i)).toThrowError(o)
 })
 test.each([
-    [[r.function, r.uint, 0, r.end_scope, r.call, r.back_ref, 0, r.placeholder], [{ type: r.uint, items: [0], needed: 1, next_literal_item: false }]],
-    [[r.function, r.unicode, u.a, u.placeholder, r.uint, 0, u.end_scope, u.e, u.end_scope, r.end_scope, r.call, r.back_ref, 0, r.placeholder],
+    [[r.function, r.uint, 0, r.end_scope, r.next_scope, r.call, r.back_ref, 1, r.end_scope], [{ type: r.uint, items: [0], needed: 1, next_literal_item: false }]],
+    [[r.function, r.unicode, u.a, u.placeholder, r.uint, 0, u.end_scope, u.e, u.end_scope, r.end_scope, r.next_scope, r.call, r.back_ref, 1, r.end_scope],
     [{ type: u.unicode, items: [u.a, { type: u.placeholder, items: [{ type: r.uint, items: [0], needed: 1, next_literal_item: false }], needed: 0 }, u.e], needed: 0, inUnicode: true }]],
-    [[r.function, r.unicode, u.a, u.unicode, u.e, u.end_scope, u.i, u.back_ref, 0, r.end_scope, r.end_scope, r.call, r.back_ref, 0, r.placeholder],
+    [[r.function, r.unicode, u.a, u.unicode, u.e, u.end_scope, u.i, u.back_ref, 0, r.end_scope, r.end_scope, r.next_scope, r.call, r.back_ref, 1, r.end_scope],
     [{ type: r.unicode, needed: 0, inUnicode: true, items: [u.a, { type: u.unicode, needed: 0, inUnicode: true, items: [u.e] }, u.i, { type: u.back_ref, needed: 1, inUnicode: true, items: [0], next_literal_item: false, ref: { type: u.unicode, needed: 0, inUnicode: true, items: [u.e] } }] }]],
 ])('evaluate', (i, o) => {
     const b = encode(i)
@@ -39,7 +39,7 @@ test.each([
     expect(s.slots.map(x => typeof x == 'object' && !(x instanceof Uint8Array) && !Array.isArray(x) && x.result ? x.result : null).filter(x => x)).toEqual(o)
 })
 test.each([
-    [[r.call, 6000, r.placeholder], 'not implemented x1 6000'],
+    [[r.next_scope, r.call, 6000, r.end_scope], 'not implemented x1 6000'],
 ])('evaluateError', (i, o) => {
     const s = parse(i)
     expect(() => evaluateAll(s.slots)).toThrowError(o)

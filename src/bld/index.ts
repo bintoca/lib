@@ -1,73 +1,11 @@
 export const bufferSourceToDataView = (b: BufferSource, offset: number = 0, length?: number): DataView => b instanceof ArrayBuffer ? new DataView(b, offset, length !== undefined ? length : b.byteLength - offset) : new DataView(b.buffer, b.byteOffset + offset, length !== undefined ? length : b.byteLength - offset)
 export const bufferSourceToUint8Array = (b: BufferSource, offset: number = 0, length?: number): Uint8Array => b instanceof ArrayBuffer ? new Uint8Array(b, offset, length !== undefined ? length : b.byteLength - offset) : new Uint8Array(b.buffer, b.byteOffset + offset, length !== undefined ? length : b.byteLength - offset)
-export const enum r {
-    end_scope,//*
-    unicode, //end_scope*
-    back_ref, //(v4)*
-    run_length_encoding, //(v4,any)*
-    placeholder,//*
-    uint,//*
-    private_namespace, //(v4)*
-
-    conditional, //(condition, true_op, false_op)*
-    function, //implies one item pushed to reuse stack for param, end_scope*
-    call, //func, param*
-    entity, //keys, end_scope, values*
-    prop_accessor, //object, prop*
-    prop_has, //object, prop*
-
-    choice,//*
-    choice_type,//*
-    merge,//*
-    subset,//*
-
-    compose_pipe,
-    filter,
-    map,
-    reduce,
-    skip,
-    take,
-    min,//*
-    max,//*
-
+export const enum a {
     add,//*
     subtract,//*
     multiply,//*
     divide,//*
-    equal,//*
-    not_equal,//*
-    greater_than,//*
-    greater_than_or_equal,//*
-    less_than,//*
-    less_than_or_equal,//*
-    logical_and,//*
-    logical_or,//*
-    logical_not,//*
     remainder,//*
-
-    nint,//*
-    sint,//*
-    unorm,//*
-    snorm,//*
-    IEEE_binary32,//*
-    IEEE_binary64,//*
-    IEEE_decimal32_BID,//*
-    IEEE_decimal64_BID,//*
-
-    next_singular,//*
-    next_scope,//*
-
-    try,//*
-    catch,//*
-    finally,//*
-    throw,//*
-
-    IPv4,//*
-    IPv6,//*
-    port,//*
-    UUID,//*
-    sha256,//*
-    dns_idna,//*
 
     abs,//*
     acos,//*
@@ -99,6 +37,65 @@ export const enum r {
     tan,//*
     tanh,//*
     trunc,//*
+}
+export const enum r {
+    end_scope,//*
+    unicode, //end_scope*
+    back_ref, //(v4)*
+    run_length_encoding, //(v4,any)*
+    placeholder,//*
+    uint,//*
+    private_namespace, //(v4)*
+    next_scope,//*
+
+    conditional, //(condition, true_op, false_op)*
+    function, //implies one item pushed to reuse stack for param, end_scope*
+    call, //func, param*
+    entity, //keys, end_scope, values*
+    prop_accessor, //object, prop*
+    prop_has, //object, prop*
+
+    choice,//*
+    choice_type,//*
+    merge,//*
+    subset,//*
+
+    compose_pipe,//*
+    min,//*
+    max,//*
+
+    equal,//*
+    not_equal,//*
+    greater_than,//*
+    greater_than_or_equal,//*
+    less_than,//*
+    less_than_or_equal,//*
+    logical_and,//*
+    logical_or,//*
+    logical_not,//*
+
+    nint,//*
+    sint,//*
+    unorm,//*
+    snorm,//*
+    IEEE_binary32,//*
+    IEEE_binary64,//*
+    IEEE_decimal32_BID,//*
+    IEEE_decimal64_BID,//*
+
+    next_singular,//*
+
+    try,//*
+    catch,//*
+    finally,//*
+    throw,//*
+
+    IPv4,//*
+    IPv6,//*
+    port,//*
+    UUID,//*
+    sha256,//*
+    dns_idna,//*
 
     //singular
     Math_E,
@@ -116,6 +113,12 @@ export const enum r {
     nominal_type,
     id,
     unit,
+
+    filter,
+    map,
+    reduce,
+    skip,
+    take,
     groupKey,
     groupItems,
 
@@ -287,11 +290,7 @@ export const parse = (code: code[]) => {
                     break
                 }
                 case u.end_scope: {
-                    const top = scope_stack.pop()
-                    if (top.items.length == 0) {
-                        throw new Error('end_scope cannot be empty')
-                    }
-                    collapse_scope(top)
+                    collapse_scope(scope_stack.pop())
                     break
                 }
                 default:
@@ -305,10 +304,8 @@ export const parse = (code: code[]) => {
                 case r.try:
                 case r.catch:
                 case r.finally:
-                case r.hypot:
                 case r.min:
                 case r.max:
-                case r.add:
                 case r.prop_has:
                 case r.prop_accessor:
                 case r.choice:
@@ -327,10 +324,7 @@ export const parse = (code: code[]) => {
                     if (!top || top.needed) {
                         throw new Error('top of scope_stack invalid for end_scope')
                     }
-                    if (top.items.length == 0) {
-                        throw new Error('end_scope cannot be empty')
-                    }
-                    if (top.type == r.entity) {
+                    if (top.type == r.entity || top.type == r.compose_pipe) {
                         top.needed = top.items.length * 2
                     }
                     else {
@@ -362,40 +356,10 @@ export const parse = (code: code[]) => {
                     break
                 }
                 case r.dns_idna:
-                case r.throw:
-                case r.abs:
-                case r.acos:
-                case r.acosh:
-                case r.asin:
-                case r.asinh:
-                case r.atan:
-                case r.atanh:
-                case r.cbrt:
-                case r.ceil:
-                case r.cos:
-                case r.cosh:
-                case r.exp:
-                case r.expm1:
-                case r.floor:
-                case r.fround:
-                case r.log:
-                case r.log1p:
-                case r.log10:
-                case r.log2:
-                case r.round:
-                case r.sign:
-                case r.sin:
-                case r.sinh:
-                case r.sqrt:
-                case r.tan:
-                case r.tanh:
-                case r.trunc: {
+                case r.throw: {
                     scope_stack.push({ type: x, needed: 1, items: [] })
                     break
                 }
-                case r.subtract:
-                case r.multiply:
-                case r.divide:
                 case r.equal:
                 case r.not_equal:
                 case r.greater_than:
@@ -404,11 +368,7 @@ export const parse = (code: code[]) => {
                 case r.less_than_or_equal:
                 case r.logical_and:
                 case r.logical_or:
-                case r.logical_not:
-                case r.remainder:
-                case r.atan2:
-                case r.pow:
-                case r.call: {
+                case r.logical_not: {
                     scope_stack.push({ type: x, needed: 2, items: [] })
                     break
                 }
@@ -425,28 +385,34 @@ export const parse = (code: code[]) => {
 }
 export const evaluate = (x: scope, funcParam?: slot) => {
     switch (x.type) {
-        case r.call: {
-            const f = x.items[0]
-            if (f instanceof Uint8Array) {
-                throw new Error('not implemented x0 ' + f)
-            }
-            else if (typeof f == 'object' && !Array.isArray(f)) {
-                switch (f.type) {
-                    case r.back_ref: {
-                        x.result = evaluate(f.ref as scope, x.items[1])
-                        break
+        case r.next_scope: {
+            const t = x.items[0]
+            switch (t) {
+                case r.call: {
+                    const f = x.items[1]
+                    if (f instanceof Uint8Array) {
+                        throw new Error('not implemented x0 ' + f)
                     }
-                    default:
-                        throw new Error('not implemented' + f.type)
-                }
-            }
-            else {
-                switch (f) {
-                    case 222: {
-                        break
+                    else if (typeof f == 'object' && !Array.isArray(f)) {
+                        switch (f.type) {
+                            case r.back_ref: {
+                                x.result = evaluate(f.ref as scope, x.items[2])
+                                break
+                            }
+                            default:
+                                throw new Error('not implemented x3 ' + f.type)
+                        }
                     }
-                    default:
-                        throw new Error('not implemented x1 ' + f)
+                    else {
+                        switch (f) {
+                            case 222: {
+                                break
+                            }
+                            default:
+                                throw new Error('not implemented x1 ' + f)
+                        }
+                    }
+                    break
                 }
             }
             break
@@ -460,7 +426,8 @@ export const evaluate = (x: scope, funcParam?: slot) => {
             return typeof last == 'object' && !Array.isArray(last) && last.result ? last.result : last
         }
         default:
-            throw new Error('not implemented' + x.type)
+            console.log(x)
+            throw new Error('not implemented x4 ' + x.type)
     }
 }
 export const evaluateAll = (slots: slot[]) => {
@@ -468,7 +435,7 @@ export const evaluateAll = (slots: slot[]) => {
         if (x instanceof Uint8Array) {
 
         }
-        else if (typeof x == 'object' && !Array.isArray(x) && x.type == r.call) {
+        else if (typeof x == 'object' && !Array.isArray(x) && x.type == r.next_scope && x.items[0] == r.call) {
             evaluate(x)
         }
     }
