@@ -44,16 +44,16 @@ export const enum r {
     back_ref, //(v4)*
     run_length_encoding, //(v4,any)*
     placeholder,//*
-    uint,//*
     private_namespace, //(v4)*
-    next_scope,//*
+    type_value_uint,//*
+    type_value,//*
+    type_scope,//*
+    type_item, //*
 
     conditional, //(condition, true_op, false_op)*
     function, //implies one item pushed to reuse stack for param, end_scope*
-    call, //func, param*
     entity, //keys, end_scope, values*
     prop_accessor, //object, prop*
-    prop_has, //object, prop*
 
     choice,//*
     choice_type,//*
@@ -61,8 +61,6 @@ export const enum r {
     subset,//*
 
     compose_pipe,//*
-    min,//*
-    max,//*
 
     equal,//*
     not_equal,//*
@@ -74,28 +72,12 @@ export const enum r {
     logical_or,//*
     logical_not,//*
 
-    nint,//*
-    sint,//*
-    unorm,//*
-    snorm,//*
-    IEEE_binary32,//*
-    IEEE_binary64,//*
-    IEEE_decimal32_BID,//*
-    IEEE_decimal64_BID,//*
-
     next_singular,//*
 
     try,//*
     catch,//*
     finally,//*
     throw,//*
-
-    IPv4,//*
-    IPv6,//*
-    port,//*
-    UUID,//*
-    sha256,//*
-    dns_idna,//*
 
     //singular
     Math_E,
@@ -106,13 +88,38 @@ export const enum r {
     Math_PI,
     Math_SQRT1_2,
     Math_SQRT2,
+    Infinity,
+    NegInfinity,
+    NegZero,
+    qNaN,
+    uint,
+    nint,//*
+    sint,//*
+    unorm,//*
+    snorm,//*
+    IEEE_binary32,//*
+    IEEE_binary64,//*
+    IEEE_decimal32_BID,//*
+    IEEE_decimal64_BID,//*
+    IPv4,//*
+    IPv6,//*
+    port,//*
+    UUID,//*
+    sha256,//*
+    dns_idna,//*
 
+    first_param,
+    second_param,
     template,
     packed_data,
     size_bits1,
     nominal_type,
     id,
     unit,
+    s32,
+    s64,
+    u32,
+    u64,
 
     filter,
     map,
@@ -121,6 +128,7 @@ export const enum r {
     take,
     groupKey,
     groupItems,
+    count,
 
     locator,
     integrity,
@@ -131,6 +139,10 @@ export const enum r {
     decimal_exponent,
     numerator,
     denominator,
+    complex_i,
+    quaternion_i,
+    quaternion_j,
+    quaternion_k,
 
     second,//unit or attribute for dates
     meter,
@@ -197,7 +209,7 @@ export const enum u {
 
     //2nd chunk - remaining ascii then continue according to unicode
 }
-type scope = { type: r, needed: number, items: slot[], result?, ref?: slot, isFuncParam?: boolean, inUnicode?: boolean, next_literal_item?: boolean }
+type scope = { type: r, needed: number, items: slot[], result?, ref?: slot, inUnicode?: boolean, next_literal_item?: boolean }
 type slot = scope | number | bigint | Uint8Array | code[]
 type code = number | bigint | Uint8Array | code[]
 export const parse = (code: code[]) => {
@@ -233,14 +245,6 @@ export const parse = (code: code[]) => {
                                     break
                                 }
                                 back -= s.items.length
-                                if (s.type == r.function) {
-                                    if (back == 1) {
-                                        y.ref = s
-                                        y.isFuncParam = true
-                                        break
-                                    }
-                                    back--
-                                }
                             }
                         }
                         if (!y.ref) {
@@ -254,6 +258,9 @@ export const parse = (code: code[]) => {
                     }
                 }
                 else {
+                    if (t.type == r.type_value) {
+                        t.next_literal_item = true
+                    }
                     loop = false
                 }
             }
@@ -300,13 +307,18 @@ export const parse = (code: code[]) => {
         else {
             switch (x) {
                 case r.function:
-                case r.next_scope:
+                case r.type_scope:
+                case r.equal:
+                case r.not_equal:
+                case r.greater_than:
+                case r.greater_than_or_equal:
+                case r.less_than:
+                case r.less_than_or_equal:
+                case r.logical_and:
+                case r.logical_or:
                 case r.try:
                 case r.catch:
                 case r.finally:
-                case r.min:
-                case r.max:
-                case r.prop_has:
                 case r.prop_accessor:
                 case r.choice:
                 case r.choice_type:
@@ -324,7 +336,7 @@ export const parse = (code: code[]) => {
                     if (!top || top.needed) {
                         throw new Error('top of scope_stack invalid for end_scope')
                     }
-                    if (top.type == r.entity || top.type == r.compose_pipe) {
+                    if (top.type == r.entity) {
                         top.needed = top.items.length * 2
                     }
                     else {
@@ -339,36 +351,17 @@ export const parse = (code: code[]) => {
                 case r.back_ref:
                 case r.private_namespace:
                 case r.next_singular:
-                case r.IPv4:
-                case r.IPv6:
-                case r.port:
-                case r.UUID:
-                case r.sha256:
-                case r.uint:
-                case r.nint:
-                case r.unorm:
-                case r.snorm:
-                case r.IEEE_binary32:
-                case r.IEEE_binary64:
-                case r.IEEE_decimal32_BID:
-                case r.IEEE_decimal64_BID: {
+                case r.type_value_uint: {
                     scope_stack.push({ type: x, needed: 1, items: [], next_literal_item: true })
                     break
                 }
-                case r.dns_idna:
+                case r.logical_not:
                 case r.throw: {
                     scope_stack.push({ type: x, needed: 1, items: [] })
                     break
                 }
-                case r.equal:
-                case r.not_equal:
-                case r.greater_than:
-                case r.greater_than_or_equal:
-                case r.less_than:
-                case r.less_than_or_equal:
-                case r.logical_and:
-                case r.logical_or:
-                case r.logical_not: {
+                case r.type_value:
+                case r.type_item: {
                     scope_stack.push({ type: x, needed: 2, items: [] })
                     break
                 }
@@ -385,34 +378,28 @@ export const parse = (code: code[]) => {
 }
 export const evaluate = (x: scope, funcParam?: slot) => {
     switch (x.type) {
-        case r.next_scope: {
-            const t = x.items[0]
-            switch (t) {
-                case r.call: {
-                    const f = x.items[1]
-                    if (f instanceof Uint8Array) {
-                        throw new Error('not implemented x0 ' + f)
+        case r.type_scope: {
+            const f = x.items[0]
+            if (f instanceof Uint8Array) {
+                throw new Error('not implemented x0 ' + f)
+            }
+            else if (typeof f == 'object' && !Array.isArray(f)) {
+                switch (f.type) {
+                    case r.back_ref: {
+                        x.result = evaluate(f.ref as scope, x.items[1])
+                        break
                     }
-                    else if (typeof f == 'object' && !Array.isArray(f)) {
-                        switch (f.type) {
-                            case r.back_ref: {
-                                x.result = evaluate(f.ref as scope, x.items[2])
-                                break
-                            }
-                            default:
-                                throw new Error('not implemented x3 ' + f.type)
-                        }
+                    default:
+                        throw new Error('not implemented x3 ' + f.type)
+                }
+            }
+            else {
+                switch (f) {
+                    case 222: {
+                        break
                     }
-                    else {
-                        switch (f) {
-                            case 222: {
-                                break
-                            }
-                            default:
-                                throw new Error('not implemented x1 ' + f)
-                        }
-                    }
-                    break
+                    default:
+                        throw new Error('not implemented x1 ' + f)
                 }
             }
             break
@@ -425,9 +412,6 @@ export const evaluate = (x: scope, funcParam?: slot) => {
             }
             return typeof last == 'object' && !Array.isArray(last) && last.result ? last.result : last
         }
-        default:
-            console.log(x)
-            throw new Error('not implemented x4 ' + x.type)
     }
 }
 export const evaluateAll = (slots: slot[]) => {
@@ -435,7 +419,7 @@ export const evaluateAll = (slots: slot[]) => {
         if (x instanceof Uint8Array) {
 
         }
-        else if (typeof x == 'object' && !Array.isArray(x) && x.type == r.next_scope && x.items[0] == r.call) {
+        else if (typeof x == 'object' && !Array.isArray(x)) {
             evaluate(x)
         }
     }
