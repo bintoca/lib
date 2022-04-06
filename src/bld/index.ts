@@ -37,6 +37,26 @@ export const enum a {
     tan,//*
     tanh,//*
     trunc,//*
+
+    location,
+    years,
+    months,
+    days,
+    hours,
+    minutes,
+    seconds,
+    weeks,
+    dateTimeStart,
+    dateTimeEnd,
+    duration, //nominal_type or attribute of interval entity
+    timePeriod, //nomimal_type or attribute for singular symbol
+    //RFC 5545 and updates for recurrence and calendaring
+
+    //latitude, //reference ellipsoids?
+    //longitude,
+    //other geometric structures
+
+    //TODO language tags BCP47
 }
 export const enum r {
     end_scope,//*
@@ -44,7 +64,6 @@ export const enum r {
     back_ref, //(v4)*
     run_length_encoding, //(v4,any)*
     placeholder,//*
-    private_namespace, //(v4)*
     type_value_uint,//*
     type_value,//*
     type_scope,//*
@@ -132,7 +151,6 @@ export const enum r {
 
     locator,
     integrity,
-    authority,
     sub_authority,
     all_data,
     binary_exponent,
@@ -144,7 +162,7 @@ export const enum r {
     quaternion_j,
     quaternion_k,
 
-    second,//unit or attribute for dates
+    second,
     meter,
     kilogram,
     ampere,
@@ -153,12 +171,11 @@ export const enum r {
     candela,
     radians,
 
-    timeScale, //default:UTC
-    TAI,
-    UTC, //if only seconds is specified apply posix rules
-    leapSeconds,
-    timezoneOffset,
-    timezoneID,
+    TAI_seconds,
+    UTC_posix_seconds,
+    UTC_local_posix_seconds,
+    UTC_leap_adjustment,
+    timezoneOffset_minutes,
 
     red,
     green,
@@ -166,31 +183,6 @@ export const enum r {
     alpha,
     depth,
     stencil,
-
-    //????????????????????????
-    collection,
-    collection_ordered,
-    collection_sorted,
-    collection_unique,
-    collection_ordered_sorted,
-    collection_ordered_unique,
-    collection_sorted_unique,
-    collection_ordered_sorted_unique,
-
-    request,
-    response,
-
-    dateTime, //also used as start of interval
-    dateTimeEnd,
-    duration,
-    intervalRepeat, //R[n]/ in ISO 8601
-    timeInterval,
-    timePeriod, //g types from xsd
-
-    latitude, //reference ellipsoids?
-    longitude,
-
-    //TODO language tags BCP47
 }
 export const enum u {
     end_scope,
@@ -349,7 +341,6 @@ export const parse = (code: code[]) => {
                     break
                 }
                 case r.back_ref:
-                case r.private_namespace:
                 case r.next_singular:
                 case r.type_value_uint: {
                     scope_stack.push({ type: x, needed: 1, items: [], next_literal_item: true })
