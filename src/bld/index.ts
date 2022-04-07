@@ -38,6 +38,11 @@ export const enum a {
     tanh,//*
     trunc,//*
 
+    TAI,
+    UTC_posix,
+    UTC_local_posix,
+    UTC_leap_adjustment,
+    timezoneOffset,
     location,
     years,
     months,
@@ -64,13 +69,16 @@ export const enum r {
     back_ref, //(v4)*
     run_length_encoding, //(v4,any)*
     placeholder,//*
+    collection,//*
     type_value_uint,//*
     type_value,//*
-    type_scope,//*
-    type_item, //*
+    type_item,//*
+    type_check,//*
+    type_has,//*
 
     conditional, //(condition, true_op, false_op)*
     function, //implies one item pushed to reuse stack for param, end_scope*
+    call, //end_scope*
     entity, //keys, end_scope, values*
     prop_accessor, //object, prop*
 
@@ -132,9 +140,6 @@ export const enum r {
     template,
     packed_data,
     size_bits1,
-    nominal_type,
-    id,
-    unit,
     s32,
     s64,
     u32,
@@ -170,12 +175,6 @@ export const enum r {
     mole,
     candela,
     radians,
-
-    TAI_seconds,
-    UTC_posix_seconds,
-    UTC_local_posix_seconds,
-    UTC_leap_adjustment,
-    timezoneOffset_minutes,
 
     red,
     green,
@@ -299,7 +298,8 @@ export const parse = (code: code[]) => {
         else {
             switch (x) {
                 case r.function:
-                case r.type_scope:
+                case r.call:
+                case r.collection:
                 case r.equal:
                 case r.not_equal:
                 case r.greater_than:
@@ -352,7 +352,9 @@ export const parse = (code: code[]) => {
                     break
                 }
                 case r.type_value:
-                case r.type_item: {
+                case r.type_item:
+                case r.type_has:
+                case r.type_check: {
                     scope_stack.push({ type: x, needed: 2, items: [] })
                     break
                 }
@@ -367,9 +369,9 @@ export const parse = (code: code[]) => {
     }
     return { slots }
 }
-export const evaluate = (x: scope, funcParam?: slot) => {
+export const evaluate = (x: scope, ...p: slot[]) => {
     switch (x.type) {
-        case r.type_scope: {
+        case r.call: {
             const f = x.items[0]
             if (f instanceof Uint8Array) {
                 throw new Error('not implemented x0 ' + f)
@@ -377,7 +379,7 @@ export const evaluate = (x: scope, funcParam?: slot) => {
             else if (typeof f == 'object' && !Array.isArray(f)) {
                 switch (f.type) {
                     case r.back_ref: {
-                        x.result = evaluate(f.ref as scope, x.items[1])
+                        x.result = evaluate(f.ref as scope, ...x.items.slice(1))
                         break
                     }
                     default:
