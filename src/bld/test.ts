@@ -10,11 +10,10 @@ test('float', () => {
     expect(dv.getUint8(3)).toBe(63)
 })
 test.each([
-    [[r.type_value_uint, 0, new Uint8Array(12), 0xFFFF, 0xFFFFFF], [{ type: r.type_value_uint, items: [0], needed: 1, next_literal_item: false }, new Uint8Array(12), 0xFFFF, 0xFFFFFF, r.placeholder, r.placeholder]],
-    [[r.type_value, r.uint, 0, [new Uint8Array(12), 0xFFFF, 0xFFFFFF]], [{ type: r.type_value, items: [r.uint, 0], needed: 2, next_literal_item: false }, [new Uint8Array(12), 0xFFFF, 0xFFFFFF, r.placeholder, r.placeholder]]],
-    [[r.run_length_encoding, 0, r.type_value_uint, 0], [{ type: r.run_length_encoding, items: [0, { type: r.type_value_uint, items: [0], needed: 1, next_literal_item: false }], needed: 2, next_literal_item: false }, r.placeholder, r.placeholder]],
-    [[r.entity, r.Math_LN10, r.Math_LN2, r.end_scope, r.Math_E, r.Math_PI], [{ type: r.entity, items: [r.Math_LN10, r.Math_LN2, r.Math_E, r.Math_PI], needed: 4 }, r.placeholder, r.placeholder]],
-    [[r.type_value_uint, 0, new Uint8Array(256 * 4), 0xFFFFF, 0xFFFFFF, 0xFFFFFFF, 0xFFFFFFFFFF, BigInt(0xFFFFFFFFFF) * BigInt(2 ** 16), 0xFFFFFF], [{ type: r.type_value_uint, items: [0], needed: 1, next_literal_item: false }, new Uint8Array(256 * 4), 0xFFFFF, 0xFFFFFF, 0xFFFFFFF, 0xFFFFFFFFFF, BigInt(0xFFFFFFFFFF) * BigInt(2 ** 16), 0xFFFFFF]],
+    //[[r.type_hint_value_quotient_uint, 0, new Uint8Array(12), 0xFFFF, 0xFFFFFF], [{ type: r.type_hint_value_quotient_uint, items: [0], needed: 1, next_literal_item: false }, new Uint8Array(12), 0xFFFF, 0xFFFFFF, r.placeholder, r.placeholder]],
+    //[[r.type_hint_value, r.uint, 0, [new Uint8Array(12), 0xFFFF, 0xFFFFFF]], [{ type: r.type_hint_value, items: [r.uint, 0], needed: 2, next_literal_item: false }, [new Uint8Array(12), 0xFFFF, 0xFFFFFF, r.placeholder, r.placeholder]]],
+    //[[r.run_length_encoding, 0, r.type_hint_value_quotient_uint, 0], [{ type: r.run_length_encoding, items: [0, { type: r.type_hint_value_quotient_uint, items: [0], needed: 1, next_literal_item: false }], needed: 2, next_literal_item: false }, r.placeholder, r.placeholder]],
+    //[[r.type_hint_value_quotient_uint, 0, new Uint8Array(256 * 4), 0xFFFFF, 0xFFFFFF, 0xFFFFFFF, 0xFFFFFFFFFF, BigInt(0xFFFFFFFFFF) * BigInt(2 ** 16), 0xFFFFFF], [{ type: r.type_hint_value_quotient_uint, items: [0], needed: 1, next_literal_item: false }, new Uint8Array(256 * 4), 0xFFFFF, 0xFFFFFF, 0xFFFFFFF, 0xFFFFFFFFFF, BigInt(0xFFFFFFFFFF) * BigInt(2 ** 16), 0xFFFFFF]],
 ])('parse', (i, o) => {
     const b = encode(i)
     const di = decode(b)
@@ -27,11 +26,11 @@ test.each([
     expect(() => parse(i)).toThrowError(o)
 })
 test.each([
-    [[r.function, r.type_value_uint, 0, r.end_scope, r.call, r.back_ref, 0, r.end_scope], [{ type: r.type_value_uint, items: [0], needed: 1, next_literal_item: false }]],
-    [[r.function, r.unicode, u.a, u.placeholder, r.type_value_uint, 0, u.end_scope, u.e, u.end_scope, r.end_scope, r.call, r.back_ref, 0, r.end_scope],
-    [{ type: u.unicode, items: [u.a, { type: u.placeholder, items: [{ type: r.type_value_uint, items: [0], needed: 1, next_literal_item: false }], needed: 0 }, u.e], needed: 0, inUnicode: true }]],
-    [[r.function, r.unicode, u.a, u.unicode, u.e, u.end_scope, u.i, u.back_ref, 0, r.end_scope, r.end_scope, r.call, r.back_ref, 0, r.end_scope],
-    [{ type: r.unicode, needed: 0, inUnicode: true, items: [u.a, { type: u.unicode, needed: 0, inUnicode: true, items: [u.e] }, u.i, { type: u.back_ref, needed: 1, inUnicode: true, items: [0], next_literal_item: false, ref: { type: u.unicode, needed: 0, inUnicode: true, items: [u.e] } }] }]],
+    //[[r.function, r.type_hint_value_quotient_uint, 0, r.end_scope, r.call, r.back_ref, 0, r.end_scope], [{ type: r.type_hint_value_quotient_uint, items: [0], needed: 1, next_literal_item: false }]],
+    //[[r.function, r.unicode, u.a, u.placeholder, r.type_hint_value_quotient_uint, 0, u.end_scope, u.e, u.end_scope, r.end_scope, r.call, r.back_ref, 0, r.end_scope],
+    //[{ type: u.unicode, items: [u.a, { type: u.placeholder, items: [{ type: r.type_hint_value_quotient_uint, items: [0], needed: 1, next_literal_item: false }], needed: 0 }, u.e], needed: 0, inUnicode: true }]],
+    //[[r.function, r.unicode, u.a, u.unicode, u.e, u.end_scope, u.i, u.back_ref, 0, r.end_scope, r.end_scope, r.call, r.back_ref, 0, r.end_scope],
+    //[{ type: r.unicode, needed: 0, inUnicode: true, items: [u.a, { type: u.unicode, needed: 0, inUnicode: true, items: [u.e] }, u.i, { type: u.back_ref, needed: 1, inUnicode: true, items: [0], next_literal_item: false, ref: { type: u.unicode, needed: 0, inUnicode: true, items: [u.e] } }] }]],
 ])('evaluate', (i, o) => {
     const b = encode(i)
     const s = parse(decode(b[0]))

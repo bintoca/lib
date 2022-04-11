@@ -40,8 +40,8 @@ export const enum a {
 
     TAI,
     UTC_posix,
-    UTC_local_posix,
     UTC_leap_adjustment,
+    local_time,
     timezoneOffset,
     location,
     years,
@@ -64,47 +64,35 @@ export const enum a {
     //TODO language tags BCP47
 }
 export const enum r {
-    end_scope,//*
-    unicode, //end_scope*
-    back_ref, //(v4)*
-    run_length_encoding, //(v4,any)*
-    placeholder,//*
-    collection,//*
-    type_value_uint,//*
-    type_value,//*
-    type_item,//*
-    type_check,//*
-    type_has,//*
+    end_scope,
+    unicode,
+    back_ref,
+    run_length_encoding,
+    placeholder,
+    type_sub,
+    type_sum,
+    type_product,
+    type_path,
+    bind,
+    bind_uint,
 
-    conditional, //(condition, true_op, false_op)*
-    function, //implies one item pushed to reuse stack for param, end_scope*
-    call, //end_scope*
-    entity, //keys, end_scope, values*
-    prop_accessor, //object, prop*
+    function,
+    call,
 
-    choice,//*
-    choice_type,//*
-    merge,//*
-    subset,//*
+    concat,
+    chain,
 
-    compose_pipe,//*
+    equal,
+    not_equal,
+    greater_than,
+    greater_than_or_equal,
+    less_than,
+    less_than_or_equal,
+    logical_and,
+    logical_or,
+    logical_not,
 
-    equal,//*
-    not_equal,//*
-    greater_than,//*
-    greater_than_or_equal,//*
-    less_than,//*
-    less_than_or_equal,//*
-    logical_and,//*
-    logical_or,//*
-    logical_not,//*
-
-    next_singular,//*
-
-    try,//*
-    catch,//*
-    finally,//*
-    throw,//*
+    next_singular,
 
     //singular
     Math_E,
@@ -249,9 +237,6 @@ export const parse = (code: code[]) => {
                     }
                 }
                 else {
-                    if (t.type == r.type_value) {
-                        t.next_literal_item = true
-                    }
                     loop = false
                 }
             }
@@ -299,41 +284,21 @@ export const parse = (code: code[]) => {
             switch (x) {
                 case r.function:
                 case r.call:
-                case r.collection:
-                case r.equal:
-                case r.not_equal:
-                case r.greater_than:
-                case r.greater_than_or_equal:
-                case r.less_than:
-                case r.less_than_or_equal:
                 case r.logical_and:
                 case r.logical_or:
-                case r.try:
-                case r.catch:
-                case r.finally:
-                case r.prop_accessor:
-                case r.choice:
-                case r.choice_type:
-                case r.merge:
-                case r.subset:
-                case r.entity: {
+                case r.type_sub:
+                case r.type_product:
+                case r.type_sum:
+                case r.type_path:
+                case r.concat: {
                     scope_stack.push({ type: x, needed: 0, items: [] })
-                    break
-                }
-                case r.unicode: {
-                    scope_stack.push({ type: x, needed: 0, items: [], inUnicode: true })
                     break
                 }
                 case r.end_scope: {
                     if (!top || top.needed) {
                         throw new Error('top of scope_stack invalid for end_scope')
                     }
-                    if (top.type == r.entity) {
-                        top.needed = top.items.length * 2
-                    }
-                    else {
-                        collapse_scope(scope_stack.pop())
-                    }
+                    collapse_scope(scope_stack.pop())
                     break
                 }
                 case r.run_length_encoding: {
@@ -341,25 +306,22 @@ export const parse = (code: code[]) => {
                     break
                 }
                 case r.back_ref:
-                case r.next_singular:
-                case r.type_value_uint: {
+                case r.bind_uint:
+                case r.next_singular: {
                     scope_stack.push({ type: x, needed: 1, items: [], next_literal_item: true })
                     break
                 }
-                case r.logical_not:
-                case r.throw: {
+                case r.logical_not: {
                     scope_stack.push({ type: x, needed: 1, items: [] })
                     break
                 }
-                case r.type_value:
-                case r.type_item:
-                case r.type_has:
-                case r.type_check: {
+                case r.equal:
+                case r.not_equal:
+                case r.greater_than:
+                case r.greater_than_or_equal:
+                case r.less_than:
+                case r.less_than_or_equal: {
                     scope_stack.push({ type: x, needed: 2, items: [] })
-                    break
-                }
-                case r.conditional: {
-                    scope_stack.push({ type: x, needed: 3, items: [] })
                     break
                 }
                 default:
