@@ -95,6 +95,10 @@ export const enum r {
     next_singular,
 
     //singular
+    value_,
+    collection_,
+    item_,
+
     Math_E,
     Math_LN10,
     Math_LN2,
@@ -1237,4 +1241,64 @@ export const encode = (code: code[]) => {
         buffers.push(new Uint8Array(dv.buffer, 0, o))
     }
     return buffers
+}
+export const shi = [
+    [8, 29], [8, 26], [8, 23], [8, 20], [8, 17], [8, 14], [8, 11], [8, 8],//7
+    [11, 29], [11, 26], [11, 23], [11, 20], [11, 17], [11, 14], [11, 11],//14
+    [14, 29], [14, 26], [14, 23], [14, 20], [14, 17], [14, 14],//20
+    [17, 29], [17, 26], [17, 23], [17, 20], [17, 17],//25
+    [20, 29], [20, 26], [20, 23], [20, 20],//29
+    [23, 29], [23, 26], [23, 23],//32
+    [26, 29], [26, 26],//34
+    [29, 29]//35
+]
+export const shi1 = [
+    [7], [6, 35], [5, 33, 35], [4, 34], [3, 30, 34], [2, 30, 33, 35]
+]
+export const shi2 = shi1.map(x => x.map(y => shi[y]))
+export const d2 = (b: BufferSource | BufferSource[]) => {
+    const buffers = Array.isArray(b) ? b : [b]
+    const temp = Array(8)
+    let last
+    let lastSize
+    const out = []
+    for (let bu of buffers) {
+        if (bu.byteLength % 4 != 0) {
+            throw new Error('data must be multiple of 4 bytes')
+        }
+        const dv = bufferSourceToDataView(bu)
+        let offset = 0
+        while (offset < dv.byteLength) {
+            const x = dv.getUint32(offset)
+            let mesh = x >>> 24
+            let count
+            if (mesh >= 128) {
+                mesh = mesh ^ 255
+            }
+            else {
+                const a = shi2[mesh]
+                let useLast = 0
+                if (lastSize) {
+                    useLast = 1
+                    temp[0] = last
+                    count = a.length
+                }
+                else {
+                    count = a.length - 1
+                }
+                for (let i = 0; i < a.length - 1; i++) {
+                    temp[i + useLast] = (x << a[i][0]) >>> a[i][1]
+                }
+                const an = a[a.length - 1]
+                last = (x << an[0]) >>> an[1]
+                lastSize = 32 - an[1]
+            }
+            out.push(...temp.slice(0, count))
+            offset += 4
+        }
+    }
+    if (lastSize) {
+        out.push(last)
+    }
+    return out
 }
