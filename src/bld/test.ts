@@ -1,4 +1,4 @@
-import { evaluateAll, parse, r, u, encode, decode, d2 } from '@bintoca/bld'
+import { evaluateAll, parse, r, u, encode, decode, decodeChunk2, bufferSourceToDataView, State2 } from '@bintoca/bld'
 
 const dv = new DataView(new ArrayBuffer(8))
 test('float', () => {
@@ -142,10 +142,13 @@ export const shi = [
     7//35
 ]
 export const shi1 = [
-    [7], [6, 35], [5, 33, 35], [4, 34], [3, 30, 34], [2, 30, 33, 35]
+    [7], [6, 35], [5, 33, 35], [5, 34], [4, 30, 34], [4, 30, 33, 35], [4, 31, 35], [4, 32],
+    [3, 26, 32], [3, 26, 31, 35], [3, 26, 30, 33, 35], [3, 26, 30, 34], [3, 27, 34], [3, 27, 33, 35], [3, 28, 35], [3, 29],
+    [2, 21, 29], [2, 21, 28, 35], [2, 21, 27, 33, 35], [2, 21, 27, 34], [2, 21, 26, 30, 34], [2, 21, 26, 30, 33, 35], [2, 21, 26, 31, 35], [2, 21, 26, 32],
+    [2, 22, 32], [2, 22, 31, 25], [2, 22, 30, 33, 35], [2, 22, 30, 34], [2, 23, 34], [2, 23, 33, 35], [2, 24, 35], [2, 25],
 ]
 const mesh2 = []
-for (let i = 0; i < 6; i++) {
+for (let i = 0; i < 32; i++) {
     const s = shi1[i].map(x => shi[x])
     if (i >= 128) {
         s[0] += 1 << (Math.clz32(i ^ 255) - 24)
@@ -154,10 +157,33 @@ for (let i = 0; i < 6; i++) {
     mesh2[i].push(i < 128 ? [1].concat(s) : s)
     const dv = new DataView(new ArrayBuffer(8))
     dv.setUint32(0, 1)
-    dv.setUint32(4, i * 2 ** 24 + (1 << 18) + (2 << 15) + (3 << 12) + (4 << 9) + (5 << 6) + (6 << 3) + 7)
+    dv.setUint32(4, (i << 24) + (1 << 18) + (2 << 15) + (3 << 12) + (4 << 9) + (5 << 6) + (6 << 3) + 7)
     mesh2[i].push(dv as any)
+}
+export const d2 = (b: BufferSource | BufferSource[]) => {
+    const buffers = Array.isArray(b) ? b : [b]
+    const state: State2 = { last: 0, lastSize: 0, temp: Array(8), count: 0 }
+    const out = []
+    for (let bu of buffers) {
+        if (bu.byteLength % 4 != 0) {
+            throw new Error('data must be multiple of 4 bytes')
+        }
+        const dv = bufferSourceToDataView(bu)
+        let offset = 0
+        while (offset < dv.byteLength) {
+            const x = dv.getUint32(offset)
+            decodeChunk2(state, x)
+            out.push(...state.temp.slice(0, state.count))
+            offset += 4
+        }
+    }
+    if (state.lastSize) {
+        out.push(state.last)
+    }
+    return out
 }
 test.each(mesh2)('d2(%#)', (i, o) => {
     const di = d2(o as any)
+    console.log(i)
     expect(di).toEqual(i)
 })

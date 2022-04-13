@@ -64,11 +64,11 @@ export const enum a {
     //TODO language tags BCP47
 }
 export const enum r {
+    placeholder,
     end_scope,
     unicode,
     back_ref,
     run_length_encoding,
-    placeholder,
     type_sub,
     type_sum,
     type_product,
@@ -1253,14 +1253,83 @@ export const shi = [
     [29, 29]//35
 ]
 export const shi1 = [
-    [7], [6, 35], [5, 33, 35], [4, 34], [3, 30, 34], [2, 30, 33, 35]
+    [7], [6, 35], [5, 33, 35], [5, 34], [4, 30, 34], [4, 30, 33, 35], [4, 31, 35], [4, 32],
+    [3, 26, 32], [3, 26, 31, 35], [3, 26, 30, 33, 35], [3, 26, 30, 34], [3, 27, 34], [3, 27, 33, 35], [3, 28, 35], [3, 29],
+    [2, 21, 29], [2, 21, 28, 35], [2, 21, 27, 33, 35], [2, 21, 27, 34], [2, 21, 26, 30, 34], [2, 21, 26, 30, 33, 35], [2, 21, 26, 31, 35], [2, 21, 26, 32],
+    [2, 22, 32], [2, 22, 31, 25], [2, 22, 30, 33, 35], [2, 22, 30, 34], [2, 23, 34], [2, 23, 33, 35], [2, 24, 35], [2, 25],
+    [1, 15, 25], [1, 15, 24, 35], [1, 15, 23, 33, 35], [1, 15, 23, 34], [1, 15, 22, 30, 34], [1, 15, 22, 30, 33, 35], [1, 15, 22, 31, 35], [1, 15, 22, 32],
+    [1, 15, 21, 26, 32], [1, 15, 21, 26, 31, 35], [1, 15, 21, 26, 30, 33, 35], [1, 15, 21, 26, 30, 34], [1, 15, 21, 27, 34], [1, 15, 21, 27, 33, 35], [1, 15, 21, 28, 35], [1, 15, 21, 29],
+    [1, 16, 29], [1, 16, 28, 35], [1, 16, 27, 33, 35], [1, 16, 27, 34], [1, 16, 26, 30, 34], [1, 16, 26, 30, 33, 35], [1, 16, 26, 31, 35], [1, 16, 26, 32],
+    [1, 17, 32], [1, 17, 31, 35], [1, 17, 30, 33, 35], [1, 17, 30, 34], [1, 18, 34], [1, 18, 33, 35], [1, 19, 35], [1, 20],
+    [0, 8, 20], [0, 8, 19, 35], [0, 8, 18, 33, 35], [0, 8, 18, 34], [0, 8, 17, 30, 34], [0, 8, 17, 30, 33, 35], [0, 8, 17, 31, 35], [0, 8, 17, 32],
+    [0, 8, 16, 26, 32], [0, 8, 16, 26, 31, 35], [0, 8, 16, 26, 30, 33, 35], [0, 8, 16, 26, 30, 34], [0, 8, 16, 27, 34], [0, 8, 16, 27, 33, 35], [0, 8, 16, 28, 35], [0, 8, 16, 29],
+    [0, 8, 15, 21, 29], [0, 8, 15, 21, 28, 35], [0, 8, 15, 21, 27, 33, 35], [0, 8, 15, 21, 27, 34], [0, 8, 15, 21, 26, 30, 34], [0, 8, 15, 21, 26, 30, 33, 35], [0, 8, 15, 21, 26, 31, 35], [0, 8, 15, 21, 26, 32],
+    [0, 8, 15, 22, 32], [0, 8, 15, 22, 31, 35], [0, 8, 15, 22, 30, 33, 35], [0, 8, 15, 22, 30, 34], [0, 8, 15, 23, 34], [0, 8, 15, 23, 33, 35], [0, 8, 15, 24, 35], [0, 8, 15, 25],
+    [0, 9, 25], [0, 9, 24, 35], [0, 9, 23, 33, 35], [0, 9, 23, 34], [0, 9, 22, 30, 34], [0, 9, 22, 30, 33, 35], [0, 9, 22, 31, 35], [0, 9, 22, 32],
+    [0, 9, 21, 26, 32], [0, 9, 21, 26, 31, 35], [0, 9, 21, 26, 30, 33, 35], [0, 9, 21, 26, 30, 34], [0, 9, 21, 27, 34], [0, 9, 21, 27, 33, 35], [0, 9, 21, 28, 35], [0, 9, 21, 29],
+    [0, 10, 29], [0, 10, 28, 35], [0, 10, 27, 33, 35], [0, 10, 27, 34], [0, 10, 26, 30, 34], [0, 10, 26, 30, 33, 35], [0, 10, 26, 31, 35], [0, 10, 26, 32],
+    [0, 11, 32], [0, 11, 31, 35], [0, 11, 30, 33, 35], [0, 11, 30, 34], [0, 12, 34], [0, 12, 33, 35], [0, 13, 35], [0, 14]
 ]
 export const shi2 = shi1.map(x => x.map(y => shi[y]))
+export type State2 = { last: number | bigint, lastSize: number, temp: (number | bigint)[], count: number }
+export const decodeChunk2 = (s: State2, x: number) => {
+    let mesh = x >>> 24
+    let a: number[][]
+    let useLast = 0
+    if (mesh >= 128) {
+        mesh = mesh ^ 255
+        a = shi2[mesh]
+        const firstSize = 32 - a[0][1]
+        if (s.lastSize + firstSize > 51) {
+            s.last = BigInt(s.last)
+            if (firstSize == 24) {
+                s.count = 0
+                s.lastSize += firstSize
+                s.last = s.last * BigInt(2) ** BigInt(firstSize) + BigInt(x & 0xFFFFFF)
+            }
+            else {
+                useLast = 1
+                s.temp[0] = s.last * BigInt(2) ** BigInt(firstSize) + BigInt((x << a[0][0]) >>> a[0][1])
+                s.count = a.length
+            }
+        }
+        else {
+            if (firstSize == 24) {
+                s.count = 0
+                s.lastSize += firstSize
+                s.last = s.last as number * 2 ** firstSize + (x & 0xFFFFFF)
+            }
+            else if (s.lastSize) {
+                useLast = 1
+                s.temp[0] = s.last as number * 2 ** firstSize + ((x << a[0][0]) >>> a[0][1])
+                s.count = a.length
+            }
+            else {
+                s.count = a.length - 1
+            }
+        }
+    }
+    else {
+        a = shi2[mesh]
+        if (s.lastSize) {
+            useLast = 1
+            s.temp[0] = s.last
+            s.count = a.length
+        }
+        else {
+            s.count = a.length - 1
+        }
+    }
+    for (let i = 0; i < a.length - 1; i++) {
+        s.temp[i + useLast] = (x << a[i][0]) >>> a[i][1]
+    }
+    const an = a[a.length - 1]
+    s.last = (x << an[0]) >>> an[1]
+    s.lastSize = 32 - an[1]
+}
 export const d2 = (b: BufferSource | BufferSource[]) => {
     const buffers = Array.isArray(b) ? b : [b]
-    const temp = Array(8)
-    let last
-    let lastSize
+    const state: State2 = { last: 0, lastSize: 0, temp: Array(8), count: 0 }
     const out = []
     for (let bu of buffers) {
         if (bu.byteLength % 4 != 0) {
@@ -1270,35 +1339,28 @@ export const d2 = (b: BufferSource | BufferSource[]) => {
         let offset = 0
         while (offset < dv.byteLength) {
             const x = dv.getUint32(offset)
-            let mesh = x >>> 24
-            let count
-            if (mesh >= 128) {
-                mesh = mesh ^ 255
-            }
-            else {
-                const a = shi2[mesh]
-                let useLast = 0
-                if (lastSize) {
-                    useLast = 1
-                    temp[0] = last
-                    count = a.length
-                }
-                else {
-                    count = a.length - 1
-                }
-                for (let i = 0; i < a.length - 1; i++) {
-                    temp[i + useLast] = (x << a[i][0]) >>> a[i][1]
-                }
-                const an = a[a.length - 1]
-                last = (x << an[0]) >>> an[1]
-                lastSize = 32 - an[1]
-            }
-            out.push(...temp.slice(0, count))
+            decodeChunk2(state, x)
+            out.push(...state.temp.slice(0, state.count))
             offset += 4
         }
     }
-    if (lastSize) {
-        out.push(last)
+    if (state.lastSize) {
+        out.push(state.last)
     }
     return out
+}
+export type EncoderState = { buffers: Uint8Array[], dv: DataView, offset: number, mesh: number, mesh1: boolean }
+export const encodeValue = (s: EncoderState, x: number | bigint | BufferSource) => {
+    if (x instanceof Uint8Array) {
+    }
+    else {
+        if (x < 0 || (typeof x == 'number' && (x > Number.MAX_SAFE_INTEGER || isNaN(x) || !isFinite(x)))) {
+            throw new Error('invalid number')
+        }
+        if (x <= 0xFFFFFFF) {
+        }
+        else {
+
+        }
+    }
 }
