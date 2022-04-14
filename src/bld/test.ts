@@ -1,4 +1,4 @@
-import { evaluateAll, parse, r, u, encode, decode, decodeChunk2, bufferSourceToDataView, State2 } from '@bintoca/bld'
+import { evaluateAll, parse, r, u, encode, decode, decodeChunk2, bufferSourceToDataView, DecoderState, createReader, write, finishWrite, EncoderState } from '@bintoca/bld'
 
 const dv = new DataView(new ArrayBuffer(8))
 test('float', () => {
@@ -129,61 +129,44 @@ test.each(mesh)('decode(%#)', (i, o) => {
     const di = decode(o as any)
     expect(di).toEqual(i)
 })
-export const shi = [
-    0, 1, (1 << 3) + 2, (1 << 6) + (2 << 3) + 3, (1 << 9) + (2 << 6) + (3 << 3) + 4, (1 << 12) + (2 << 9) + (3 << 6) + (4 << 3) + 5, (1 << 15) + (2 << 12) + (3 << 9) + (4 << 6) + (5 << 3) + 6,
-    (1 << 18) + (2 << 15) + (3 << 12) + (4 << 9) + (5 << 6) + (6 << 3) + 7,//7
-    1, (1 << 3) + 2, (1 << 6) + (2 << 3) + 3, (1 << 9) + (2 << 6) + (3 << 3) + 4, (1 << 12) + (2 << 9) + (3 << 6) + (4 << 3) + 5, (1 << 15) + (2 << 12) + (3 << 9) + (4 << 6) + (5 << 3) + 6,
-    (1 << 18) + (2 << 15) + (3 << 12) + (4 << 9) + (5 << 6) + (6 << 3) + 7,//14
-    2, (2 << 3) + 3, (2 << 6) + (3 << 3) + 4, (2 << 9) + (3 << 6) + (4 << 3) + 5, (2 << 12) + (3 << 9) + (4 << 6) + (5 << 3) + 6, (2 << 15) + (3 << 12) + (4 << 9) + (5 << 6) + (6 << 3) + 7,//20
-    3, (3 << 3) + 4, (3 << 6) + (4 << 3) + 5, (3 << 9) + (4 << 6) + (5 << 3) + 6, (3 << 12) + (4 << 9) + (5 << 6) + (6 << 3) + 7,//25
-    4, (4 << 3) + 5, (4 << 6) + (5 << 3) + 6, (4 << 9) + (5 << 6) + (6 << 3) + 7,//29
-    5, (5 << 3) + 6, (5 << 6) + (6 << 3) + 7,//32
-    6, (6 << 3) + 7,//34
-    7//35
-]
-export const shi1 = [
-    [7], [6, 35], [5, 33, 35], [5, 34], [4, 30, 34], [4, 30, 33, 35], [4, 31, 35], [4, 32],
-    [3, 26, 32], [3, 26, 31, 35], [3, 26, 30, 33, 35], [3, 26, 30, 34], [3, 27, 34], [3, 27, 33, 35], [3, 28, 35], [3, 29],
-    [2, 21, 29], [2, 21, 28, 35], [2, 21, 27, 33, 35], [2, 21, 27, 34], [2, 21, 26, 30, 34], [2, 21, 26, 30, 33, 35], [2, 21, 26, 31, 35], [2, 21, 26, 32],
-    [2, 22, 32], [2, 22, 31, 25], [2, 22, 30, 33, 35], [2, 22, 30, 34], [2, 23, 34], [2, 23, 33, 35], [2, 24, 35], [2, 25],
-]
-const mesh2 = []
-for (let i = 0; i < 32; i++) {
-    const s = shi1[i].map(x => shi[x])
-    if (i >= 128) {
-        s[0] += 1 << (Math.clz32(i ^ 255) - 24)
-    }
-    mesh2[i] = []
-    mesh2[i].push(i < 128 ? [1].concat(s) : s)
-    const dv = new DataView(new ArrayBuffer(8))
-    dv.setUint32(0, 1)
-    dv.setUint32(4, (i << 24) + (1 << 18) + (2 << 15) + (3 << 12) + (4 << 9) + (5 << 6) + (6 << 3) + 7)
-    mesh2[i].push(dv as any)
-}
-export const d2 = (b: BufferSource | BufferSource[]) => {
-    const buffers = Array.isArray(b) ? b : [b]
-    const state: State2 = { last: 0, lastSize: 0, temp: Array(8), count: 0 }
-    const out = []
-    for (let bu of buffers) {
-        if (bu.byteLength % 4 != 0) {
-            throw new Error('data must be multiple of 4 bytes')
+const mesh3: number[][][] = []
+for (let i = 0; i < 256; i++) {
+    let x = 0
+    let c = 0
+    const n = []
+    for (let j = 0; j < 8; j++) {
+        if (x == (i >>> j) % 2) {
+            c++
         }
-        const dv = bufferSourceToDataView(bu)
-        let offset = 0
-        while (offset < dv.byteLength) {
-            const x = dv.getUint32(offset)
-            decodeChunk2(state, x)
-            out.push(...state.temp.slice(0, state.count))
-            offset += 4
+        else {
+            if (c) {
+                n.push(c)
+            }
+            x = x == 0 ? 1 : 0
+            c = 1
         }
     }
-    if (state.lastSize) {
-        out.push(state.last)
+    n.push(c)
+    if (n.reduce((a, b) => a + b) != 8) {
+        throw n
     }
-    return out
+    mesh3[i] = [[1].concat(n.map(x => 1 << ((x - 1) * 3)).concat(n.map(x => 1 << ((x - 1) * 3))))]
 }
-test.each(mesh2)('d2(%#)', (i, o) => {
-    const di = d2(o as any)
-    console.log(i)
-    expect(di).toEqual(i)
+test.each(mesh3)('read/write(%#)', async (i) => {
+    const es: EncoderState = { buffers: [], dv: new DataView(new ArrayBuffer(4096)), offset: 0, mesh: 0, mesh1: false, chunk: 0, chunkSpace: 8, queue: [] }
+    for (let x of i) {
+        write(es, x)
+    }
+    finishWrite(es)
+    const r = createReader(es.buffers[0])
+    const o = []
+    while (!r.isDone()) {
+        o.push(await r.read())
+    }
+    for (let i = 0; i < 7; i++) {
+        if (o[o.length - 1] == 0) {
+            o.pop()
+        }
+    }
+    expect(o).toEqual(i)
 })

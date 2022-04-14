@@ -1256,7 +1256,7 @@ export const shi1 = [
     [7], [6, 35], [5, 33, 35], [5, 34], [4, 30, 34], [4, 30, 33, 35], [4, 31, 35], [4, 32],
     [3, 26, 32], [3, 26, 31, 35], [3, 26, 30, 33, 35], [3, 26, 30, 34], [3, 27, 34], [3, 27, 33, 35], [3, 28, 35], [3, 29],
     [2, 21, 29], [2, 21, 28, 35], [2, 21, 27, 33, 35], [2, 21, 27, 34], [2, 21, 26, 30, 34], [2, 21, 26, 30, 33, 35], [2, 21, 26, 31, 35], [2, 21, 26, 32],
-    [2, 22, 32], [2, 22, 31, 25], [2, 22, 30, 33, 35], [2, 22, 30, 34], [2, 23, 34], [2, 23, 33, 35], [2, 24, 35], [2, 25],
+    [2, 22, 32], [2, 22, 31, 35], [2, 22, 30, 33, 35], [2, 22, 30, 34], [2, 23, 34], [2, 23, 33, 35], [2, 24, 35], [2, 25],
     [1, 15, 25], [1, 15, 24, 35], [1, 15, 23, 33, 35], [1, 15, 23, 34], [1, 15, 22, 30, 34], [1, 15, 22, 30, 33, 35], [1, 15, 22, 31, 35], [1, 15, 22, 32],
     [1, 15, 21, 26, 32], [1, 15, 21, 26, 31, 35], [1, 15, 21, 26, 30, 33, 35], [1, 15, 21, 26, 30, 34], [1, 15, 21, 27, 34], [1, 15, 21, 27, 33, 35], [1, 15, 21, 28, 35], [1, 15, 21, 29],
     [1, 16, 29], [1, 16, 28, 35], [1, 16, 27, 33, 35], [1, 16, 27, 34], [1, 16, 26, 30, 34], [1, 16, 26, 30, 33, 35], [1, 16, 26, 31, 35], [1, 16, 26, 32],
@@ -1271,38 +1271,30 @@ export const shi1 = [
     [0, 11, 32], [0, 11, 31, 35], [0, 11, 30, 33, 35], [0, 11, 30, 34], [0, 12, 34], [0, 12, 33, 35], [0, 13, 35], [0, 14]
 ]
 export const shi2 = shi1.map(x => x.map(y => shi[y]))
-export type State2 = { last: number | bigint, lastSize: number, temp: (number | bigint)[], count: number }
-export const decodeChunk2 = (s: State2, x: number) => {
+export type DecoderState = { last: number, lastSize: number, temp: number[], tempSize: number[], count: number }
+export const decodeChunk2 = (s: DecoderState, x: number) => {
     let mesh = x >>> 24
     let a: number[][]
     let useLast = 0
+    let first = 0
     if (mesh >= 128) {
         mesh = mesh ^ 255
         a = shi2[mesh]
         const firstSize = 32 - a[0][1]
         if (s.lastSize + firstSize > 51) {
-            s.last = BigInt(s.last)
-            if (firstSize == 24) {
-                s.count = 0
-                s.lastSize += firstSize
-                s.last = s.last * BigInt(2) ** BigInt(firstSize) + BigInt(x & 0xFFFFFF)
-            }
-            else {
-                useLast = 1
-                s.temp[0] = s.last * BigInt(2) ** BigInt(firstSize) + BigInt((x << a[0][0]) >>> a[0][1])
-                s.count = a.length
-            }
+            throw new Error('bigint not allowed')
         }
         else {
             if (firstSize == 24) {
                 s.count = 0
                 s.lastSize += firstSize
-                s.last = s.last as number * 2 ** firstSize + (x & 0xFFFFFF)
+                s.last = s.last * 2 ** firstSize + (x & 0xFFFFFF)
             }
             else if (s.lastSize) {
-                useLast = 1
-                s.temp[0] = s.last as number * 2 ** firstSize + ((x << a[0][0]) >>> a[0][1])
-                s.count = a.length
+                useLast = first = 1
+                s.temp[0] = s.last * 2 ** firstSize + ((x << a[0][0]) >>> a[0][1])
+                s.tempSize[0] = s.lastSize + firstSize
+                s.count = a.length - 1
             }
             else {
                 s.count = a.length - 1
@@ -1314,22 +1306,71 @@ export const decodeChunk2 = (s: State2, x: number) => {
         if (s.lastSize) {
             useLast = 1
             s.temp[0] = s.last
+            s.tempSize[0] = s.lastSize
             s.count = a.length
         }
         else {
             s.count = a.length - 1
         }
     }
-    for (let i = 0; i < a.length - 1; i++) {
-        s.temp[i + useLast] = (x << a[i][0]) >>> a[i][1]
+    for (let i = first; i < a.length - 1; i++) {
+        s.temp[i + useLast - first] = (x << a[i][0]) >>> a[i][1]
+        s.tempSize[i + useLast - first] = 32 - a[i][1]
     }
     const an = a[a.length - 1]
     s.last = (x << an[0]) >>> an[1]
     s.lastSize = 32 - an[1]
 }
+export type Reader = { read: (useLast?: boolean) => Promise<number>, isDone: () => boolean, readBuffer: (n: number) => Uint8Array }
+export const createReader = (b: BufferSource): Reader => {
+    if (b.byteLength % 4 != 0) {
+        throw new Error('data must be multiple of 4 bytes')
+    }
+    const s: DecoderState = { last: 0, lastSize: 0, temp: Array(8), tempSize: Array(8), count: 0 }
+    let i = 0
+    const dv = bufferSourceToDataView(b)
+    let dvOffset = 0
+    let done = false
+    return {
+        read: async (useLast?: boolean) => {
+            if (useLast && s.count == 0) {
+                s.lastSize = 0
+                return s.last
+            }
+            while (s.count == 0) {
+                decodeChunk2(s, dv.getUint32(dvOffset))
+                dvOffset += 4
+                if (dv.byteLength == dvOffset) {
+                    s.temp[s.count] = s.last
+                    s.tempSize[s.count] = s.lastSize
+                    s.count++
+                }
+            }
+            const v = s.temp[i]
+            i++
+            if (i == s.count) {
+                s.count = i = 0
+                done = dv.byteLength == dvOffset
+            }
+            return v
+        },
+        isDone: () => done,
+        readBuffer: (n: number) => {
+            if (n == 0) {
+                done = s.count == 0
+                return bufferSourceToUint8Array(dv, dvOffset)
+            }
+            const l = n * 4
+            const v = bufferSourceToUint8Array(dv, dvOffset, l)
+            dvOffset += l
+            done = s.count == 0 && dv.byteLength == dvOffset
+            return v
+        }
+    }
+}
 export const d2 = (b: BufferSource | BufferSource[]) => {
     const buffers = Array.isArray(b) ? b : [b]
-    const state: State2 = { last: 0, lastSize: 0, temp: Array(8), count: 0 }
+    const state: DecoderState = { last: 0, lastSize: 0, temp: Array(8), tempSize: Array(8), count: 0 }
     const out = []
     for (let bu of buffers) {
         if (bu.byteLength % 4 != 0) {
@@ -1349,18 +1390,72 @@ export const d2 = (b: BufferSource | BufferSource[]) => {
     }
     return out
 }
-export type EncoderState = { buffers: Uint8Array[], dv: DataView, offset: number, mesh: number, mesh1: boolean }
-export const encodeValue = (s: EncoderState, x: number | bigint | BufferSource) => {
-    if (x instanceof Uint8Array) {
+export type EncoderState = { buffers: Uint8Array[], dv: DataView, offset: number, mesh: number, mesh1: boolean, chunk: number, chunkSpace: number, queue: BufferSource[] }
+export const maxInteger = 2 ** 51 - 1
+export const write = (st: EncoderState, x: number | BufferSource) => {
+    if (typeof x == 'object') {
+        if (x.byteLength == 0 || x.byteLength % 4 != 0) {
+            throw new Error('data must be multiple of 4 bytes')
+        }
+        st.queue.push(x)
     }
     else {
-        if (x < 0 || (typeof x == 'number' && (x > Number.MAX_SAFE_INTEGER || isNaN(x) || !isFinite(x)))) {
+        if (x < 0 || Math.floor(x) !== x || x > maxInteger || isNaN(x) || !isFinite(x)) {
             throw new Error('invalid number')
         }
-        if (x <= 0xFFFFFFF) {
-        }
-        else {
-
+        const s = x.toString(8)
+        let i = 0
+        while (true) {
+            const len = st.chunkSpace > s.length - i ? s.length - i : st.chunkSpace
+            st.chunk += parseInt(s.substring(i, i + len), 8) << ((st.chunkSpace - len) * 3)
+            if (st.mesh1) {
+                st.mesh += (2 ** len - 1) << (st.chunkSpace - len)
+            }
+            st.chunkSpace -= len
+            i += len
+            if (st.chunkSpace == 0) {
+                if (st.dv.byteLength == st.offset) {
+                    st.buffers.push(bufferSourceToUint8Array(st.dv))
+                    st.dv = new DataView(new ArrayBuffer(4096))
+                    st.offset = 0
+                }
+                st.dv.setUint32(st.offset, (st.mesh << 24) + st.chunk)
+                st.offset += 4
+                st.chunkSpace = 8
+                st.chunk = 0
+                st.mesh = 0
+                st.mesh1 = true
+                if (st.queue.length) {
+                    for (let b of st.queue) {
+                        const dv = bufferSourceToDataView(b)
+                        let off = 0
+                        while (off < dv.byteLength) {
+                            if (st.dv.byteLength == st.offset) {
+                                st.buffers.push(bufferSourceToUint8Array(st.dv))
+                                st.dv = new DataView(new ArrayBuffer(4096))
+                                st.offset = 0
+                            }
+                            st.dv.setUint32(st.offset, dv.getUint32(off))
+                            st.offset += 4
+                            off += 4
+                        }
+                    }
+                    st.queue = []
+                }
+            }
+            if (i == s.length) {
+                st.mesh1 = !st.mesh1
+                break
+            }
         }
     }
+}
+export const finishWrite = (s: EncoderState) => {
+    if (s.chunkSpace != 8) {
+        const n = s.chunkSpace
+        for (let i = 0; i < n; i++) {
+            write(s, 0)
+        }
+    }
+    s.buffers.push(bufferSourceToUint8Array(s.dv, 0, s.offset))
 }
