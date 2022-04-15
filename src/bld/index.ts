@@ -1,5 +1,5 @@
-export const bufferSourceToDataView = (b: BufferSource, offset: number = 0, length?: number): DataView => b instanceof ArrayBuffer ? new DataView(b, offset, length !== undefined ? length : b.byteLength - offset) : new DataView(b.buffer, b.byteOffset + offset, length !== undefined ? length : b.byteLength - offset)
-export const bufferSourceToUint8Array = (b: BufferSource, offset: number = 0, length?: number): Uint8Array => b instanceof ArrayBuffer ? new Uint8Array(b, offset, length !== undefined ? length : b.byteLength - offset) : new Uint8Array(b.buffer, b.byteOffset + offset, length !== undefined ? length : b.byteLength - offset)
+export const bufToDV = (b: BufferSource, offset: number = 0, length?: number): DataView => b instanceof ArrayBuffer ? new DataView(b, offset, length !== undefined ? length : b.byteLength - offset) : new DataView(b.buffer, b.byteOffset + offset, length !== undefined ? length : b.byteLength - offset)
+export const bufToU8 = (b: BufferSource, offset: number = 0, length?: number): Uint8Array => b instanceof ArrayBuffer ? new Uint8Array(b, offset, length !== undefined ? length : b.byteLength - offset) : new Uint8Array(b.buffer, b.byteOffset + offset, length !== undefined ? length : b.byteLength - offset)
 export const enum a {
     add,//*
     subtract,//*
@@ -66,18 +66,19 @@ export const enum a {
 export const enum r {
     placeholder,
     end_scope,
-    unicode,
     back_ref,
-    run_length_encoding,
     type_sub,
     type_sum,
     type_product,
     type_path,
     bind,
-    bind_uint,
 
     function,
     call,
+
+    text,
+    rich_text,
+    run_length_encoding,
 
     concat,
     chain,
@@ -99,43 +100,17 @@ export const enum r {
     collection_,
     item_,
 
-    Math_E,
-    Math_LN10,
-    Math_LN2,
-    Math_LOG10E,
-    Math_LOG2E,
-    Math_PI,
-    Math_SQRT1_2,
-    Math_SQRT2,
-    Infinity,
-    NegInfinity,
-    NegZero,
-    qNaN,
     uint,
-    nint,//*
-    sint,//*
-    unorm,//*
-    snorm,//*
-    IEEE_binary32,//*
-    IEEE_binary64,//*
-    IEEE_decimal32_BID,//*
-    IEEE_decimal64_BID,//*
-    IPv4,//*
-    IPv6,//*
-    port,//*
-    UUID,//*
-    sha256,//*
-    dns_idna,//*
+    sint,
+    vIEEE_binary,
+    vIEEE_decimal_DPD,
+    dns_idna,
 
     first_param,
     second_param,
-    template,
-    packed_data,
     size_bits1,
-    s32,
-    s64,
-    u32,
-    u64,
+    small_buffer,
+    big_biffer,
 
     filter,
     map,
@@ -150,14 +125,29 @@ export const enum r {
     integrity,
     sub_authority,
     all_data,
-    binary_exponent,
-    decimal_exponent,
-    numerator,
+
+    numerator = 64,
     denominator,
     complex_i,
     quaternion_i,
     quaternion_j,
     quaternion_k,
+    Math_E,
+    Math_LN10,
+    Math_LN2,
+    Math_LOG10E,
+    Math_LOG2E,
+    Math_PI,
+    Math_SQRT1_2,
+    Math_SQRT2,
+    unorm,
+    snorm,
+
+    IPv4,
+    IPv6,
+    port,
+    UUID,
+    sha256,
 
     second,
     meter,
@@ -177,20 +167,18 @@ export const enum r {
 }
 export const enum u {
     end_scope,
-    unicode,
-    back_ref, //(v4)
-    run_length_encoding, //(v4,any)
-    placeholder,
+    text,
+    back_ref,
     a,
     e,
     i,
     o,
     u,
-    y,
-    space,
-    dot,
 
-    //2nd chunk - remaining ascii then continue according to unicode
+    run_length_encoding,
+    placeholder,
+    //2nd chunk - popular ascii
+    //3rd chunk - remaining ascii then continue according to unicode
 }
 type scope = { type: r, needed: number, items: slot[], result?, ref?: slot, inUnicode?: boolean, next_literal_item?: boolean }
 type slot = scope | number | bigint | Uint8Array | code[]
@@ -214,7 +202,7 @@ export const parse = (code: code[]) => {
                         let back = y.items[0] as number + 1
                         for (let l = scopeItems.length - 1; l >= 0; l--) {
                             const s = scopeItems[l]
-                            if (s.type == r.unicode) {
+                            if (s.type == r.text) {
                                 const scopes = s.items.filter(x => typeof x == 'object')
                                 if (scopes.length >= back) {
                                     y.ref = scopes[scopes.length - back]
@@ -260,7 +248,7 @@ export const parse = (code: code[]) => {
         }
         else if (top?.inUnicode) {
             switch (x) {
-                case r.unicode: {
+                case r.text: {
                     scope_stack.push({ type: x, needed: 0, items: [], inUnicode: true })
                     break
                 }
@@ -310,7 +298,6 @@ export const parse = (code: code[]) => {
                     break
                 }
                 case r.back_ref:
-                case r.bind_uint:
                 case r.next_singular: {
                     scope_stack.push({ type: x, needed: 1, items: [], next_literal_item: true })
                     break
@@ -383,866 +370,7 @@ export const evaluateAll = (slots: slot[]) => {
         }
     }
 }
-type State = { out: code[], last: number | bigint, lastSize: number, type: number, decodeContinue: (s: State, x: number, a: number) => any }
-export const decodeChunk = (s: State, x: number) => {
-    s.type = x >>> 30
-    const mesh = (x >>> 24) & 63
-    if (mesh < 32 && s.lastSize) {
-        s.out.push(s.last)
-    }
-    switch (mesh) {
-        case 0: {
-            s.last = x & 0xFFFFFF
-            s.lastSize = 6
-            break
-        }
-        case 1: {
-            s.out.push((x & 0xFFFFF0) >>> 4)
-            s.last = x & 0xF
-            s.lastSize = 1
-            break
-        }
-        case 2: {
-            s.out.push((x & 0xFFFF00) >>> 8)
-            s.out.push((x & 0x0000F0) >>> 4)
-            s.last = x & 0xF
-            s.lastSize = 1
-            break
-        }
-        case 3: {
-            s.out.push((x & 0xFFFF00) >>> 8)
-            s.last = x & 0xFF
-            s.lastSize = 2
-            break
-        }
-        case 4: {
-            s.out.push((x & 0xFFF000) >>> 12)
-            s.out.push((x & 0x000F00) >>> 8)
-            s.last = x & 0xFF
-            s.lastSize = 2
-            break
-        }
-        case 5: {
-            s.out.push((x & 0xFFF000) >>> 12)
-            s.out.push((x & 0x000F00) >>> 8)
-            s.out.push((x & 0x0000F0) >>> 4)
-            s.last = x & 0xF
-            s.lastSize = 1
-            break
-        }
-        case 6: {
-            s.out.push((x & 0xFFF000) >>> 12)
-            s.out.push((x & 0x000FF0) >>> 4)
-            s.last = x & 0xF
-            s.lastSize = 1
-            break
-        }
-        case 7: {
-            s.out.push((x & 0xFFF000) >>> 12)
-            s.last = x & 0xFFF
-            s.lastSize = 3
-            break
-        }
-        case 8: {
-            s.out.push((x & 0xFF0000) >>> 16)
-            s.out.push((x & 0x00F000) >>> 12)
-            s.last = x & 0xFFF
-            s.lastSize = 3
-            break
-        }
-        case 9: {
-            s.out.push((x & 0xFF0000) >>> 16)
-            s.out.push((x & 0x00F000) >>> 12)
-            s.out.push((x & 0x000FF0) >>> 4)
-            s.last = x & 0xF
-            s.lastSize = 1
-            break
-        }
-        case 10: {
-            s.out.push((x & 0xFF0000) >>> 16)
-            s.out.push((x & 0x00F000) >>> 12)
-            s.out.push((x & 0x000F00) >>> 8)
-            s.out.push((x & 0x0000F0) >>> 4)
-            s.last = x & 0xF
-            s.lastSize = 1
-            break
-        }
-        case 11: {
-            s.out.push((x & 0xFF0000) >>> 16)
-            s.out.push((x & 0x00F000) >>> 12)
-            s.out.push((x & 0x000F00) >>> 8)
-            s.last = x & 0xFF
-            s.lastSize = 2
-            break
-        }
-        case 12: {
-            s.out.push((x & 0xFF0000) >>> 16)
-            s.out.push((x & 0x00FF00) >>> 8)
-            s.last = x & 0xFF
-            s.lastSize = 2
-            break
-        }
-        case 13: {
-            s.out.push((x & 0xFF0000) >>> 16)
-            s.out.push((x & 0x00FF00) >>> 8)
-            s.out.push((x & 0x0000F0) >>> 4)
-            s.last = x & 0xF
-            s.lastSize = 1
-            break
-        }
-        case 14: {
-            s.out.push((x & 0xFF0000) >>> 16)
-            s.out.push((x & 0x00FFF0) >>> 4)
-            s.last = x & 0xF
-            s.lastSize = 1
-            break
-        }
-        case 15: {
-            s.out.push((x & 0xFF0000) >>> 16)
-            s.last = x & 0xFFFF
-            s.lastSize = 4
-            break
-        }
-        case 16: {
-            s.out.push((x & 0xF00000) >>> 20)
-            s.out.push((x & 0x0F0000) >>> 16)
-            s.last = x & 0xFFFF
-            s.lastSize = 4
-            break
-        }
-        case 17: {
-            s.out.push((x & 0xF00000) >>> 20)
-            s.out.push((x & 0x0F0000) >>> 16)
-            s.out.push((x & 0x00FFF0) >>> 4)
-            s.last = x & 0xF
-            s.lastSize = 1
-            break
-        }
-        case 18: {
-            s.out.push((x & 0xF00000) >>> 20)
-            s.out.push((x & 0x0F0000) >>> 16)
-            s.out.push((x & 0x00FF00) >>> 8)
-            s.out.push((x & 0x0000F0) >>> 4)
-            s.last = x & 0xF
-            s.lastSize = 1
-            break
-        }
-        case 19: {
-            s.out.push((x & 0xF00000) >>> 20)
-            s.out.push((x & 0x0F0000) >>> 16)
-            s.out.push((x & 0x00FF00) >>> 8)
-            s.last = x & 0xFF
-            s.lastSize = 2
-            break
-        }
-        case 20: {
-            s.out.push((x & 0xF00000) >>> 20)
-            s.out.push((x & 0x0F0000) >>> 16)
-            s.out.push((x & 0x00F000) >>> 12)
-            s.out.push((x & 0x000F00) >>> 8)
-            s.last = x & 0xFF
-            s.lastSize = 2
-            break
-        }
-        case 21: {
-            s.out.push((x & 0xF00000) >>> 20)
-            s.out.push((x & 0x0F0000) >>> 16)
-            s.out.push((x & 0x00F000) >>> 12)
-            s.out.push((x & 0x000F00) >>> 8)
-            s.out.push((x & 0x0000F0) >>> 4)
-            s.last = x & 0xF
-            s.lastSize = 1
-            break
-        }
-        case 22: {
-            s.out.push((x & 0xF00000) >>> 20)
-            s.out.push((x & 0x0F0000) >>> 16)
-            s.out.push((x & 0x00F000) >>> 12)
-            s.out.push((x & 0x000FF0) >>> 4)
-            s.last = x & 0xF
-            s.lastSize = 1
-            break
-        }
-        case 23: {
-            s.out.push((x & 0xF00000) >>> 20)
-            s.out.push((x & 0x0F0000) >>> 16)
-            s.out.push((x & 0x00F000) >>> 12)
-            s.last = x & 0xFFF
-            s.lastSize = 3
-            break
-        }
-        case 24: {
-            s.out.push((x & 0xF00000) >>> 20)
-            s.out.push((x & 0x0FF000) >>> 12)
-            s.last = x & 0xFFF
-            s.lastSize = 3
-            break
-        }
-        case 25: {
-            s.out.push((x & 0xF00000) >>> 20)
-            s.out.push((x & 0x0FF000) >>> 12)
-            s.out.push((x & 0x000FF0) >>> 4)
-            s.last = x & 0xF
-            s.lastSize = 1
-            break
-        }
-        case 26: {
-            s.out.push((x & 0xF00000) >>> 20)
-            s.out.push((x & 0x0FF000) >>> 12)
-            s.out.push((x & 0x000F00) >>> 8)
-            s.out.push((x & 0x0000F0) >>> 4)
-            s.last = x & 0xF
-            s.lastSize = 1
-            break
-        }
-        case 27: {
-            s.out.push((x & 0xF00000) >>> 20)
-            s.out.push((x & 0x0FF000) >>> 12)
-            s.out.push((x & 0x000F00) >>> 8)
-            s.last = x & 0xFF
-            s.lastSize = 2
-            break
-        }
-        case 28: {
-            s.out.push((x & 0xF00000) >>> 20)
-            s.out.push((x & 0x0FFF00) >>> 8)
-            s.last = x & 0xFF
-            s.lastSize = 2
-            break
-        }
-        case 29: {
-            s.out.push((x & 0xF00000) >>> 20)
-            s.out.push((x & 0x0FFF00) >>> 8)
-            s.out.push((x & 0x0000F0) >>> 4)
-            s.last = x & 0xF
-            s.lastSize = 1
-            break
-        }
-        case 30: {
-            s.out.push((x & 0xF00000) >>> 20)
-            s.out.push((x & 0x0FFFF0) >>> 4)
-            s.last = x & 0xF
-            s.lastSize = 1
-            break
-        }
-        case 31: {
-            s.out.push((x & 0xF00000) >>> 20)
-            s.last = x & 0xFFFFF
-            s.lastSize = 5
-            break
-        }
-        case 32: {
-            s.decodeContinue(s, x, 1)
-            s.last = x & 0xFFFFF
-            s.lastSize = 5
-            break
-        }
-        case 33: {
-            s.decodeContinue(s, x, 1)
-            s.out.push((x & 0x0FFFF0) >>> 4)
-            s.last = x & 0xF
-            s.lastSize = 1
-            break
-        }
-        case 34: {
-            s.decodeContinue(s, x, 1)
-            s.out.push((x & 0x0FFF00) >>> 8)
-            s.out.push((x & 0x0000F0) >>> 4)
-            s.last = x & 0xF
-            s.lastSize = 1
-            break
-        }
-        case 35: {
-            s.decodeContinue(s, x, 1)
-            s.out.push((x & 0x0FFF00) >>> 8)
-            s.last = x & 0xFF
-            s.lastSize = 2
-            break
-        }
-        case 36: {
-            s.decodeContinue(s, x, 1)
-            s.out.push((x & 0x0FF000) >>> 12)
-            s.out.push((x & 0x000F00) >>> 8)
-            s.last = x & 0xFF
-            s.lastSize = 2
-            break
-        }
-        case 37: {
-            s.decodeContinue(s, x, 1)
-            s.out.push((x & 0x0FF000) >>> 12)
-            s.out.push((x & 0x000F00) >>> 8)
-            s.out.push((x & 0x0000F0) >>> 4)
-            s.last = x & 0xF
-            s.lastSize = 1
-            break
-        }
-        case 38: {
-            s.decodeContinue(s, x, 1)
-            s.out.push((x & 0x0FF000) >>> 12)
-            s.out.push((x & 0x000FF0) >>> 4)
-            s.last = x & 0xF
-            s.lastSize = 1
-            break
-        }
-        case 39: {
-            s.decodeContinue(s, x, 1)
-            s.out.push((x & 0x0FF000) >>> 12)
-            s.last = x & 0xFFF
-            s.lastSize = 3
-            break
-        }
-        case 40: {
-            s.decodeContinue(s, x, 1)
-            s.out.push((x & 0x0F0000) >>> 16)
-            s.out.push((x & 0x00F000) >>> 12)
-            s.last = x & 0xFFF
-            s.lastSize = 3
-            break
-        }
-        case 41: {
-            s.decodeContinue(s, x, 1)
-            s.out.push((x & 0x0F0000) >>> 16)
-            s.out.push((x & 0x00F000) >>> 12)
-            s.out.push((x & 0x000FF0) >>> 4)
-            s.last = x & 0xF
-            s.lastSize = 1
-            break
-        }
-        case 42: {
-            s.decodeContinue(s, x, 1)
-            s.out.push((x & 0x0F0000) >>> 16)
-            s.out.push((x & 0x00F000) >>> 12)
-            s.out.push((x & 0x000F00) >>> 8)
-            s.out.push((x & 0x0000F0) >>> 4)
-            s.last = x & 0xF
-            s.lastSize = 1
-            break
-        }
-        case 43: {
-            s.decodeContinue(s, x, 1)
-            s.out.push((x & 0x0F0000) >>> 16)
-            s.out.push((x & 0x00F000) >>> 12)
-            s.out.push((x & 0x000F00) >>> 8)
-            s.last = x & 0xFF
-            s.lastSize = 2
-            break
-        }
-        case 44: {
-            s.decodeContinue(s, x, 1)
-            s.out.push((x & 0x0F0000) >>> 16)
-            s.out.push((x & 0x00FF00) >>> 8)
-            s.last = x & 0xFF
-            s.lastSize = 2
-            break
-        }
-        case 45: {
-            s.decodeContinue(s, x, 1)
-            s.out.push((x & 0x0F0000) >>> 16)
-            s.out.push((x & 0x00FF00) >>> 8)
-            s.out.push((x & 0x0000F0) >>> 4)
-            s.last = x & 0xF
-            s.lastSize = 1
-            break
-        }
-        case 46: {
-            s.decodeContinue(s, x, 1)
-            s.out.push((x & 0x0F0000) >>> 16)
-            s.out.push((x & 0x00FFF0) >>> 4)
-            s.last = x & 0xF
-            s.lastSize = 1
-            break
-        }
-        case 47: {
-            s.decodeContinue(s, x, 1)
-            s.out.push((x & 0x0F0000) >>> 16)
-            s.last = x & 0xFFFF
-            s.lastSize = 4
-            break
-        }
-        case 48: {
-            s.decodeContinue(s, x, 2)
-            s.last = x & 0xFFFF
-            s.lastSize = 4
-            break
-        }
-        case 49: {
-            s.decodeContinue(s, x, 2)
-            s.out.push((x & 0x00FFF0) >>> 4)
-            s.last = x & 0xF
-            s.lastSize = 1
-            break
-        }
-        case 50: {
-            s.decodeContinue(s, x, 2)
-            s.out.push((x & 0x00FF00) >>> 8)
-            s.out.push((x & 0x0000F0) >>> 4)
-            s.last = x & 0xF
-            s.lastSize = 1
-            break
-        }
-        case 51: {
-            s.decodeContinue(s, x, 2)
-            s.out.push((x & 0x00FF00) >>> 8)
-            s.last = x & 0xFF
-            s.lastSize = 2
-            break
-        }
-        case 52: {
-            s.decodeContinue(s, x, 2)
-            s.out.push((x & 0x00F000) >>> 12)
-            s.out.push((x & 0x000F00) >>> 8)
-            s.last = x & 0xFF
-            s.lastSize = 2
-            break
-        }
-        case 53: {
-            s.decodeContinue(s, x, 2)
-            s.out.push((x & 0x00F000) >>> 12)
-            s.out.push((x & 0x000F00) >>> 8)
-            s.out.push((x & 0x0000F0) >>> 4)
-            s.last = x & 0xF
-            s.lastSize = 1
-            break
-        }
-        case 54: {
-            s.decodeContinue(s, x, 2)
-            s.out.push((x & 0x00F000) >>> 12)
-            s.out.push((x & 0x000FF0) >>> 4)
-            s.last = x & 0xF
-            s.lastSize = 1
-            break
-        }
-        case 55: {
-            s.decodeContinue(s, x, 2)
-            s.out.push((x & 0x00F000) >>> 12)
-            s.last = x & 0xFFF
-            s.lastSize = 3
-            break
-        }
-        case 56: {
-            s.decodeContinue(s, x, 3)
-            s.last = x & 0xFFF
-            s.lastSize = 3
-            break
-        }
-        case 57: {
-            s.decodeContinue(s, x, 3)
-            s.out.push((x & 0x000FF0) >>> 4)
-            s.last = x & 0xF
-            s.lastSize = 1
-            break
-        }
-        case 58: {
-            s.decodeContinue(s, x, 3)
-            s.out.push((x & 0x000F00) >>> 8)
-            s.out.push((x & 0x0000F0) >>> 4)
-            s.last = x & 0xF
-            s.lastSize = 1
-            break
-        }
-        case 59: {
-            s.decodeContinue(s, x, 3)
-            s.out.push((x & 0x000F00) >>> 8)
-            s.last = x & 0xFF
-            s.lastSize = 2
-            break
-        }
-        case 60: {
-            s.decodeContinue(s, x, 4)
-            s.last = x & 0xFF
-            s.lastSize = 2
-            break
-        }
-        case 61: {
-            s.decodeContinue(s, x, 4)
-            s.out.push((x & 0x0000F0) >>> 4)
-            s.last = x & 0xF
-            s.lastSize = 1
-            break
-        }
-        case 62: {
-            s.decodeContinue(s, x, 5)
-            s.last = x & 0xF
-            s.lastSize = 1
-            break
-        }
-        case 63: {
-            s.decodeContinue(s, x, 6)
-            break
-        }
-    }
-}
-export const decodeContinue = (s: State, x: number, a: number) => {
-    const shift = a * 4
-    const shift1 = 24 - shift
-    const mask = (0xFFFFFF >>> shift1) << shift1
-    if (s.lastSize + a > 13) {
-        s.last = BigInt(s.last)
-        if (a == 6) {
-            s.last = s.last * BigInt(2) ** (BigInt(a) * BigInt(4)) + BigInt(x & 0xFFFFFF)
-            s.lastSize += a
-        }
-        else {
-            s.out.push(s.last * BigInt(2) ** BigInt(shift) + BigInt((x & mask) >>> shift1))
-        }
-    }
-    else {
-        if (a == 6) {
-            s.last = s.last as number * 2 ** shift + (x & 0xFFFFFF)
-            s.lastSize += a
-        }
-        else {
-            s.out.push(s.last as number * 2 ** shift + ((x & mask) >>> shift1))
-        }
-    }
-}
-export const concat = (buffers: BufferSource[]): Uint8Array => {
-    if (buffers.length == 1) {
-        return buffers[0] instanceof Uint8Array ? buffers[0] : bufferSourceToUint8Array(buffers[0])
-    }
-    const u = new Uint8Array(buffers.reduce((a, b) => a + b.byteLength, 0))
-    let offset = 0
-    for (let b of buffers) {
-        u.set(b instanceof Uint8Array ? b : bufferSourceToUint8Array(b), offset)
-        offset += b.byteLength
-    }
-    return u
-}
-export const decode = (b: BufferSource | BufferSource[]) => {
-    const buffers = Array.isArray(b) ? b : [b]
-    const s: State = { out: [], last: 0, lastSize: 0, type: 0, decodeContinue }
-    const outStack = []
-    let nest = 0
-    let nestU = 0
-    let nestUall = false
-    let nestUBuf
-    for (let bu of buffers) {
-        if (bu.byteLength % 4 != 0) {
-            throw new Error('data must be multiple of 4 bytes')
-        }
-        const dv = bufferSourceToDataView(bu)
-        let offset = 0
-        while (offset < dv.byteLength) {
-            if (nest) {
-                if (nest > dv.byteLength - offset) {
-                    const a = decode(bufferSourceToUint8Array(dv, dv.byteOffset + offset))
-                    s.out.push(...a)
-                    nest -= dv.byteLength - offset
-                    offset = dv.byteLength
-                }
-                else {
-                    const a = decode(bufferSourceToUint8Array(dv, dv.byteOffset + offset, nest))
-                    s.out.push(...a)
-                    offset += nest
-                    nest = 0
-                    const o = outStack.pop()
-                    o.push(s.out)
-                    s.out = o
-                }
-            }
-            else if (nestU || nestUall) {
-                if (nestU > dv.byteLength - offset || nestUall) {
-                    nestUBuf = concat([nestUBuf, bufferSourceToUint8Array(dv, dv.byteOffset + offset)])
-                    if (nestU) {
-                        nestU -= dv.byteLength - offset
-                    }
-                    offset = dv.byteLength
-                }
-                else {
-                    nestUBuf = concat([nestUBuf, bufferSourceToUint8Array(dv, dv.byteOffset + offset, nestU)])
-                    offset += nestU
-                    nestU = 0
-                    s.out.push(nestUBuf)
-                    nestUBuf = null
-                }
-            }
-            else {
-                decodeChunk(s, dv.getUint32(offset))
-                switch (s.type) {
-                    case 1: {
-                        if (outStack.length) {
-                            if (s.lastSize) {
-                                s.out.push(s.last)
-                                s.lastSize = 0
-                            }
-                            const o = outStack.pop()
-                            o.push(s.out)
-                            s.out = o
-                        }
-                        else {
-                            offset = dv.byteLength
-                        }
-                        break
-                    }
-                    case 2: {
-                        if (s.last as number != 0) {
-                            nest = s.last as number * 4
-                        }
-                        outStack.push(s.out)
-                        s.out = []
-                        s.lastSize = 0
-                        break
-                    }
-                    case 3: {
-                        if (s.last as number != 0) {
-                            nestU = s.last as number * 4
-                        }
-                        else {
-                            nestUall = true
-                        }
-                        nestUBuf = new Uint8Array()
-                        s.lastSize = 0
-                        break
-                    }
-                }
-                offset += 4
-            }
-        }
-    }
-    if (s.lastSize) {
-        s.out.push(s.last)
-    }
-    if (nestUBuf) {
-        s.out.push(nestUBuf)
-    }
-    return s.out
-}
-export const encode = (code: code[]) => {
-    const buffers: Uint8Array[] = []
-    let dv = new DataView(new ArrayBuffer(4096))
-    let o = 0
-    let chunkSpace = 6
-    let chunk = 0
-    let mesh = 0
-    let mesh1 = false
-    for (let x of code) {
-        if (x instanceof Uint8Array) {
-            if (x.byteLength == 0) {
-                throw new Error('invalid Uint8Array')
-            }
-            let len = x.byteLength / 4
-            let n = 8 - (Math.clz32(len) >>> 2)
-            if (n > chunkSpace) {
-                n = chunkSpace + (n > chunkSpace + 6 ? 12 : 6)
-                chunk += len >>> ((n - chunkSpace) * 4)
-                if (mesh1) {
-                    mesh += (2 ** chunkSpace - 1)
-                }
-                n -= chunkSpace
-                len = len & (2 ** (n * 4) - 1)
-                dv.setUint32(o, (mesh << 24) + chunk)
-                o += 4
-                if (dv.byteLength == o) {
-                    buffers.push(new Uint8Array(dv.buffer))
-                    dv = new DataView(new ArrayBuffer(4096))
-                }
-                if (n == 12) {
-                    dv.setUint32(o, (63 << 24) + (len >>> 24))
-                    o += 4
-                    len = len & 0xFFFFFF
-                    if (dv.byteLength == o) {
-                        buffers.push(new Uint8Array(dv.buffer))
-                        dv = new DataView(new ArrayBuffer(4096))
-                    }
-                }
-                dv.setUint32(o, (255 << 24) + len)
-                o += 4
-                chunkSpace = 6
-                chunk = 0
-                mesh = 0
-                mesh1 = false
-                if (dv.byteLength == o) {
-                    buffers.push(new Uint8Array(dv.buffer))
-                    dv = new DataView(new ArrayBuffer(4096))
-                }
-            }
-            else {
-                if (mesh1) {
-                    mesh += (2 ** chunkSpace - 1)
-                }
-                dv.setUint32(o, ((192 + mesh) << 24) + chunk + len)
-                o += 4
-                chunkSpace = 6
-                chunk = 0
-                mesh = 0
-                mesh1 = false
-                if (dv.byteLength == o) {
-                    buffers.push(new Uint8Array(dv.buffer))
-                    dv = new DataView(new ArrayBuffer(4096))
-                    o = 0
-                }
-            }
-            const d2 = bufferSourceToDataView(x)
-            for (let i = 0; i < d2.byteLength; i += 4) {
-                dv.setUint32(o, d2.getUint32(i))
-                o += 4
-                if (dv.byteLength == o) {
-                    buffers.push(new Uint8Array(dv.buffer))
-                    dv = new DataView(new ArrayBuffer(4096))
-                    o = 0
-                }
-            }
-        }
-        else if (Array.isArray(x)) {
-            const b = encode(x)
-            let len = b.reduce((a, b) => a + b.byteLength, 0) / 4
-            let n = 8 - (Math.clz32(len) >>> 2)
-            if (n > chunkSpace) {
-                n = chunkSpace + (n > chunkSpace + 6 ? 12 : 6)
-                chunk += len >>> ((n - chunkSpace) * 4)
-                if (mesh1) {
-                    mesh += (2 ** chunkSpace - 1)
-                }
-                n -= chunkSpace
-                len = len & (2 ** (n * 4) - 1)
-                dv.setUint32(o, (mesh << 24) + chunk)
-                o += 4
-                if (dv.byteLength == o) {
-                    buffers.push(new Uint8Array(dv.buffer))
-                    dv = new DataView(new ArrayBuffer(4096))
-                    o = 0
-                }
-                if (n == 12) {
-                    dv.setUint32(o, (63 << 24) + (len >>> 24))
-                    o += 4
-                    len = len & 0xFFFFFF
-                    if (dv.byteLength == o) {
-                        buffers.push(new Uint8Array(dv.buffer))
-                        dv = new DataView(new ArrayBuffer(4096))
-                        o = 0
-                    }
-                }
-                dv.setUint32(o, (191 << 24) + len)
-                o += 4
-                chunkSpace = 6
-                chunk = 0
-                mesh = 0
-                mesh1 = false
-                if (dv.byteLength == o) {
-                    buffers.push(new Uint8Array(dv.buffer))
-                    dv = new DataView(new ArrayBuffer(4096))
-                    o = 0
-                }
-            }
-            else {
-                if (mesh1) {
-                    mesh += (2 ** chunkSpace - 1)
-                }
-                dv.setUint32(o, ((128 + mesh) << 24) + chunk + len)
-                o += 4
-                chunkSpace = 6
-                chunk = 0
-                mesh = 0
-                mesh1 = false
-                if (dv.byteLength == o) {
-                    buffers.push(new Uint8Array(dv.buffer))
-                    dv = new DataView(new ArrayBuffer(4096))
-                    o = 0
-                }
-            }
-            buffers.push(new Uint8Array(dv.buffer, 0, o))
-            dv = new DataView(new ArrayBuffer(4096))
-            o = 0
-            buffers.push(...b)
-        }
-        else {
-            if (x < 0 || (typeof x == 'number' && (x > Number.MAX_SAFE_INTEGER || isNaN(x) || !isFinite(x)))) {
-                throw new Error('invalid number')
-            }
-            if (x <= 0xFFFFFFF) {
-                let n = x == 0 ? 1 : 8 - (Math.clz32(x as number) >>> 2)
-                if (n > chunkSpace) {
-                    chunk += x as number >>> ((n - chunkSpace) * 4)
-                    if (mesh1) {
-                        mesh += (2 ** chunkSpace - 1)
-                    }
-                    n -= chunkSpace
-                    x = (x as number) & (2 ** (n * 4) - 1)
-                    dv.setUint32(o, (mesh << 24) + chunk)
-                    o += 4
-                    chunkSpace = 6
-                    chunk = 0
-                    mesh = 0
-                    mesh1 = true
-                    if (dv.byteLength == o) {
-                        buffers.push(new Uint8Array(dv.buffer))
-                        dv = new DataView(new ArrayBuffer(4096))
-                        o = 0
-                    }
-                }
-                chunk += x as number << ((chunkSpace - n) * 4)
-                if (mesh1) {
-                    mesh += (2 ** n - 1) << (chunkSpace - n)
-                    mesh1 = false
-                }
-                else {
-                    mesh1 = true
-                }
-                chunkSpace -= n
-                if (chunkSpace == 0) {
-                    dv.setUint32(o, (mesh << 24) + chunk)
-                    o += 4
-                    chunkSpace = 6
-                    chunk = 0
-                    mesh = 0
-                    mesh1 = false
-                    if (dv.byteLength == o) {
-                        buffers.push(new Uint8Array(dv.buffer))
-                        dv = new DataView(new ArrayBuffer(4096))
-                        o = 0
-                    }
-                }
-            }
-            else {
-                const s = x.toString(16)
-                let i = 0
-                while (true) {
-                    const len = chunkSpace > s.length - i ? s.length - i : chunkSpace
-                    chunk += parseInt(s.substring(i, i + len), 16) << ((chunkSpace - len) * 4)
-                    if (mesh1) {
-                        mesh += (2 ** len - 1) << (chunkSpace - len)
-                    }
-                    chunkSpace -= len
-                    if (chunkSpace == 0) {
-                        dv.setUint32(o, (mesh << 24) + chunk)
-                        o += 4
-                        chunkSpace = 6
-                        chunk = 0
-                        mesh = 0
-                        mesh1 = true
-                        if (dv.byteLength == o) {
-                            buffers.push(new Uint8Array(dv.buffer))
-                            dv = new DataView(new ArrayBuffer(4096))
-                            o = 0
-                        }
-                    }
-                    i += len
-                    if (i == s.length) {
-                        mesh1 = false
-                        break
-                    }
-                }
-
-            }
-        }
-    }
-    if (chunkSpace < 6) {
-        for (let i = chunkSpace - 1; i >= 0; i--) {
-            chunk += r.placeholder << (i * 4)
-            if (mesh1) {
-                mesh += 2 ** i
-            }
-            mesh1 = !mesh1
-        }
-        dv.setUint32(o, (mesh << 24) + chunk)
-        o += 4
-    }
-    if (o) {
-        buffers.push(new Uint8Array(dv.buffer, 0, o))
-    }
-    return buffers
-}
-export const shi = [
+export const shiftLookup = [
     [8, 29], [8, 26], [8, 23], [8, 20], [8, 17], [8, 14], [8, 11], [8, 8],//7
     [11, 29], [11, 26], [11, 23], [11, 20], [11, 17], [11, 14], [11, 11],//14
     [14, 29], [14, 26], [14, 23], [14, 20], [14, 17], [14, 14],//20
@@ -1252,7 +380,7 @@ export const shi = [
     [26, 29], [26, 26],//34
     [29, 29]//35
 ]
-export const shi1 = [
+export const shiftMap = [
     [7], [6, 35], [5, 33, 35], [5, 34], [4, 30, 34], [4, 30, 33, 35], [4, 31, 35], [4, 32],
     [3, 26, 32], [3, 26, 31, 35], [3, 26, 30, 33, 35], [3, 26, 30, 34], [3, 27, 34], [3, 27, 33, 35], [3, 28, 35], [3, 29],
     [2, 21, 29], [2, 21, 28, 35], [2, 21, 27, 33, 35], [2, 21, 27, 34], [2, 21, 26, 30, 34], [2, 21, 26, 30, 33, 35], [2, 21, 26, 31, 35], [2, 21, 26, 32],
@@ -1270,29 +398,29 @@ export const shi1 = [
     [0, 10, 29], [0, 10, 28, 35], [0, 10, 27, 33, 35], [0, 10, 27, 34], [0, 10, 26, 30, 34], [0, 10, 26, 30, 33, 35], [0, 10, 26, 31, 35], [0, 10, 26, 32],
     [0, 11, 32], [0, 11, 31, 35], [0, 11, 30, 33, 35], [0, 11, 30, 34], [0, 12, 34], [0, 12, 33, 35], [0, 13, 35], [0, 14]
 ]
-export const shi2 = shi1.map(x => x.map(y => shi[y]))
+export const shiftInit = shiftMap.map(x => x.map(y => shiftLookup[y].concat([(32 - shiftLookup[y][1]) / 3, 2 ** (32 - shiftLookup[y][1])])))
 export type DecoderState = { last: number, lastSize: number, temp: number[], tempSize: number[], count: number }
-export const decodeChunk2 = (s: DecoderState, x: number) => {
+export const decodeChunk = (s: DecoderState, x: number) => {
     let mesh = x >>> 24
     let a: number[][]
     let useLast = 0
     let first = 0
     if (mesh >= 128) {
         mesh = mesh ^ 255
-        a = shi2[mesh]
-        const firstSize = 32 - a[0][1]
-        if (s.lastSize + firstSize > 51) {
+        a = shiftInit[mesh]
+        const firstSize = a[0][2]
+        if (s.lastSize + firstSize > 17) {
             throw new Error('bigint not allowed')
         }
         else {
-            if (firstSize == 24) {
+            if (firstSize == 8) {
                 s.count = 0
                 s.lastSize += firstSize
-                s.last = s.last * 2 ** firstSize + (x & 0xFFFFFF)
+                s.last = s.last * a[0][3] + (x & 0xFFFFFF)
             }
             else if (s.lastSize) {
                 useLast = first = 1
-                s.temp[0] = s.last * 2 ** firstSize + ((x << a[0][0]) >>> a[0][1])
+                s.temp[0] = s.last * a[0][3] + ((x << a[0][0]) >>> a[0][1])
                 s.tempSize[0] = s.lastSize + firstSize
                 s.count = a.length - 1
             }
@@ -1302,7 +430,7 @@ export const decodeChunk2 = (s: DecoderState, x: number) => {
         }
     }
     else {
-        a = shi2[mesh]
+        a = shiftInit[mesh]
         if (s.lastSize) {
             useLast = 1
             s.temp[0] = s.last
@@ -1315,30 +443,32 @@ export const decodeChunk2 = (s: DecoderState, x: number) => {
     }
     for (let i = first; i < a.length - 1; i++) {
         s.temp[i + useLast - first] = (x << a[i][0]) >>> a[i][1]
-        s.tempSize[i + useLast - first] = 32 - a[i][1]
+        s.tempSize[i + useLast - first] = a[i][2]
     }
     const an = a[a.length - 1]
     s.last = (x << an[0]) >>> an[1]
-    s.lastSize = 32 - an[1]
+    s.lastSize = an[2]
 }
-export type Reader = { read: (useLast?: boolean) => Promise<number>, isDone: () => boolean, readBuffer: (n: number) => Uint8Array }
+export type Reader = { read: (useLast?: boolean) => Promise<number>, isDone: () => boolean, readBuffer: (n: number) => Uint8Array, size: () => number }
 export const createReader = (b: BufferSource): Reader => {
     if (b.byteLength % 4 != 0) {
         throw new Error('data must be multiple of 4 bytes')
     }
     const s: DecoderState = { last: 0, lastSize: 0, temp: Array(8), tempSize: Array(8), count: 0 }
     let i = 0
-    const dv = bufferSourceToDataView(b)
+    const dv = bufToDV(b)
     let dvOffset = 0
     let done = false
+    let size = 0
     return {
         read: async (useLast?: boolean) => {
             if (useLast && s.count == 0) {
+                size = s.lastSize
                 s.lastSize = 0
                 return s.last
             }
             while (s.count == 0) {
-                decodeChunk2(s, dv.getUint32(dvOffset))
+                decodeChunk(s, dv.getUint32(dvOffset))
                 dvOffset += 4
                 if (dv.byteLength == dvOffset) {
                     s.temp[s.count] = s.last
@@ -1347,6 +477,7 @@ export const createReader = (b: BufferSource): Reader => {
                 }
             }
             const v = s.temp[i]
+            size = s.tempSize[i]
             i++
             if (i == s.count) {
                 s.count = i = 0
@@ -1356,43 +487,18 @@ export const createReader = (b: BufferSource): Reader => {
         },
         isDone: () => done,
         readBuffer: (n: number) => {
-            if (n == 0) {
-                done = s.count == 0
-                return bufferSourceToUint8Array(dv, dvOffset)
-            }
-            const l = n * 4
-            const v = bufferSourceToUint8Array(dv, dvOffset, l)
+            const l = (n + 1) * 4
+            const v = bufToU8(dv, dvOffset, l)
             dvOffset += l
             done = s.count == 0 && dv.byteLength == dvOffset
             return v
-        }
+        },
+        size: () => size
     }
-}
-export const d2 = (b: BufferSource | BufferSource[]) => {
-    const buffers = Array.isArray(b) ? b : [b]
-    const state: DecoderState = { last: 0, lastSize: 0, temp: Array(8), tempSize: Array(8), count: 0 }
-    const out = []
-    for (let bu of buffers) {
-        if (bu.byteLength % 4 != 0) {
-            throw new Error('data must be multiple of 4 bytes')
-        }
-        const dv = bufferSourceToDataView(bu)
-        let offset = 0
-        while (offset < dv.byteLength) {
-            const x = dv.getUint32(offset)
-            decodeChunk2(state, x)
-            out.push(...state.temp.slice(0, state.count))
-            offset += 4
-        }
-    }
-    if (state.lastSize) {
-        out.push(state.last)
-    }
-    return out
 }
 export type EncoderState = { buffers: Uint8Array[], dv: DataView, offset: number, mesh: number, mesh1: boolean, chunk: number, chunkSpace: number, queue: BufferSource[] }
 export const maxInteger = 2 ** 51 - 1
-export const write = (st: EncoderState, x: number | BufferSource) => {
+export const write = (st: EncoderState, x: number | BufferSource, size?: number) => {
     if (typeof x == 'object') {
         if (x.byteLength == 0 || x.byteLength % 4 != 0) {
             throw new Error('data must be multiple of 4 bytes')
@@ -1403,7 +509,10 @@ export const write = (st: EncoderState, x: number | BufferSource) => {
         if (x < 0 || Math.floor(x) !== x || x > maxInteger || isNaN(x) || !isFinite(x)) {
             throw new Error('invalid number')
         }
-        const s = x.toString(8)
+        let s = x.toString(8)
+        for (let i = s.length; i < (size || 0); i++) {
+            s = '0' + s
+        }
         let i = 0
         while (true) {
             const len = st.chunkSpace > s.length - i ? s.length - i : st.chunkSpace
@@ -1415,7 +524,7 @@ export const write = (st: EncoderState, x: number | BufferSource) => {
             i += len
             if (st.chunkSpace == 0) {
                 if (st.dv.byteLength == st.offset) {
-                    st.buffers.push(bufferSourceToUint8Array(st.dv))
+                    st.buffers.push(bufToU8(st.dv))
                     st.dv = new DataView(new ArrayBuffer(4096))
                     st.offset = 0
                 }
@@ -1427,11 +536,11 @@ export const write = (st: EncoderState, x: number | BufferSource) => {
                 st.mesh1 = true
                 if (st.queue.length) {
                     for (let b of st.queue) {
-                        const dv = bufferSourceToDataView(b)
+                        const dv = bufToDV(b)
                         let off = 0
                         while (off < dv.byteLength) {
                             if (st.dv.byteLength == st.offset) {
-                                st.buffers.push(bufferSourceToUint8Array(st.dv))
+                                st.buffers.push(bufToU8(st.dv))
                                 st.dv = new DataView(new ArrayBuffer(4096))
                                 st.offset = 0
                             }
@@ -1457,5 +566,5 @@ export const finishWrite = (s: EncoderState) => {
             write(s, 0)
         }
     }
-    s.buffers.push(bufferSourceToUint8Array(s.dv, 0, s.offset))
+    s.buffers.push(bufToU8(s.dv, 0, s.offset))
 }
