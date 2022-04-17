@@ -1,4 +1,4 @@
-import { evaluateAll, parse, r, u, createReader, write, finishWrite, EncoderState } from '@bintoca/bld'
+import { evaluateAll, parse, r, u, createReader, write_i51, finishWrite, EncoderState } from '@bintoca/bld'
 
 const dv = new DataView(new ArrayBuffer(8))
 test('float', () => {
@@ -66,40 +66,40 @@ for (let i = 0; i < 256; i++) {
     }
     mesh[i] = [[1].concat(n.map(x => 1 << ((x - 1) * 3)).concat(n.map(x => 1 << ((x - 1) * 3))))]
 }
-test.each(mesh)('read/write(%#)', async (i) => {
+test.each(mesh)('read/write(%#)', (i) => {
     const es: EncoderState = { buffers: [], dv: new DataView(new ArrayBuffer(4096)), offset: 0, mesh: 0, mesh1: false, chunk: 0, chunkSpace: 8, queue: [] }
     for (let x of i) {
-        write(es, x)
+        write_i51(es, x)
     }
     finishWrite(es)
     const r = createReader(es.buffers[0])
     const o = []
     while (!r.isDone()) {
-        o.push(await r.read())
+        o.push(r.read())
     }
     for (let i = 0; i < 7; i++) {
         if (o[o.length - 1] == 0) {
             o.pop()
         }
     }
-    expect(o).toEqual(i)
+    expect(o).toEqual([0].concat(i))
 })
-test.each([[[1, 2], 4]])('read/write_size(%#)', async (i, s) => {
-    const es: EncoderState = { buffers: [], dv: new DataView(new ArrayBuffer(4096)), offset: 0, mesh: 0, mesh1: false, chunk: 0, chunkSpace: 8, queue: [] }
-    for (let x of i) {
-        write(es, x, s)
-    }
-    finishWrite(es)
-    const r = createReader(es.buffers[0])
-    const o = []
-    while (!r.isDone()) {
-        o.push(await r.read())
-        expect(r.size()).toBe(s)
-    }
-    for (let i = 0; i < 7; i++) {
-        if (o[o.length - 1] == 0) {
-            o.pop()
-        }
-    }
-    expect(o).toEqual(i)
-})
+// test.each([[[1, 2], 4]])('read/write_size(%#)', (i, s) => {
+//     const es: EncoderState = { buffers: [], dv: new DataView(new ArrayBuffer(4096)), offset: 0, mesh: 0, mesh1: false, chunk: 0, chunkSpace: 8, queue: [] }
+//     for (let x of i) {
+//         write_i51(es, x, s)
+//     }
+//     finishWrite(es)
+//     const r = createReader(es.buffers[0])
+//     const o = []
+//     while (!r.isDone()) {
+//         o.push(r.read())
+//         expect(r.size()).toBe(s)
+//     }
+//     for (let i = 0; i < 7; i++) {
+//         if (o[o.length - 1] == 0) {
+//             o.pop()
+//         }
+//     }
+//     expect(o).toEqual(i)
+// })
