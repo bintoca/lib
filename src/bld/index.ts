@@ -171,16 +171,23 @@ export const enum u {
     end_scope,
     text,
     back_ref,
+    space,
     a,
     e,
-    i,
     o,
-    u,
+    t,
 
     run_length_encoding,
     placeholder,
-    //2nd chunk - popular ascii
-    //3rd chunk - remaining ascii then continue according to unicode
+    line_feed,
+    exclamation,
+    peroid,
+    comma,
+    hyphen,
+    question,
+    //remaining A-Z,a-z
+    null = 64,
+    //remaining ascii then continue according to unicode
 }
 type scope = { type: r, needed: number, items: slot[], result?, ref?: slot, inUnicode?: boolean, next_literal_item?: boolean }
 type slot = scope | number | bigint | Uint8Array | code[]
@@ -401,13 +408,16 @@ export const shiftMap = [
     [0, 11, 32], [0, 11, 31, 35], [0, 11, 30, 33, 35], [0, 11, 30, 34], [0, 12, 34], [0, 12, 33, 35], [0, 13, 35], [0, 14]
 ]
 export const shiftLookup = shiftMap.map(x => x.map(y => shiftInit[y]))
-export type DecoderState = { partial: number, temp: number[], tempCount: number, buffers: BufferSource[], bufferIndex: number, moreBuffers: boolean, dv: DataView, dvOffset: number }
+export type DecoderState = { partial: number, partialBit: number, temp: number[], tempCount: number, tempIndex: number, buffers: BufferSource[], bufferIndex: number, moreBuffers: boolean, dv: DataView, dvOffset: number }
 export const decodeChunk = (s: DecoderState, x: number) => {
     let mesh = x >>> 24
-    let a: number[][]
-    if (mesh >= 128) {
+    const nextPartialBit = mesh & 1
+    const continueBit = mesh >>> 7
+    if (continueBit) {
         mesh = mesh ^ 255
-        a = shiftLookup[mesh]
+    }
+    const a = shiftLookup[mesh]
+    if (continueBit == s.partialBit) {
         if (a.length == 1) {
             s.tempCount = 0
             s.partial = ((s.partial << 24) >>> 0) + (x & 0xFFFFFF)
@@ -423,7 +433,6 @@ export const decodeChunk = (s: DecoderState, x: number) => {
         }
     }
     else {
-        a = shiftLookup[mesh]
         s.temp[0] = s.partial
         s.tempCount = a.length
         for (let i = 0; i < a.length - 1; i++) {
@@ -432,76 +441,72 @@ export const decodeChunk = (s: DecoderState, x: number) => {
         const an = a[a.length - 1]
         s.partial = (x << an[0]) >>> an[1]
     }
+    s.partialBit = nextPartialBit
 }
-export const createDecoder = (b: BufferSource): DecoderState => {
-    return { partial: 0, temp: Array(8), tempCount: 0, buffers: [b], bufferIndex: 0, moreBuffers: false, dv: bufToDV(b), dvOffset: 0 }
-}
-export const isDecoderDone = (s: DecoderState): boolean => s.tempCount == 0 && s.dv.byteLength == s.dvOffset && s.bufferIndex == s.buffers.length - 1 && !s.moreBuffers
-export type Reader = { read: (useLast?: boolean) => number, isDone: () => boolean, readBuffer: (n: number) => Uint8Array, size: () => number, minAhead: (n: number) => Promise<void> }
-export const createReader = (b: BufferSource): Reader => {
-    if (b.byteLength % 4 != 0) {
-        throw new Error('data must be multiple of 4 bytes')
+export const createDecoder = (b: BufferSource | BufferSource[]): DecoderState => {
+    const a = Array.isArray(b) ? b : [b]
+    for (let bu of a) {
+        if (bu.byteLength == 0 || bu.byteLength % 4 != 0) {
+            throw new Error('data must be multiple of 4 bytes')
+        }
     }
-    const s: DecoderState = { partial: 0, temp: Array(8), tempCount: 0, buffers: [b], bufferIndex: 0, moreBuffers: false, dv: bufToDV(b), dvOffset: 0 }
-    let i = 0
-    const dv = bufToDV(b)
-    let dvOffset = 0
-    let done = false
-    let size = 0
-    return {
-        read: (useLast?: boolean) => {
-            if (useLast && s.tempCount == 0) {
-                // size = s.has_partial
-                // s.has_partial = 0
-                return s.partial
+    const dv = bufToDV(a[0])
+    return { partial: 0, partialBit: dv.getUint8(0) >>> 7, temp: Array(8), tempCount: 0, tempIndex: 0, buffers: a, bufferIndex: 0, moreBuffers: false, dv, dvOffset: 0 }
+}
+export const read = (s: DecoderState): number => {
+    while (s.tempCount == 0) {
+        decodeChunk(s, s.dv.getUint32(s.dvOffset))
+        s.dvOffset += 4
+        if (s.dv.byteLength == s.dvOffset) {
+            if (s.bufferIndex < s.buffers.length - 1) {
+                s.bufferIndex++
+                s.dv = bufToDV(s.buffers[s.bufferIndex])
+                s.dvOffset = 0
             }
-            while (s.tempCount == 0) {
-                decodeChunk(s, dv.getUint32(dvOffset))
-                dvOffset += 4
-                if (dv.byteLength == dvOffset) {
+            else {
+                if (s.moreBuffers) {
+                    throw new Error('exhausted buffers')
+                }
+                else {
                     s.temp[s.tempCount] = s.partial
                     s.tempCount++
                 }
             }
-            const v = s.temp[i]
-            i++
-            if (i == s.tempCount) {
-                s.tempCount = i = 0
-                done = dv.byteLength == dvOffset
-            }
-            return v
-        },
-        isDone: () => done,
-        readBuffer: (n: number) => {
-            const l = (n + 1) * 4
-            const v = bufToU8(dv, dvOffset, l)
-            dvOffset += l
-            done = s.tempCount == 0 && dv.byteLength == dvOffset
-            return v
-        },
-        size: () => size,
-        minAhead: () => null
+        }
     }
+    const v = s.temp[s.tempIndex]
+    s.tempIndex++
+    if (s.tempIndex == s.tempCount) {
+        s.tempCount = s.tempIndex = 0
+    }
+    return v
 }
+export const readBuffer = (s: DecoderState, n: number) => {
+    const l = (n + 1) * 4
+    const v = bufToU8(s.dv, s.dvOffset, l)
+    s.dvOffset += l
+    return v
+}
+export const continueDecode = (s: DecoderState): boolean => s.tempCount != 0 || s.dv.byteLength != s.dvOffset || s.bufferIndex != s.buffers.length - 1 || s.moreBuffers
 export type EncoderState = { buffers: Uint8Array[], dv: DataView, offset: number, mesh: number, mesh1: boolean, chunk: number, chunkSpace: number, queue: BufferSource[] }
-export const maxInteger = 2 ** 51 - 1
-const tempDV = new DataView(new ArrayBuffer(8))
-//tempDV.setFloat64(0, x)
-const hi = tempDV.getUint32(0)
-export const write_i51 = (st: EncoderState, x: number, size?: number) => {
+export const createEncoder = (): EncoderState => {
+    return { buffers: [], dv: new DataView(new ArrayBuffer(4096)), offset: 0, mesh: 0, mesh1: false, chunk: 0, chunkSpace: 8, queue: [] }
+}
+export const maxInteger = 0xFFFFFFFF
+export const sizeLookup = [0, 0, 1, 1, 1, 2, 2, 2, 3, 3, 3, 4, 4, 4, 5, 5, 5, 6, 6, 6, 7, 7, 7, 8, 8, 8, 9, 9, 9, 10, 10, 10, 10]
+export const maskLookup = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0].map((x, i) => i == 0 ? maxInteger : 2 ** ((11 - i) * 3) - 1)
+export const write = (st: EncoderState, x: number) => {
     if (x < 0 || Math.floor(x) !== x || x > maxInteger || isNaN(x) || !isFinite(x)) {
         throw new Error('invalid number')
     }
-    let s = x.toString(8)
-    for (let i = s.length; i < (size || 0); i++) {
-        s = '0' + s
-    }
-    let i = 0
+    let i = sizeLookup[Math.clz32(x)]
     while (true) {
-        const len = st.chunkSpace > s.length - i ? s.length - i : st.chunkSpace
-        st.chunk += parseInt(s.substring(i, i + len), 8) << ((st.chunkSpace - len) * 3)
+        const remaining = 11 - i
+        const len = st.chunkSpace > remaining ? remaining : st.chunkSpace
+        const s1 = st.chunkSpace - len
+        st.chunk += ((x & maskLookup[i]) >>> ((remaining - len) * 3)) << s1 * 3
         if (st.mesh1) {
-            st.mesh += (2 ** len - 1) << (st.chunkSpace - len)
+            st.mesh += ((1 << len) - 1) << s1
         }
         st.chunkSpace -= len
         i += len
@@ -516,7 +521,6 @@ export const write_i51 = (st: EncoderState, x: number, size?: number) => {
             st.chunkSpace = 8
             st.chunk = 0
             st.mesh = 0
-            st.mesh1 = true
             if (st.queue.length) {
                 for (let b of st.queue) {
                     const dv = bufToDV(b)
@@ -535,13 +539,13 @@ export const write_i51 = (st: EncoderState, x: number, size?: number) => {
                 st.queue = []
             }
         }
-        if (i == s.length) {
+        if (i == 11) {
             st.mesh1 = !st.mesh1
             break
         }
     }
 }
-export const write_Buf = (st: EncoderState, x: BufferSource) => {
+export const writeBuffer = (st: EncoderState, x: BufferSource) => {
     if (x.byteLength == 0 || x.byteLength % 4 != 0) {
         throw new Error('data must be multiple of 4 bytes')
     }
@@ -551,7 +555,7 @@ export const finishWrite = (s: EncoderState) => {
     if (s.chunkSpace != 8) {
         const n = s.chunkSpace
         for (let i = 0; i < n; i++) {
-            write_i51(s, 0)
+            write(s, 0)
         }
     }
     s.buffers.push(bufToU8(s.dv, 0, s.offset))
