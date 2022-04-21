@@ -142,6 +142,8 @@ export const enum r {
     Math_SQRT2,
     unorm,
     snorm,
+    vCollection,
+    vCollection_merge,
 
     IPv4,
     IPv6,
@@ -189,11 +191,12 @@ export const enum u {
     null = 64,
     //remaining ascii then continue according to unicode
 }
-type Scope = { type: r | u, needed: number, items: Item[], result?, ref?: Item, inText?: boolean, plan?: ParsePlan }
+const type_product_symbol = Symbol.for('https://bintoca.com/symbol/1')
+type Scope = { type: r | u | symbol, needed: number, items: Item[], result?, ref?: Item, inText?: boolean, plan?: ParsePlan }
 type Slot = Scope | number
 type Item = Slot | Uint8Array
-const enum ParseType { value, vbuf, buf, item, scope, collection }
-type ParseOp = { type: ParseType, size?: number, scope?: Scope }
+const enum ParseType { value, vbuf, buf, item, scope, collection, choice }
+type ParseOp = { type: ParseType, size?: number, scope?: Scope, choices?: ParseOp[] }
 type ParsePlan = { types: ParseOp[], index: number }
 export const parse = (b: BufferSource) => {
     const slots: Slot[] = []
@@ -206,42 +209,59 @@ export const parse = (b: BufferSource) => {
             const t = scope_top()
             if (t) {
                 t.items.push(i)
-                if (t.type == r.bind) {
-                    if (t.plan) {
-                        t.plan.index++
-                        if (t.plan.index == t.plan.types.length) {
-                            t.plan.index = 0
-                        }
+                if (t.type == r.bind && !t.plan) {
+                    if (typeof i == 'object') {
+                        const s = i as Scope
+
                     }
                     else {
-                        if (typeof i == 'object') {
-                            const s = i as Scope
-
-                        }
-                        else {
-                            switch (i) {
-                                case r.uint:
-                                case r.sint:
-                                case r.buffer: {
-                                    t.plan = { types: [{ type: ParseType.value }], index: 0 }
-                                    break
-                                }
-                                case r.vIEEE_decimal_DPD:
-                                case r.vIEEE_binary: {
-                                    t.plan = { types: [{ type: ParseType.vbuf }], index: 0 }
-                                    break
-                                }
-                                case r.text:
-                                case r.dns_idna:
-                                case r.rich_text: {
-                                    scope_stack.push({ type: i, needed: 0, items: [], inText: true })
-                                    break
-                                }
-                                default:
-                                    throw 'not implemented bind: ' + i
+                        switch (i) {
+                            case r.uint:
+                            case r.sint:
+                            case r.buffer: {
+                                t.plan = { types: [{ type: ParseType.value }], index: 0 }
+                                break
                             }
-                            t.needed = 2
+                            case r.vIEEE_decimal_DPD:
+                            case r.vIEEE_binary: {
+                                t.plan = { types: [{ type: ParseType.vbuf }], index: 0 }
+                                break
+                            }
+                            case r.text:
+                            case r.dns_idna:
+                            case r.rich_text: {
+                                scope_stack.push({ type: i, needed: 0, items: [], inText: true })
+                                break
+                            }
+                            default:
+                                throw 'not implemented bind: ' + i
                         }
+                        t.needed = 2
+                    }
+                }
+                else if (t.plan) {
+                    t.plan.index++
+                    switch (t.type) {
+                        case r.collection_: {
+                            if (t.plan.index == t.plan.types.length) {
+                                t.plan.index = 0
+                            }
+                            break
+                        }
+                        case r.vCollection:
+                        case r.vCollection_merge: {
+                            if (t.plan.index == t.plan.types.length) {
+                                if (read(ds)) {
+                                    t.plan.index = 0
+                                }
+                                else {
+                                    t.needed == t.items.length
+                                }
+                            }
+                            break
+                        }
+                        default:
+                            throw 'not implemented plan type: ' + t.type.toString()
                     }
                 }
                 if (t.items.length == t.needed) {
@@ -294,7 +314,14 @@ export const parse = (b: BufferSource) => {
     const ds = createDecoder(b)
     while (continueDecode(ds)) {
         const top = scope_top()
-        const op = top?.plan.types[top.plan.index]
+        let op = top?.plan.types[top.plan.index]
+        if (op?.type == ParseType.choice) {
+            const c = top.items[top.items.length - 1]
+            if (typeof c != 'number' || op.choices.length <= c) {
+                throw 'invalid choice index'
+            }
+            op = op.choices[c]
+        }
         if (op?.type != ParseType.item) {
             switch (op.type) {
                 case ParseType.value: {
