@@ -20,11 +20,11 @@ test('float', () => {
 //     const s = parse(di)
 //     expect(s.slots).toEqual(o)
 // })
-test.each([
-    [[r.function, r.end_scope, r.end_scope], 'top of scope_stack invalid for end_scope'],
-])('parseError', (i, o) => {
-    expect(() => parse(i)).toThrowError(o)
-})
+// test.each([
+//     [[r.function, r.end_scope, r.end_scope], 'top of scope_stack invalid for end_scope'],
+// ])('parseError', (i, o) => {
+//     expect(() => parse(i)).toThrowError(o)
+// })
 // test.each([
 //     //[[r.function, r.type_hint_value_quotient_uint, 0, r.end_scope, r.call, r.back_ref, 0, r.end_scope], [{ type: r.type_hint_value_quotient_uint, items: [0], needed: 1, next_literal_item: false }]],
 //     //[[r.function, r.unicode, u.a, u.placeholder, r.type_hint_value_quotient_uint, 0, u.end_scope, u.e, u.end_scope, r.end_scope, r.call, r.back_ref, 0, r.end_scope],
@@ -37,12 +37,12 @@ test.each([
 //     evaluateAll(s.slots)
 //     expect(s.slots.map(x => typeof x == 'object' && !(x instanceof Uint8Array) && !Array.isArray(x) && x.result ? x.result : null).filter(x => x)).toEqual(o)
 // })
-test.each([
-    [[r.call, 6000, r.end_scope], 'not implemented x1 6000'],
-])('evaluateError', (i, o) => {
-    const s = parse(i)
-    expect(() => evaluateAll(s.slots)).toThrowError(o)
-})
+// test.each([
+//     [[r.call, 6000, r.end_scope], 'not implemented x1 6000'],
+// ])('evaluateError', (i, o) => {
+//     const s = parse(i)
+//     expect(() => evaluateAll(s.slots)).toThrowError(o)
+// })
 const mesh: number[][][] = []
 for (let i = 0; i < 256; i++) {
     let x = 0
@@ -73,7 +73,7 @@ test.each(mesh)('read/write(%#)', (i) => {
         write(es, x)
     }
     finishWrite(es)
-    const ds = createDecoder(es.buffers)
+    const ds = createDecoder(es.buffers[0])
     const o = []
     while (continueDecode(ds)) {
         o.push(read(ds))
