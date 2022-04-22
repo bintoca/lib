@@ -159,7 +159,7 @@ export const enum r {
 
     numerator = 64,
     denominator,
-    
+
     vCollection,
     vCollection_merge,
     v32_32,
@@ -192,17 +192,44 @@ export const enum u {
     null = 64,
     //remaining ascii then continue according to unicode
 }
-const type_product_symbol = Symbol.for('https://bintoca.com/symbol/1')
-type Scope = { type: r | u | symbol, needed: number, items: Item[], result?, ref?: Item, inText?: boolean, richText?: boolean, plan?: ParsePlan }
-type Slot = Scope | number
-type Item = Slot | Uint8Array
+export const type_product_symbol = Symbol.for('https://bintoca.com/symbol/1')
+export type Scope = { type: r | u | symbol, needed: number, items: Item[], result?, inText?: boolean, richText?: boolean, plan?: ParsePlan }
+export type Slot = Scope | number
+export type Item = Slot | Uint8Array
 export const enum ParseType { value, vbuf, buf, item, scope, collection, choice }
-type ParseOp = { type: ParseType, size?: number, scope?: Scope, choices?: ParseOp[] }
-type ParsePlan = { types: ParseOp[], index: number }
+export type ParseOp = { type: ParseType, size?: number, scope?: Scope, choices?: ParseOp[] }
+export type ParsePlan = { types: ParseOp[], index: number }
+export const decoderError = (s: DecoderState, message: string) => { return { message, state: s } }
 export const parse = (b: BufferSource) => {
     const slots: Slot[] = []
     const scope_stack: Scope[] = []
     const scope_top = () => scope_stack[scope_stack.length - 1]
+    function back_ref(n: number) {
+        const scopeItems = scope_stack.filter(x => !x.needed)
+        let back = n + 1
+        for (let l = scopeItems.length - 1; l >= 0; l--) {
+            const s = scopeItems[l]
+            if (s.inText) {
+                const scopes = s.items.filter(x => typeof x == 'object')
+                if (scopes.length >= back) {
+                    return scopes[scopes.length - back]
+                }
+                back -= scopes.length
+            }
+            else {
+                if (s.items.length >= back) {
+                    return s.items[s.items.length - back]
+                }
+                back -= s.items.length
+            }
+        }
+        if (slots.length >= back) {
+            return slots[slots.length - back]
+        }
+        else {
+            throw decoderError(ds, 'invalid back_ref')
+        }
+    }
     function collapse_scope(x: Item) {
         let loop = true
         let i = x
@@ -210,41 +237,7 @@ export const parse = (b: BufferSource) => {
             const t = scope_top()
             if (t) {
                 t.items.push(i)
-                if (t.type == r.bind && !t.plan) {
-                    if (typeof i == 'object') {
-                        const s = i as Scope
-
-                    }
-                    else {
-                        switch (i) {
-                            case r.uint:
-                            case r.sint:
-                            case r.buffer: {
-                                t.plan = { types: [{ type: ParseType.value }], index: 0 }
-                                break
-                            }
-                            case r.vIEEE_decimal_DPD:
-                            case r.vIEEE_binary: {
-                                t.plan = { types: [{ type: ParseType.vbuf }], index: 0 }
-                                break
-                            }
-                            case r.text:
-                            case r.dns_idna:
-                            case r.rich_text: {
-                                const c: Scope = { type: u.text, needed: 0, items: [], inText: true }
-                                if (i == r.rich_text) {
-                                    c.richText = true
-                                }
-                                scope_stack.push(c)
-                                break
-                            }
-                            default:
-                                throw 'not implemented bind: ' + i
-                        }
-                        t.needed = 2
-                    }
-                }
-                else if (t.plan) {
+                if (t.plan) {
                     t.plan.index++
                     switch (t.type) {
                         case r.bind:
@@ -271,39 +264,52 @@ export const parse = (b: BufferSource) => {
                             throw 'not implemented plan type: ' + t.type.toString()
                     }
                 }
-                if (t.items.length == t.needed) {
-                    const y = scope_stack.pop()
-                    i = y
-                    if (y.type == r.back_ref) {
-                        const scopeItems = scope_stack.filter(x => !x.needed)
-                        let back = y.items[0] as number + 1
-                        for (let l = scopeItems.length - 1; l >= 0; l--) {
-                            const s = scopeItems[l]
-                            if (s.inText) {
-                                const scopes = s.items.filter(x => typeof x == 'object')
-                                if (scopes.length >= back) {
-                                    y.ref = scopes[scopes.length - back]
-                                    break
-                                }
-                                back -= scopes.length
+                else if (t.type == r.bind) {
+                    if (typeof i == 'object') {
+                        const s = i as Scope
+                        if (s.type == r.type_sub) {
+                            const buf = s.items.filter(x => typeof x == "object" && (x as Scope).type == r.bind && (x as Scope).items[0] == r.buffer)
+                            if (buf.length > 1) {
+                                throw decoderError(ds, 'more than one buffer spec in type_sub')
                             }
-                            else {
-                                if (s.items.length >= back) {
-                                    y.ref = s.items[s.items.length - back]
-                                    break
-                                }
-                                back -= s.items.length
-                            }
-                        }
-                        if (!y.ref) {
-                            if (slots.length >= back) {
-                                y.ref = slots[slots.length - back]
-                            }
-                            else {
-                                throw new Error('invalid back_ref')
+                            if (buf.length == 1) {
+                                t.needed = 2
+                                t.plan = { types: [{ type: ParseType.buf, size: (buf[0] as Scope).items[1] as number }], index: 0, }
                             }
                         }
                     }
+                    else {
+                        switch (i) {
+                            case r.uint:
+                            case r.sint:
+                            case r.buffer: {
+                                t.plan = { types: [{ type: ParseType.value }], index: 0 }
+                                break
+                            }
+                            case r.vIEEE_decimal_DPD:
+                            case r.vIEEE_binary: {
+                                t.plan = { types: [{ type: ParseType.vbuf }], index: 0 }
+                                break
+                            }
+                            case r.text:
+                            case r.dns_idna:
+                            case r.rich_text: {
+                                const c: Scope = { type: u.text, needed: 0, items: [], inText: true }
+                                if (i == r.rich_text) {
+                                    c.richText = true
+                                }
+                                scope_stack.push(c)
+                                break
+                            }
+                            default:
+                                
+                                throw 'not implemented bind: ' + i
+                        }
+                        t.needed = 2
+                    }
+                }
+                if (t.items.length == t.needed) {
+                    i = scope_stack.pop()
                 }
                 else {
                     loop = false
@@ -368,8 +374,11 @@ export const parse = (b: BufferSource) => {
                     break
                 }
                 case u.back_ref: {
-                    scope_stack.push({ type: x, needed: 1, items: [], inText: true })
-                    collapse_scope(read(ds))
+                    const br = back_ref(read(ds)) as Slot
+                    if (!top.richText && (typeof br == 'number' || br.richText || !br.inText)) {
+                        throw decoderError(ds, 'rich text not allowed in plain text')
+                    }
+                    collapse_scope(br)
                     break
                 }
                 case u.non_text: {
@@ -377,7 +386,7 @@ export const parse = (b: BufferSource) => {
                         scope_stack.push({ type: x, needed: 0, items: [] })
                     }
                     else {
-                        collapse_scope(x)
+                        throw decoderError(ds, 'non_text not allowed')
                     }
                     break
                 }
@@ -407,7 +416,7 @@ export const parse = (b: BufferSource) => {
                 }
                 case r.end_scope: {
                     if (!top || top.needed) {
-                        throw new Error('top of scope_stack invalid for end_scope')
+                        throw decoderError(ds, 'top of scope_stack invalid for end_scope')
                     }
                     collapse_scope(scope_stack.pop())
                     break
@@ -416,7 +425,10 @@ export const parse = (b: BufferSource) => {
                     scope_stack.push({ type: x, needed: 2, items: [read(ds)] })
                     break
                 }
-                case r.back_ref:
+                case u.back_ref: {
+                    collapse_scope(back_ref(read(ds)))
+                    break
+                }
                 case r.next_singular: {
                     scope_stack.push({ type: x, needed: 1, items: [] })
                     collapse_scope(read(ds))
@@ -450,14 +462,7 @@ export const evaluate = (x: Scope, ...p: Item[]) => {
                 throw new Error('not implemented x0 ' + f)
             }
             else if (typeof f == 'object' && !Array.isArray(f)) {
-                switch (f.type) {
-                    case r.back_ref: {
-                        x.result = evaluate(f.ref as Scope, ...x.items.slice(1))
-                        break
-                    }
-                    default:
-                        throw new Error('not implemented x3 ' + f.type.toString())
-                }
+                x.result = evaluate(f, ...x.items.slice(1))
             }
             else {
                 switch (f) {
