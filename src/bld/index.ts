@@ -7,6 +7,37 @@ export const enum a {
     divide,//*
     remainder,//*
 
+    complex_i,
+    quaternion_i,
+    quaternion_j,
+    quaternion_k,
+    Math_E,
+    Math_LN10,
+    Math_LN2,
+    Math_LOG10E,
+    Math_LOG2E,
+    Math_PI,
+    Math_SQRT1_2,
+    Math_SQRT2,
+    unorm,
+    snorm,
+
+    second,
+    meter,
+    kilogram,
+    ampere,
+    kelvin,
+    mole,
+    candela,
+    radians,
+
+    red,
+    green,
+    blue,
+    alpha,
+    depth,
+    stencil,
+
     abs,//*
     acos,//*
     acosh,//*
@@ -128,46 +159,16 @@ export const enum r {
 
     numerator = 64,
     denominator,
-    complex_i,
-    quaternion_i,
-    quaternion_j,
-    quaternion_k,
-    Math_E,
-    Math_LN10,
-    Math_LN2,
-    Math_LOG10E,
-    Math_LOG2E,
-    Math_PI,
-    Math_SQRT1_2,
-    Math_SQRT2,
-    unorm,
-    snorm,
+    
     vCollection,
     vCollection_merge,
+    v32_32,
 
     IPv4,
     IPv6,
     port,
     UUID,
     sha256,
-
-    second,
-    meter,
-    kilogram,
-    ampere,
-    kelvin,
-    mole,
-    candela,
-    radians,
-
-    red,
-    green,
-    blue,
-    alpha,
-    depth,
-    stencil,
-
-
 }
 export const enum u {
     text,
@@ -192,10 +193,10 @@ export const enum u {
     //remaining ascii then continue according to unicode
 }
 const type_product_symbol = Symbol.for('https://bintoca.com/symbol/1')
-type Scope = { type: r | u | symbol, needed: number, items: Item[], result?, ref?: Item, inText?: boolean, plan?: ParsePlan }
+type Scope = { type: r | u | symbol, needed: number, items: Item[], result?, ref?: Item, inText?: boolean, richText?: boolean, plan?: ParsePlan }
 type Slot = Scope | number
 type Item = Slot | Uint8Array
-const enum ParseType { value, vbuf, buf, item, scope, collection, choice }
+export const enum ParseType { value, vbuf, buf, item, scope, collection, choice }
 type ParseOp = { type: ParseType, size?: number, scope?: Scope, choices?: ParseOp[] }
 type ParsePlan = { types: ParseOp[], index: number }
 export const parse = (b: BufferSource) => {
@@ -230,7 +231,11 @@ export const parse = (b: BufferSource) => {
                             case r.text:
                             case r.dns_idna:
                             case r.rich_text: {
-                                scope_stack.push({ type: i, needed: 0, items: [], inText: true })
+                                const c: Scope = { type: u.text, needed: 0, items: [], inText: true }
+                                if (i == r.rich_text) {
+                                    c.richText = true
+                                }
+                                scope_stack.push(c)
                                 break
                             }
                             default:
@@ -242,6 +247,8 @@ export const parse = (b: BufferSource) => {
                 else if (t.plan) {
                     t.plan.index++
                     switch (t.type) {
+                        case r.bind:
+                            break
                         case r.collection_: {
                             if (t.plan.index == t.plan.types.length) {
                                 t.plan.index = 0
@@ -272,7 +279,7 @@ export const parse = (b: BufferSource) => {
                         let back = y.items[0] as number + 1
                         for (let l = scopeItems.length - 1; l >= 0; l--) {
                             const s = scopeItems[l]
-                            if (s.type == r.text) {
+                            if (s.inText) {
                                 const scopes = s.items.filter(x => typeof x == 'object')
                                 if (scopes.length >= back) {
                                     y.ref = scopes[scopes.length - back]
@@ -314,7 +321,7 @@ export const parse = (b: BufferSource) => {
     const ds = createDecoder(b)
     while (continueDecode(ds)) {
         const top = scope_top()
-        let op = top?.plan.types[top.plan.index]
+        let op = top?.plan?.types[top.plan.index]
         if (op?.type == ParseType.choice) {
             const c = top.items[top.items.length - 1]
             if (typeof c != 'number' || op.choices.length <= c) {
@@ -322,7 +329,7 @@ export const parse = (b: BufferSource) => {
             }
             op = op.choices[c]
         }
-        if (op?.type != ParseType.item) {
+        if (op && op.type != ParseType.item) {
             switch (op.type) {
                 case ParseType.value: {
                     collapse_scope(read(ds))
@@ -361,11 +368,12 @@ export const parse = (b: BufferSource) => {
                     break
                 }
                 case u.back_ref: {
-                    collapse_scope({ type: x, needed: 1, items: [read(ds)], inText: true })
+                    scope_stack.push({ type: x, needed: 1, items: [], inText: true })
+                    collapse_scope(read(ds))
                     break
                 }
                 case u.non_text: {
-                    if (top.type == r.rich_text) {
+                    if (top.richText) {
                         scope_stack.push({ type: x, needed: 0, items: [] })
                     }
                     else {
@@ -410,7 +418,8 @@ export const parse = (b: BufferSource) => {
                 }
                 case r.back_ref:
                 case r.next_singular: {
-                    collapse_scope({ type: x, needed: 1, items: [read(ds)] })
+                    scope_stack.push({ type: x, needed: 1, items: [] })
+                    collapse_scope(read(ds))
                     break
                 }
                 case r.logical_not: {
