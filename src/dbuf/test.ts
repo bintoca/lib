@@ -1,4 +1,4 @@
-import { evaluateAll, parse, r, u, write, finishWrite, EncoderState, Item, createDecoder, continueDecode, read, createEncoder, writeBuffer, ParseType } from '@bintoca/dbuf'
+import { evaluateAll, parse, r, u, write, finishWrite, EncoderState, Item, createDecoder, continueDecode, read, createEncoder, writeBuffer, ParseType, write_checked, ParseOp } from '@bintoca/dbuf'
 
 const dv = new DataView(new ArrayBuffer(8))
 test('float', () => {
@@ -16,33 +16,35 @@ const writer = (i: (number | Uint8Array)[]) => {
             writeBuffer(es, x)
         }
         else {
-            write(es, x)
+            write_checked(es, x)
         }
     }
     finishWrite(es)
     return es.buffers[0]
 }
 const bind_uint_in = [r.bind, r.uint, 2]
-const plan_value = { index: 1, types: [{ type: ParseType.value }] }
+const plan1 = (p: ParseType) => { return { index: 1, types: [{ type: p }] } }
+const planBuf = (size: number) => { return { index: 1, types: [{ type: ParseType.buf, size }] } }
+const plan_value = plan1(ParseType.value)
 const bind_uint_out = { type: r.bind, needed: 2, items: [r.uint, 2], plan: plan_value }
 const u8 = new Uint8Array([1, 2, 3, 4])
 const text_e_in = [u.text, u.e, u.end_scope]
 const text_e_out = { type: u.text, needed: 0, inText: true, items: [u.e] }
-const _bind = (items: Item[], plan) => { return { type: r.bind, needed: 2, items, plan } }
+const bind = (items: Item[], plan) => { return { type: r.bind, needed: 2, items, plan } }
+const need0 = (type: r | u, items: Item[], op?: ParseOp | ParseOp[]) => { return { type, needed: 0, items, op } }
+const opBuf = (n: number): ParseOp => { return { type: ParseType.buf, size: n } }
+const need2 = (type: r, items: Item[]) => { return { type, needed: 2, items } }
+const bText = (items: Item[]) => bind([r.text, { type: u.text, needed: 0, inText: true, items }], { index: 1, types: [{ type: ParseType.scope, scope: { type: u.text, needed: 0, inText: true, items } }] })
+const brText = (items: Item[]) => bind([r.rich_text, { type: u.text, needed: 0, inText: true, richText: true, items }], { index: 1, types: [{ type: ParseType.scope, scope: { type: u.text, needed: 0, inText: true, richText: true, items } }] })
 test.each([
-    [[r.IPv4, r.run_length_encoding, 1, r.back_ref, 0, ...bind_uint_in],
-    [r.IPv4, { type: r.run_length_encoding, needed: 2, items: [1, r.IPv4] }, bind_uint_out]],
-    [[r.IPv4, r.bind, r.text, u.a, ...text_e_in, u.back_ref, 0, u.end_scope, r.bind, r.rich_text, u.a, u.non_text, ...bind_uint_in, u.end_scope, u.end_scope],
-    [r.IPv4, { type: r.bind, needed: 2, items: [r.text, { type: u.text, needed: 0, inText: true, items: [u.a, text_e_out, text_e_out] }] },
-    { type: r.bind, needed: 2, items: [r.rich_text, { type: u.text, needed: 0, inText: true, richText: true, items: [u.a, { type: u.non_text, needed: 0, items: [bind_uint_out] }] }] }]],
-    [[r.bind, r.vIEEE_binary, u8], [{ type: r.bind, needed: 2, items: [r.vIEEE_binary, u8], plan: { index: 1, types: [{ type: ParseType.vbuf }] } }]],
-    [[r.bind, r.type_sub, r.vIEEE_binary, r.bind, r.buffer, 0, r.end_scope, u8], [_bind([{ type: r.type_sub, needed: 0, items: [r.vIEEE_binary, _bind([r.buffer, 0], plan_value)] }, u8], { index: 1, types: [{ type: ParseType.buf, size: 0 }] })]],
-])('parse', (i, o) => {
+    [[r.IPv4, r.run_length_encoding, 1, r.back_ref, 0, ...bind_uint_in], [r.IPv4, need2(r.run_length_encoding, [1, r.IPv4]), bind_uint_out]],
+    [[r.IPv4, r.bind, r.text, u.a, ...text_e_in, u.back_ref, 0, u.end_scope, r.bind, r.rich_text, u.a, u.non_text, ...bind_uint_in, u.end_scope, u.end_scope], [r.IPv4, bText([u.a, text_e_out, text_e_out]), brText([u.a, need0(u.non_text, [bind_uint_out])])]],
+    [[r.bind, r.vIEEE_binary, 0, u8], [bind([r.vIEEE_binary, u8], plan1(ParseType.vbuf))]],
+    [[r.bind, r.type_sub, r.vIEEE_binary, r.bind, r.buffer, 0, r.end_scope, u8], [bind([need0(r.type_sub, [r.vIEEE_binary, bind([r.buffer, 0], plan_value)], opBuf(0)), u8], planBuf(0))]],
+])('parse(%#)', (i, o) => {
     const s = parse(writer(i))
-    for (let i = 0; i < 7; i++) {
-        if (s.slots[s.slots.length - 1] == r.placeholder) {
-            s.slots.pop()
-        }
+    if (s.slots[s.slots.length - 1] == r.placeholder) {
+        s.slots.pop()
     }
     expect(s.slots).toEqual(o)
 })
@@ -51,7 +53,7 @@ test.each([
     [[r.back_ref, 0], 'invalid back_ref'],
     [[r.bind, r.text, u.non_text, u.end_scope], 'non_text not allowed'],
     [[r.IPv4, r.bind, r.text, u.back_ref, 0, u.end_scope], 'rich text not allowed in plain text'],
-])('parseError', (i, o) => {
+])('parseError(%#)', (i, o) => {
     let er
     try {
         parse(writer(i))
@@ -114,10 +116,8 @@ test.each(mesh)('read/write(%#)', (i) => {
     while (continueDecode(ds)) {
         o.push(read(ds))
     }
-    for (let i = 0; i < 7; i++) {
-        if (o[o.length - 1] == r.placeholder) {
-            o.pop()
-        }
+    if (o[o.length - 1] == r.placeholder) {
+        o.pop()
     }
     expect(o).toEqual(i)
 })
