@@ -141,7 +141,7 @@ export const enum r {
     first_param,
     second_param,
     size_bits1,
-    buffer,
+    block,
 
     filter,
     map,
@@ -194,12 +194,13 @@ export const enum u {
     //remaining ascii then continue according to unicode
 }
 export const type_product_symbol = Symbol.for('https://bintoca.com/symbol/1')
+export const choice_symbol = Symbol.for('https://bintoca.com/symbol/2')
 export type Scope = { type: r | u | symbol, needed: number, items: Item[], result?, inText?: boolean, richText?: boolean, plan?: ParsePlan, op?: ParseOp | ParseOp[] }
 export type Slot = Scope | number
 export type Item = Slot | Uint8Array
-export const enum ParseType { value, vbuf, buf, item, scope, collection, choice }
+export const enum ParseType { value, vblock, block, item, scope, collection, choice, back, none }
 export type ParseOp = { type: ParseType, size?: number, scope?: Scope, choices?: ParseOp[] }
-export type ParsePlan = { types: ParseOp[], index: number }
+export type ParsePlan = { ops: ParseOp[], index: number }
 export type ParseState = { slots: Slot[], scope_stack: Scope[], decoder: DecoderState }
 export const decoderError = (s: DecoderState, message: string) => { return { message, state: s } }
 export const back_ref = (s: ParseState, n: number) => {
@@ -228,23 +229,19 @@ export const back_ref = (s: ParseState, n: number) => {
         throw decoderError(s.decoder, 'invalid back_ref')
     }
 }
-export const createPlan = (st: DecoderState, i: Item): ParsePlan => {
-    if (typeof i == 'object') {
-        const s = i as Scope
-        if (s.op) {
-            return { types: Array.isArray(s.op) ? s.op : [s.op], index: 0 }
-        }
-        throw decoderError(st, 'no parse op')
-    }
+export const numOp = (i: number, bind: boolean): ParseOp => {
     switch (i) {
+        case r.block: {
+            return { type: bind ? ParseType.value : ParseType.vblock }
+        }
+        case r.value_:
         case r.uint:
-        case r.sint:
-        case r.buffer: {
-            return { types: [{ type: ParseType.value }], index: 0 }
+        case r.sint: {
+            return { type: ParseType.value }
         }
         case r.vIEEE_decimal_DPD:
         case r.vIEEE_binary: {
-            return { types: [{ type: ParseType.vbuf }], index: 0 }
+            return { type: ParseType.vblock }
         }
         case r.text:
         case r.dns_idna:
@@ -253,58 +250,65 @@ export const createPlan = (st: DecoderState, i: Item): ParsePlan => {
             if (i == r.rich_text) {
                 c.richText = true
             }
-            return { types: [{ type: ParseType.scope, scope: c }], index: 0 }
+            return { type: ParseType.scope, scope: c }
         }
+        case r.item_:
         default:
-            throw 'not implemented bind: ' + i
+            return { type: ParseType.item }
     }
+}
+export const createPlan = (st: DecoderState, i: Item): ParsePlan => {
+    if (typeof i == 'object') {
+        const s = i as Scope
+        if (s.op) {
+            return { ops: Array.isArray(s.op) ? s.op : [s.op], index: 0 }
+        }
+        throw decoderError(st, 'no parse op')
+    }
+    return { ops: [numOp(i, true)], index: 0 }
 }
 export const resolveOp = (st: DecoderState, c: Scope) => {
     switch (c.type) {
         case r.type_sub: {
-            const itemScopes = c.items.filter(x => typeof x == "object") as Scope[]
-            const buf = itemScopes.filter(x => x.type == r.bind && x.items[0] == r.buffer)
-            if (buf.length > 1) {
-                throw decoderError(st, 'more than one buffer spec in type_sub')
-            }
-            if (buf.length == 1) {
-                c.op = { type: ParseType.buf, size: buf[0].items[1] as number }
-            }
-            const vbuf = c.items.filter(x => typeof x == 'number' && (x == r.vIEEE_binary || x == r.vIEEE_decimal_DPD || x == r.buffer))
-            if (vbuf.length > 1) {
-                throw decoderError(st, 'more than one vbuffer spec in type_sub')
-            }
-            if (vbuf.length == 1 && !buf.length) {
-                if (c.op) {
-                    throw decoderError(st, 'resolve op conflict')
+            const last = c.items[c.items.length - 1]
+            if (typeof last == 'object') {
+                const s = last as Scope
+                switch (s.type) {
+                    case r.bind: {
+                        if (s.items[0] == r.block) {
+                            c.op = { type: ParseType.block, size: s.items[1] as number }
+                        }
+                        break
+                    }
+                    case r.next_singular: {
+                        if (s.items[0] == r.back_ref) {
+                            c.op = { type: ParseType.back }
+                        }
+                        break
+                    }
+                    case r.type_sum: {
+                        c.op = s.op
+                        break
+                    }
                 }
-                c.op = { type: ParseType.vbuf }
             }
-            const val = c.items.filter(x => typeof x == 'number' && (x == r.uint || x == r.sint))
-            if (val.length > 1) {
-                throw decoderError(st, 'more than one value spec in type_sub')
-            }
-            if (val.length == 1) {
-                if (c.op) {
-                    throw decoderError(st, 'resolve op conflict')
-                }
-                c.op = { type: ParseType.value }
-            }
-            const tx = c.items.filter(x => typeof x == 'number' && (x == r.text || x == r.rich_text || x == r.dns_idna))
-            if (tx.length > 1) {
-                throw decoderError(st, 'more than one value spec in type_sub')
-            }
-            if (tx.length == 1) {
-                if (c.op) {
-                    throw decoderError(st, 'resolve op conflict')
-                }
-                const sc: Scope = { type: u.text, needed: 0, items: [], inText: true }
-                if (tx[0] == r.rich_text) {
-                    sc.richText = true
-                }
-                c.op = { type: ParseType.scope, scope: sc }
+            else {
+                c.op = numOp(last, false)
             }
             break
+        }
+        case r.type_sum: {
+            const choices = []
+            for (let x of c.items) {
+                let op
+                if (typeof x == 'object') {
+
+                }
+                else {
+                    
+                }
+            }
+            c.op = { type: ParseType.choice, choices }
         }
     }
 }
@@ -325,14 +329,14 @@ export const parse = (b: BufferSource) => {
                         case r.bind:
                             break
                         case r.collection_: {
-                            if (t.plan.index == t.plan.types.length) {
+                            if (t.plan.index == t.plan.ops.length) {
                                 t.plan.index = 0
                             }
                             break
                         }
                         case r.vCollection:
                         case r.vCollection_merge: {
-                            if (t.plan.index == t.plan.types.length) {
+                            if (t.plan.index == t.plan.ops.length) {
                                 if (read(ds)) {
                                     t.plan.index = 0
                                 }
@@ -369,13 +373,18 @@ export const parse = (b: BufferSource) => {
     const ds = st.decoder
     while (continueDecode(ds)) {
         const top = scope_top()
-        let op = top?.plan?.types[top.plan.index]
+        let op = top?.plan?.ops[top.plan.index]
         if (op?.type == ParseType.choice) {
-            const c = top.items[top.items.length - 1]
-            if (typeof c != 'number' || op.choices.length <= c) {
-                throw 'invalid choice index'
+            const c = read(ds)
+            if (op.choices.length <= c) {
+                throw decoderError(ds, 'invalid choice index')
             }
             op = op.choices[c]
+            scope_stack.push({ type: choice_symbol, needed: 2, items: [c] })
+            if (op.type == ParseType.none) {
+                collapse_scope(c)
+                continue
+            }
         }
         if (op && op.type != ParseType.item) {
             switch (op.type) {
@@ -383,11 +392,15 @@ export const parse = (b: BufferSource) => {
                     collapse_scope(read(ds))
                     break
                 }
-                case ParseType.buf: {
+                case ParseType.back: {
+                    collapse_scope(back_ref(st, read(ds)))
+                    break
+                }
+                case ParseType.block: {
                     collapse_scope(readBuffer(ds, op.size))
                     break
                 }
-                case ParseType.vbuf: {
+                case ParseType.vblock: {
                     collapse_scope(readBuffer(ds, read(ds)))
                     break
                 }
@@ -396,7 +409,7 @@ export const parse = (b: BufferSource) => {
                     break
                 }
                 case ParseType.collection: {
-                    op.scope.needed = read(ds) * op.scope.plan.types.length
+                    op.scope.needed = read(ds) * op.scope.plan.ops.length
                     scope_stack.push(op.scope)
                     break
                 }
@@ -628,15 +641,9 @@ export const read = (s: DecoderState): number => {
 }
 export const readBuffer = (s: DecoderState, n: number) => {
     const l = (n + 1) * 4
-    try {
-        const v = bufToU8(s.dv, s.dvOffset, l)
-        s.dvOffset += l
-        return v
-    }
-    catch (e) {
-        console.log(s, n)
-        throw e
-    }
+    const v = bufToU8(s.dv, s.dvOffset, l)
+    s.dvOffset += l
+    return v
 }
 export const continueDecode = (s: DecoderState): boolean => s.tempCount != 0 || s.dv.byteLength != s.dvOffset
 export type EncoderState = { buffers: Uint8Array[], dv: DataView, offset: number, mesh: number, mesh1: boolean, chunk: number, chunkSpace: number, queue: BufferSource[] }
@@ -710,7 +717,7 @@ export const writeBuffer = (st: EncoderState, x: BufferSource) => {
     st.queue.push(x)
 }
 export const finishWrite = (s: EncoderState) => {
-    if (s.chunkSpace != 8) {
+    if (s.chunkSpace != 8 || s.queue.length) {
         write(s, r.placeholder, s.chunkSpace)
     }
     s.buffers.push(bufToU8(s.dv, 0, s.offset))
