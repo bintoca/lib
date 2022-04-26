@@ -1,6 +1,6 @@
 export const bufToDV = (b: BufferSource, offset: number = 0, length?: number): DataView => b instanceof ArrayBuffer ? new DataView(b, offset, length !== undefined ? length : b.byteLength - offset) : new DataView(b.buffer, b.byteOffset + offset, length !== undefined ? length : b.byteLength - offset)
 export const bufToU8 = (b: BufferSource, offset: number = 0, length?: number): Uint8Array => b instanceof ArrayBuffer ? new Uint8Array(b, offset, length !== undefined ? length : b.byteLength - offset) : new Uint8Array(b.buffer, b.byteOffset + offset, length !== undefined ? length : b.byteLength - offset)
-export const enum a {
+export const enum under_consideration {
     add,//*
     subtract,//*
     multiply,//*
@@ -69,23 +69,9 @@ export const enum a {
     tanh,//*
     trunc,//*
 
-    TAI,
-    UTC_posix,
-    UTC_leap_adjustment,
-    local_time,
+    UTC_posix_smear_seconds, //24-hour leap smear
     timezoneOffset,
-    location,
-    years,
-    months,
-    days,
-    hours,
-    minutes,
-    seconds,
-    weeks,
-    dateTimeStart,
-    dateTimeEnd,
-    duration, //nominal_type or attribute of interval entity
-    timePeriod, //nomimal_type or attribute for singular symbol
+
     //RFC 5545 and updates for recurrence and calendaring
 
     //latitude, //reference ellipsoids?
@@ -101,16 +87,14 @@ export const enum r {
     type_sub,
     type_sum,
     type_product,
-    type_path,
     bind,
-
-    run_length_encoding,
-    function,
-    call,
+    context_symbol,
 
     text,
     rich_text,
-
+    function,
+    call,
+    type_path,
 
     concat,
     chain,
@@ -137,6 +121,7 @@ export const enum r {
     vIEEE_binary,
     vIEEE_decimal_DPD,
     dns_idna,
+    TAI_seconds,//unsigned
 
     first_param,
     second_param,
@@ -156,6 +141,7 @@ export const enum r {
     integrity,
     sub_authority,
     all_data,
+    location,
 
     numerator = 64,
     denominator,
@@ -164,12 +150,26 @@ export const enum r {
     vCollection_merge,
     v32_32,
     back_ref_hint,
+    TAI_epoch_shift,
+    fixed_point_decimal_places,
 
     IPv4,
     IPv6,
     port,
     UUID,
     sha256,
+
+    years,
+    months,
+    days,
+    hours,
+    minutes,
+    seconds,
+    weeks,
+    dateTimeStart,
+    dateTimeEnd,
+    duration,
+    timePeriod,
 }
 export const enum u {
     text,
@@ -185,26 +185,26 @@ export const enum u {
     non_text,
     line_feed,
     exclamation,
-    period,
     comma,
     hyphen,
+    period,
     question,
     //remaining A-Z,a-z
     null = 64,
     //remaining ascii then continue according to unicode
 }
-export const type_product_symbol = Symbol.for('https://bintoca.com/symbol/1')
+export const multiple_symbol = Symbol.for('https://bintoca.com/symbol/1')
 export const choice_symbol = Symbol.for('https://bintoca.com/symbol/2')
-export type Scope = { type: r | u | symbol, needed: number, items: Item[], result?, inText?: boolean, richText?: boolean, plan?: ParsePlan, op?: ParseOp | ParseOp[] }
+export type Scope = { type: r | u | symbol, needed: number, items: Item[], result?, inText?: boolean, richText?: boolean, plan?: ParsePlan, op?: ParseOp }
 export type Slot = Scope | number
 export type Item = Slot | Uint8Array
-export const enum ParseType { value, vblock, block, item, scope, collection, choice, back, none }
-export type ParseOp = { type: ParseType, size?: number, scope?: Scope, choices?: ParseOp[] }
+export const enum ParseType { value, vblock, block, item, scope, collection, choice, back, none, multiple }
+export type ParseOp = { type: ParseType, size?: number, scope?: Scope, ops?: ParseOp[] }
 export type ParsePlan = { ops: ParseOp[], index: number }
 export type ParseState = { slots: Slot[], scope_stack: Scope[], decoder: DecoderState }
 export const decoderError = (s: DecoderState, message: string) => { return { message, state: s } }
 export const back_ref = (s: ParseState, n: number) => {
-    const scopeItems = s.scope_stack.filter(x => !x.needed)
+    const scopeItems = s.scope_stack.filter(x => !x.needed && x.type != r.bind)
     let back = n + 1
     for (let l = scopeItems.length - 1; l >= 0; l--) {
         const s = scopeItems[l]
@@ -234,7 +234,18 @@ export const numOp = (i: number, bind: boolean): ParseOp => {
         case r.block: {
             return { type: bind ? ParseType.value : ParseType.vblock }
         }
+        case r.TAI_seconds: {
+            return { type: ParseType.block, size: 0 }
+        }
         case r.value_:
+        case r.fixed_point_decimal_places:
+        case r.years:
+        case r.months:
+        case r.days:
+        case r.hours:
+        case r.minutes:
+        case r.seconds:
+        case r.weeks:
         case r.uint:
         case r.sint: {
             return { type: ParseType.value }
@@ -261,7 +272,7 @@ export const createPlan = (st: DecoderState, i: Item): ParsePlan => {
     if (typeof i == 'object') {
         const s = i as Scope
         if (s.op) {
-            return { ops: Array.isArray(s.op) ? s.op : [s.op], index: 0 }
+            return { ops: s.op.type == ParseType.multiple ? s.op.ops : [s.op], index: 0 }
         }
         throw decoderError(st, 'no parse op')
     }
@@ -286,6 +297,7 @@ export const resolveOp = (st: DecoderState, c: Scope) => {
                         }
                         break
                     }
+                    case r.type_product:
                     case r.type_sum: {
                         c.op = s.op
                         break
@@ -298,17 +310,45 @@ export const resolveOp = (st: DecoderState, c: Scope) => {
             break
         }
         case r.type_sum: {
-            const choices = []
+            const choices: ParseOp[] = []
+            let resolve: boolean
             for (let x of c.items) {
-                let op
                 if (typeof x == 'object') {
-
+                    if (resolve) {
+                        const op = (x as Scope).op
+                        choices.push(op || { type: ParseType.item })
+                        resolve = false
+                    }
+                    else {
+                        choices.push({ type: ParseType.none })
+                    }
                 }
                 else {
-                    
+                    if (x == r.context_symbol) {
+                        resolve = true
+                    }
+                    else {
+                        choices.push(resolve ? numOp(x, false) : { type: ParseType.none })
+                        resolve = false
+                    }
                 }
             }
-            c.op = { type: ParseType.choice, choices }
+            c.op = { type: ParseType.choice, ops: choices }
+            break
+        }
+        case r.type_product: {
+            const choices: ParseOp[] = []
+            for (let x of c.items) {
+                if (typeof x == 'object') {
+                    const op = (x as Scope).op
+                    choices.push(op || { type: ParseType.item })
+                }
+                else {
+                    choices.push(numOp(x, false))
+                }
+            }
+            c.op = { type: ParseType.multiple, ops: choices }
+            break
         }
     }
 }
@@ -326,8 +366,12 @@ export const parse = (b: BufferSource) => {
                 if (t.plan) {
                     t.plan.index++
                     switch (t.type) {
-                        case r.bind:
+                        case r.bind: {
+                            if (t.plan.index == t.plan.ops.length) {
+                                t.needed = t.items.length
+                            }
                             break
+                        }
                         case r.collection_: {
                             if (t.plan.index == t.plan.ops.length) {
                                 t.plan.index = 0
@@ -341,7 +385,7 @@ export const parse = (b: BufferSource) => {
                                     t.plan.index = 0
                                 }
                                 else {
-                                    t.needed == t.items.length
+                                    t.needed = t.items.length
                                 }
                             }
                             break
@@ -351,7 +395,6 @@ export const parse = (b: BufferSource) => {
                     }
                 }
                 else if (t.type == r.bind) {
-                    t.needed = 2
                     t.plan = createPlan(ds, i)
                 }
                 if (t.items.length == t.needed) {
@@ -376,14 +419,21 @@ export const parse = (b: BufferSource) => {
         let op = top?.plan?.ops[top.plan.index]
         if (op?.type == ParseType.choice) {
             const c = read(ds)
-            if (op.choices.length <= c) {
+            if (op.ops.length <= c) {
                 throw decoderError(ds, 'invalid choice index')
             }
-            op = op.choices[c]
-            scope_stack.push({ type: choice_symbol, needed: 2, items: [c] })
+            op = op.ops[c]
             if (op.type == ParseType.none) {
+                scope_stack.push({ type: choice_symbol, needed: 1, items: [] })
                 collapse_scope(c)
                 continue
+            }
+            else {
+                scope_stack.push({ type: choice_symbol, needed: 2, items: [c] })
+                if (op.type == ParseType.multiple) {
+                    scope_stack.push({ type: multiple_symbol, needed: op.ops.length, items: [], plan: { ops: op.ops, index: 0 } })
+                    continue
+                }
             }
         }
         if (op && op.type != ParseType.item) {
@@ -477,11 +527,7 @@ export const parse = (b: BufferSource) => {
                     collapse_scope(scope_stack.pop())
                     break
                 }
-                case r.run_length_encoding: {
-                    scope_stack.push({ type: x, needed: 2, items: [read(ds)] })
-                    break
-                }
-                case u.back_ref: {
+                case r.back_ref: {
                     collapse_scope(back_ref(st, read(ds)))
                     break
                 }
@@ -722,3 +768,19 @@ export const finishWrite = (s: EncoderState) => {
     }
     s.buffers.push(bufToU8(s.dv, 0, s.offset))
 }
+export const zigzagEncode = (n: number) => (n >> 31) ^ (n << 1)
+export const zigzagDecode = (n: number) => (n >>> 1) ^ -(n & 1)
+export const unicodeToTextLookup = [64, 65, 66, 67, 68, 69, 70, 71, 72, 73, 10, 74, 75, 76, 77, 78, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88, 89, 90, 91, 92, 93, 94,
+    3, 11, 95, 96, 97, 98, 99, 100, 101, 102, 103, 104, 12, 13, 14, 105, 106, 107, 108, 109, 110, 111, 112, 113, 114, 115, 116, 117, 118, 119, 120, 15,
+    121, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 122, 123, 124, 125, 126,
+    127, 4, 42, 43, 44, 5, 45, 46, 47, 48, 49, 50, 51, 52, 53, 6, 54, 55, 56, 57, 7, 58, 59, 60, 61, 62, 63
+]
+export const textToUnicodeLookup = [, , , 32, 97, 101, 111, 116, , , 10, 33, 44, 45, 46, 63,
+    65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88, 89, 90,
+    98, 99, 100, 102, 103, 104, 105, 106, 107, 108, 109, 110, 112, 113, 114, 115, 117, 118, 119, 120, 121, 122,
+    0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31,
+    34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62,
+    64, 91, 92, 93, 94, 95, 96
+]
+export const unicodeToText = (codePoint: number) => codePoint < 123 ? unicodeToTextLookup[codePoint] : codePoint + 5
+export const textToUnicode = (n: number) => n < 128 ? textToUnicodeLookup[n] : n - 5
