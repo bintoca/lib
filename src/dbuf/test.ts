@@ -95,6 +95,21 @@ test('magicNumber', () => {
     dv.setUint8(3, 'U'.codePointAt(0))
     expect(dv.getUint32(0)).toBe(r.magicNumber)
 })
+test.each([[[r.end_scope], []]])('early end', (i, o) => {
+    const w = writer(i)
+    try {
+        const s = parse(w)
+        if (s.root.items[s.root.items.length - 1] == r.placeholder) {
+            s.root.items.pop()
+        }
+        expect(s.scope_stack.length).toBe(0)
+        expect(s.root.items).toEqual(o)
+    }
+    catch (e) {
+        console.log(w)
+        throw e
+    }
+})
 const op1 = (p: ParseType): ParseOp => { return { type: p } }
 const opv = op1(ParseType.value)
 const opvb = op1(ParseType.vblock)
@@ -141,8 +156,9 @@ const srTex = (items: Item[]): Scope => { return { type: u.text, needed: 0, inTe
 const bText = (items: Item[]) => bind(r.text, sTex(items), { type: ParseType.scope, scope: sTex(items) })
 const brText = (items: Item[]) => bind(r.rich_text, srTex(items), { type: ParseType.scope, scope: srTex(items) })
 const ro: Scope = { type: non_text_symbol, needed: 0, items: [r.IPv4, null, bind_uint_out] }
-const fo: Scope = { type: r.forward_ref, needed: 3, items: [ro, 1, 4] }
+const fo: Scope = { type: r.forward_ref, needed: 3, items: [ro, 1, 4], op: { type: ParseType.forward } }
 ro.items[1] = fo
+fo.op.forward = fo
 test.each([
     [[r.IPv4, r.back_ref, 0, ...bind_uint_in], [r.IPv4, r.IPv4, bind_uint_out]],
     [[r.IPv4, r.forward_ref, 4, ...bind_uint_in], ro.items],
@@ -174,8 +190,31 @@ test.each([
     }
 })
 test.each([
+    [[r.IPv4, r.forward_ref, 0, r.uint, r.bind, r.back_ref, 1, 2], 2],
+    [[r.forward_ref, 0, r.type_sub, r.uint, r.end_scope, r.bind, r.back_ref, 1, 2], 2],
+    //[[r.forward_ref, 0, r.type_choice, r.IPv4, r.context_symbol, r.back_ref, 0, r.end_scope, r.bind, r.back_ref, 0, 1, 1, 0], 2],
+])('parse_Forward(%#)', (i, o) => {
+    const w = writer(i)
+    try {
+        const s = parse(w)
+        if (s.root.items[s.root.items.length - 1] == r.placeholder) {
+            s.root.items.pop()
+        }
+        expect(s.scope_stack.length).toBe(1)
+        //console.log(((s.root.items[s.root.items.length - 1] as Scope).items[1] as Scope).items[0])
+        expect((s.root.items[s.root.items.length - 1] as Scope).items[1]).toEqual(o)
+    }
+    catch (e) {
+        console.log(w)
+        throw e
+    }
+})
+test.each([
     [[r.bind, r.end_scope], 'top of scope_stack invalid for end_scope'],
     [[r.back_ref, 0], 'invalid back_ref'],
+    [[r.forward_ref, 0, r.bind, r.back_ref, 0, 2], 'invalid forward index'],
+    [[r.forward_ref, 1, r.bind, r.back_ref, 0, 2], 'invalid forward index'],
+    [[r.forward_ref, 1, r.type_struct, r.back_ref, 0, r.end_scope, r.type_struct, r.back_ref, 1, r.end_scope, r.bind, r.back_ref, 1, 2], 'max forward depth'],
     [[r.bind, r.text, u.non_text, u.end_scope], 'non_text not allowed'],
     [[r.IPv4, r.bind, r.text, u.back_ref, 0, u.end_scope], 'rich text not allowed in plain text'],
 ])('parseError(%#)', (i, o) => {

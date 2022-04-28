@@ -123,6 +123,7 @@ export const enum r {
     vIEEE_decimal_DPD,
     dns_idna,
     TAI_seconds,//unsigned
+    unit,
 
     first_param,
     second_param,
@@ -173,6 +174,9 @@ export const enum r {
     duration,
     timePeriod,
 
+    license,
+    Apache_LLVM,
+
     magicNumber = 4473429
 }
 export const enum u {
@@ -203,8 +207,8 @@ export const non_text_symbol = Symbol.for('https://bintoca.com/symbol/nontext')
 export type Scope = { type: r | u | symbol, needed: number, items: Item[], result?, inText?: boolean, richText?: boolean, op?: ParseOp, ops?: ParseOp[], parseIndex?: number }
 export type Slot = Scope | number
 export type Item = Slot | Uint8Array
-export const enum ParseType { value, vblock, block, item, scope, collection, choice, none, multiple }
-export type ParseOp = { type: ParseType, size?: number, scope?: Scope, ops?: ParseOp[] }
+export const enum ParseType { value, vblock, block, item, scope, collection, choice, none, multiple, forward }
+export type ParseOp = { type: ParseType, size?: number, scope?: Scope, ops?: ParseOp[], forward?: Scope }
 export type ParsePlan = { ops: ParseOp[], index: number }
 export type ParseState = { root: Scope, scope_stack: Scope[], decoder: DecoderState }
 export const decoderError = (s: DecoderState, message: string) => { return { message, state: s } }
@@ -240,6 +244,7 @@ export const numOp = (i: number): ParseOp => {
         case r.minutes:
         case r.seconds:
         case r.weeks:
+        case r.port:
         case r.uint:
         case r.sint: {
             return { type: ParseType.value }
@@ -249,8 +254,16 @@ export const numOp = (i: number): ParseOp => {
         case r.vIEEE_binary: {
             return { type: ParseType.vblock }
         }
+        case r.IPv4:
         case r.TAI_seconds: {
             return { type: ParseType.block, size: 0 }
+        }
+        case r.IPv6:
+        case r.UUID: {
+            return { type: ParseType.block, size: 3 }
+        }
+        case r.sha256: {
+            return { type: ParseType.block, size: 7 }
         }
         case r.text:
         case r.dns_idna:
@@ -268,10 +281,6 @@ export const numOp = (i: number): ParseOp => {
 }
 export const resolveOp = (st: DecoderState, c: Scope) => {
     switch (c.type) {
-        case r.blockSize: {
-            c.op = { type: ParseType.block, size: c.items[0] as number }
-            break
-        }
         case r.type_sub: {
             const last = c.items[c.items.length - 1]
             if (typeof last == 'object') {
@@ -333,9 +342,6 @@ export const parse = (b: BufferSource): ParseState => {
         let i = x
         while (loop) {
             const t = scope_top()
-            if (!t) {
-                break
-            }
             t.items.push(i)
             if (t.ops) {
                 t.parseIndex++
@@ -384,8 +390,19 @@ export const parse = (b: BufferSource): ParseState => {
             }
         }
     }
+    function forward(op: ParseOp): ParseOp {
+        if (scope_stack.length > 1000) {
+            throw decoderError(ds, 'max forward depth')
+        }
+        const t = op.forward.items
+        const o = (t[0] as Scope).items[(t[1] as number) + (t[2] as number) + 1]
+        if (o === undefined) {
+            throw decoderError(ds, 'invalid forward index')
+        }
+        return typeof o == 'object' ? (o as Scope).op : numOp(o)
+    }
     const ds = st.decoder
-    while (continueDecode(ds) && st.scope_stack.length) {
+    while (continueDecode(ds)) {
         const top = scope_top()
         let op = top.ops ? top.ops[top.parseIndex] : top.op
         if (op?.type == ParseType.choice) {
@@ -399,9 +416,17 @@ export const parse = (b: BufferSource): ParseState => {
                 collapse_scope(c)
                 continue
             }
+            else if (op.type == ParseType.forward) {
+                op = forward(op)
+                scope_stack.push({ type: choice_symbol, needed: 2, items: [c], op })
+                continue
+            }
             else {
                 scope_stack.push({ type: choice_symbol, needed: 2, items: [c] })
             }
+        }
+        if (op?.type == ParseType.forward) {
+            op = forward(op)
         }
         if (op && op.type != ParseType.item) {
             switch (op.type) {
@@ -490,7 +515,11 @@ export const parse = (b: BufferSource): ParseState => {
                         throw decoderError(ds, 'top of scope_stack invalid for end_scope')
                     }
                     resolveOp(ds, top)
-                    collapse_scope(scope_stack.pop())
+                    const t = scope_stack.pop()
+                    if (scope_stack.length == 0) {
+                        return st
+                    }
+                    collapse_scope(t)
                     break
                 }
                 case r.back_ref: {
@@ -498,20 +527,26 @@ export const parse = (b: BufferSource): ParseState => {
                     break
                 }
                 case r.forward_ref: {
-                    scope_stack.push({ type: x, needed: 3, items: [top, top.items.length] })
-                    collapse_scope(read(ds))
-                    break
-                }
-                case r.bitSize:
-                case r.blockSize:
-                case r.back_ref_hint:
-                case r.next_singular: {
-                    const s = { type: x, needed: 1, items: [] }
+                    const s: Scope = { type: x, needed: 3, items: [top, top.items.length], op: { type: ParseType.forward } }
+                    s.op.forward = s
                     scope_stack.push(s)
                     collapse_scope(read(ds))
-                    resolveOp(ds, s)
                     break
                 }
+                //case r.bitSize:
+                case r.blockSize: {
+                    const s = read(ds)
+                    scope_stack.push({ type: x, needed: 1, items: [], op: { type: ParseType.block, size: s } })
+                    collapse_scope(s)
+                    break
+                }
+                case r.back_ref_hint:
+                case r.next_singular: {
+                    scope_stack.push({ type: x, needed: 1, items: [] })
+                    collapse_scope(read(ds))
+                    break
+                }
+                case r.unit:
                 case r.logical_not: {
                     scope_stack.push({ type: x, needed: 1, items: [] })
                     break
