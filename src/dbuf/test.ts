@@ -164,6 +164,7 @@ test.each([
     [[r.IPv4, r.forward_ref, 4, ...bind_uint_in], ro.items],
     [[r.bind, r.text, u.a, ...text_e_in, u.back_ref, 0, u.end_scope, r.bind, r.rich_text, u.a, u.non_text, ...bind_uint_in, u.end_scope, u.end_scope], [bText([u.a, text_e_out, text_e_out]), brText([u.a, need0(non_text_symbol, [bind_uint_out])])]],
     [[r.bind, r.vIEEE_binary, 0, u8], [bind(r.vIEEE_binary, u8, opvb)]],
+    [[r.bind, r.v32_32, 2, u8], [bind(r.v32_32, new Uint8Array([0, 0, 0, 2, 1, 2, 3, 4]), op1(ParseType.v32_32))]],
     [[r.bind, r.type_sub, r.vIEEE_binary, r.blockSize, 0, r.end_scope, u8], [bindO(r.type_sub, [r.vIEEE_binary, needN(r.blockSize, [0], opB(0))], opB(0), u8)]],
     [[r.bind, r.type_sub, r.vIEEE_binary, r.end_scope, 0, u8], [bindO(r.type_sub, [r.vIEEE_binary], opvb, u8)]],
     [[r.bind, r.type_sub, r.uint, r.end_scope, 5], [bindO(r.type_sub, [r.uint], opv, 5)]],
@@ -192,7 +193,7 @@ test.each([
 test.each([
     [[r.IPv4, r.forward_ref, 0, r.uint, r.bind, r.back_ref, 1, 2], 2],
     [[r.forward_ref, 0, r.type_sub, r.uint, r.end_scope, r.bind, r.back_ref, 1, 2], 2],
-    //[[r.forward_ref, 0, r.type_choice, r.IPv4, r.context_symbol, r.back_ref, 0, r.end_scope, r.bind, r.back_ref, 0, 1, 1, 0], 2],
+    [[r.forward_ref, 0, r.type_choice, r.IPv4, r.context_symbol, r.back_ref, 0, r.end_scope, r.bind, r.back_ref, 0, 1, 1, 0], { type: choice_symbol, items: [1, { type: choice_symbol, items: [1, { type: choice_symbol, items: [0] }] }] }],
 ])('parse_Forward(%#)', (i, o) => {
     const w = writer(i)
     try {
@@ -201,8 +202,14 @@ test.each([
             s.root.items.pop()
         }
         expect(s.scope_stack.length).toBe(1)
-        //console.log(((s.root.items[s.root.items.length - 1] as Scope).items[1] as Scope).items[0])
-        expect((s.root.items[s.root.items.length - 1] as Scope).items[1]).toEqual(o)
+        const ou = (s.root.items[s.root.items.length - 1] as Scope).items[1]
+        function strip(x: Slot) {
+            if (typeof x == 'object') {
+                return { type: x.type, items: x.items.map(y => strip(y as Slot)) }
+            }
+            return x
+        }
+        expect(strip(ou as Slot)).toEqual(o)
     }
     catch (e) {
         console.log(w)

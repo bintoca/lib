@@ -207,7 +207,7 @@ export const non_text_symbol = Symbol.for('https://bintoca.com/symbol/nontext')
 export type Scope = { type: r | u | symbol, needed: number, items: Item[], result?, inText?: boolean, richText?: boolean, op?: ParseOp, ops?: ParseOp[], parseIndex?: number }
 export type Slot = Scope | number
 export type Item = Slot | Uint8Array
-export const enum ParseType { value, vblock, block, item, scope, collection, choice, none, multiple, forward }
+export const enum ParseType { value, vblock, block, item, scope, collection, choice, none, multiple, forward, v32_32 }
 export type ParseOp = { type: ParseType, size?: number, scope?: Scope, ops?: ParseOp[], forward?: Scope }
 export type ParsePlan = { ops: ParseOp[], index: number }
 export type ParseState = { root: Scope, scope_stack: Scope[], decoder: DecoderState }
@@ -264,6 +264,9 @@ export const numOp = (i: number): ParseOp => {
         }
         case r.sha256: {
             return { type: ParseType.block, size: 7 }
+        }
+        case r.v32_32: {
+            return { type: ParseType.v32_32 }
         }
         case r.text:
         case r.dns_idna:
@@ -440,6 +443,14 @@ export const parse = (b: BufferSource): ParseState => {
                 }
                 case ParseType.vblock: {
                     collapse_scope(readBuffer(ds, read(ds)))
+                    break
+                }
+                case ParseType.v32_32: {
+                    const dv = new DataView(new ArrayBuffer(8))
+                    dv.setUint32(0, read(ds))
+                    dv.setUint32(4, ds.dv.getUint32(ds.dvOffset))
+                    ds.dvOffset += 4
+                    collapse_scope(bufToU8(dv))
                     break
                 }
                 case ParseType.multiple: {
