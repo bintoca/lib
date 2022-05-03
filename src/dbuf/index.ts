@@ -87,8 +87,8 @@ export const enum r {
     type_sub,
     type_choice,
     type_struct,
+    type_collection,
     bind,
-    context_symbol,
 
     text,
     rich_text,
@@ -113,7 +113,6 @@ export const enum r {
 
     //singular
     value_,
-    collection_,
     item_,
     vblock,
 
@@ -203,12 +202,15 @@ export const enum u {
 }
 export const multiple_symbol = Symbol.for('https://bintoca.com/symbol/multiple')
 export const choice_symbol = Symbol.for('https://bintoca.com/symbol/choice')
+export const text_symbol = Symbol.for('https://bintoca.com/symbol/text')
 export const non_text_symbol = Symbol.for('https://bintoca.com/symbol/nontext')
-export type Scope = { type: r | u | symbol, needed: number, items: Item[], result?, inText?: boolean, richText?: boolean, op?: ParseOp, ops?: ParseOp[], parseIndex?: number }
+export const collection_symbol = Symbol.for('https://bintoca.com/symbol/collection')
+export const rle_symbol = Symbol.for('https://bintoca.com/symbol/rle')
+export type Scope = { type: r | symbol, needed: number, items: Item[], result?, inText?: boolean, richText?: boolean, op?: ParseOp, ops?: ParseOp[], parseIndex?: number }
 export type Slot = Scope | number
 export type Item = Slot | Uint8Array
-export const enum ParseType { value, vblock, block, item, scope, collection, choice, none, multiple, forward, v32_32 }
-export type ParseOp = { type: ParseType, size?: number, scope?: Scope, ops?: ParseOp[], forward?: Scope }
+export const enum ParseType { value, vblock, block, item, text, rich_text, collection, vCollection, choice, none, multiple, forward, v32_32 }
+export type ParseOp = { type: ParseType, size?: number, ops?: ParseOp[], forward?: Scope }
 export type ParsePlan = { ops: ParseOp[], index: number }
 export type ParseState = { root: Scope, scope_stack: Scope[], decoder: DecoderState }
 export const decoderError = (s: DecoderState, message: string) => { return { message, state: s } }
@@ -233,7 +235,7 @@ export const back_ref = (s: ParseState, n: number) => {
     }
     throw decoderError(s.decoder, 'invalid back_ref')
 }
-export const numOp = (i: number): ParseOp => {
+export const numOp = (i: number, choice: boolean): ParseOp => {
     switch (i) {
         case r.value_:
         case r.fixed_point_decimal_places:
@@ -246,93 +248,52 @@ export const numOp = (i: number): ParseOp => {
         case r.weeks:
         case r.port:
         case r.uint:
-        case r.sint: {
+        case r.sint:
             return { type: ParseType.value }
-        }
         case r.vblock:
         case r.vIEEE_decimal_DPD:
-        case r.vIEEE_binary: {
+        case r.vIEEE_binary:
             return { type: ParseType.vblock }
-        }
         case r.IPv4:
-        case r.TAI_seconds: {
+        case r.TAI_seconds:
             return { type: ParseType.block, size: 0 }
-        }
         case r.IPv6:
-        case r.UUID: {
+        case r.UUID:
             return { type: ParseType.block, size: 3 }
-        }
-        case r.sha256: {
+        case r.sha256:
             return { type: ParseType.block, size: 7 }
-        }
-        case r.v32_32: {
+        case r.v32_32:
             return { type: ParseType.v32_32 }
-        }
         case r.text:
         case r.dns_idna:
-        case r.rich_text: {
-            const c: Scope = { type: u.text, needed: 0, items: [], inText: true }
-            if (i == r.rich_text) {
-                c.richText = true
-            }
-            return { type: ParseType.scope, scope: c }
-        }
+            return { type: ParseType.text }
+        case r.rich_text:
+            return { type: ParseType.rich_text }
         case r.item_:
-        default:
             return { type: ParseType.item }
+        default:
+            return { type: choice ? ParseType.none : ParseType.item }
     }
 }
+export const resolveItemOp = (x: Item, choice?: boolean) => typeof x == 'object' ? (x as Scope).op || { type: choice ? ParseType.none : ParseType.item } : numOp(x, choice)
 export const resolveOp = (st: DecoderState, c: Scope) => {
     switch (c.type) {
-        case r.type_sub: {
-            const last = c.items[c.items.length - 1]
-            if (typeof last == 'object') {
-                c.op = (last as Scope).op || { type: ParseType.item }
-            }
-            else {
-                c.op = numOp(last)
-            }
+        case r.type_collection:
+            c.op = { type: ParseType.collection, ops: [resolveItemOp(c.items[c.items.length - 1])] }
             break
-        }
-        case r.type_choice: {
-            const choices: ParseOp[] = []
-            let resolve: boolean
-            for (let x of c.items) {
-                if (typeof x == 'object') {
-                    if (resolve) {
-                        choices.push((x as Scope).op || { type: ParseType.item })
-                        resolve = false
-                    }
-                    else {
-                        choices.push({ type: ParseType.none })
-                    }
-                }
-                else {
-                    if (x == r.context_symbol) {
-                        resolve = true
-                    }
-                    else {
-                        choices.push(resolve ? numOp(x) : { type: ParseType.none })
-                        resolve = false
-                    }
-                }
-            }
-            c.op = { type: ParseType.choice, ops: choices }
+        case r.vCollection:
+        case r.vCollection_merge:
+            c.op = { type: ParseType.vCollection, ops: [resolveItemOp(c.items[c.items.length - 1])] }
             break
-        }
-        case r.type_struct: {
-            const choices: ParseOp[] = []
-            for (let x of c.items) {
-                if (typeof x == 'object') {
-                    choices.push((x as Scope).op || { type: ParseType.item })
-                }
-                else {
-                    choices.push(numOp(x))
-                }
-            }
-            c.op = { type: ParseType.multiple, ops: choices }
+        case r.type_sub:
+            c.op = resolveItemOp(c.items[c.items.length - 1])
             break
-        }
+        case r.type_choice:
+            c.op = { type: ParseType.choice, ops: c.items.map(x => resolveItemOp(x, true)) }
+            break
+        case r.type_struct:
+            c.op = { type: ParseType.multiple, ops: c.items.map(x => resolveItemOp(x)) }
+            break
     }
 }
 export const parse = (b: BufferSource): ParseState => {
@@ -347,43 +308,17 @@ export const parse = (b: BufferSource): ParseState => {
             const t = scope_top()
             t.items.push(i)
             if (t.ops) {
-                t.parseIndex++
-                // switch (t.type) {
-                //     case r.collection_: {
-                //         if (t.plan.index == t.plan.ops.length) {
-                //             t.plan.index = 0
-                //         }
-                //         break
-                //     }
-                //     case r.vCollection:
-                //     case r.vCollection_merge: {
-                //         if (t.plan.index == t.plan.ops.length) {
-                //             if (read(ds)) {
-                //                 t.plan.index = 0
-                //             }
-                //             else {
-                //                 t.needed = t.items.length
-                //             }
-                //         }
-                //         break
-                //     }
-                //     default:
-                //         throw 'not implemented plan type: ' + t.type.toString()
-                // }
-            }
-            if (t.type == r.bind && t.items.length == 1) {
-                if (typeof i == 'object') {
-                    const s = i as Scope
-                    if (s.op) {
-                        t.op = s.op
-                    }
-                    else {
-                        throw decoderError(ds, 'no parse op')
+                if (t.type == collection_symbol) {
+                    if (!t.needed && !read(ds)) {
+                        t.needed = t.items.length
                     }
                 }
                 else {
-                    t.op = numOp(i)
+                    t.parseIndex++
                 }
+            }
+            if (t.type == r.bind && !t.op) {
+                t.op = resolveItemOp(i)
             }
             if (t.items.length == t.needed) {
                 i = scope_stack.pop()
@@ -402,7 +337,7 @@ export const parse = (b: BufferSource): ParseState => {
         if (o === undefined) {
             throw decoderError(ds, 'invalid forward index')
         }
-        return typeof o == 'object' ? (o as Scope).op : numOp(o)
+        return resolveItemOp(o)
     }
     const ds = st.decoder
     while (continueDecode(ds)) {
@@ -420,7 +355,10 @@ export const parse = (b: BufferSource): ParseState => {
                 continue
             }
             else if (op.type == ParseType.forward) {
-                op = forward(op)
+                scope_stack.push({ type: choice_symbol, needed: 2, items: [c], op: forward(op) })
+                continue
+            }
+            else if (op.type == ParseType.choice) {
                 scope_stack.push({ type: choice_symbol, needed: 2, items: [c], op })
                 continue
             }
@@ -457,13 +395,20 @@ export const parse = (b: BufferSource): ParseState => {
                     scope_stack.push({ type: multiple_symbol, needed: op.ops.length, items: [], ops: op.ops, parseIndex: 0 })
                     break
                 }
-                case ParseType.scope: {
-                    scope_stack.push(op.scope)
+                case ParseType.text: {
+                    scope_stack.push({ type: r.text, needed: 0, items: [], inText: true })
+                    break
+                }
+                case ParseType.rich_text: {
+                    scope_stack.push({ type: r.rich_text, needed: 0, items: [], inText: true, richText: true })
                     break
                 }
                 case ParseType.collection: {
-                    op.scope.needed = read(ds)
-                    scope_stack.push(op.scope)
+                    scope_stack.push({ type: collection_symbol, needed: read(ds) + 1, items: [], ops: op.ops, parseIndex: 0 })
+                    break
+                }
+                case ParseType.vCollection: {
+                    scope_stack.push({ type: collection_symbol, needed: 0, items: [], ops: op.ops, parseIndex: 0 })
                     break
                 }
                 default:
@@ -474,11 +419,11 @@ export const parse = (b: BufferSource): ParseState => {
             const x = read(ds)
             switch (x) {
                 case u.text: {
-                    scope_stack.push({ type: x, needed: 0, items: [], inText: true })
+                    scope_stack.push({ type: text_symbol, needed: 0, items: [], inText: true })
                     break
                 }
                 case u.run_length_encoding: {
-                    scope_stack.push({ type: x, needed: 2, items: [read(ds)], inText: true })
+                    scope_stack.push({ type: rle_symbol, needed: 2, items: [read(ds)], inText: true })
                     break
                 }
                 case u.back_ref: {
@@ -499,6 +444,9 @@ export const parse = (b: BufferSource): ParseState => {
                     break
                 }
                 case u.end_scope: {
+                    if (top.items.length == 0) {
+                        throw decoderError(ds, 'empty end_scope')
+                    }
                     collapse_scope(scope_stack.pop())
                     break
                 }
@@ -517,6 +465,9 @@ export const parse = (b: BufferSource): ParseState => {
                 case r.type_struct:
                 case r.type_choice:
                 case r.type_path:
+                case r.type_collection:
+                case r.vCollection:
+                case r.vCollection_merge:
                 case r.concat: {
                     scope_stack.push({ type: x, needed: 0, items: [] })
                     break
@@ -524,6 +475,9 @@ export const parse = (b: BufferSource): ParseState => {
                 case r.end_scope: {
                     if (top.needed) {
                         throw decoderError(ds, 'top of scope_stack invalid for end_scope')
+                    }
+                    if (top.items.length == 0) {
+                        throw decoderError(ds, 'empty end_scope')
                     }
                     resolveOp(ds, top)
                     const t = scope_stack.pop()

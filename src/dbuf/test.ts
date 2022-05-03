@@ -1,4 +1,4 @@
-import { evaluateAll, parse, r, u, write, finishWrite, EncoderState, multiple_symbol, Item, createDecoder, continueDecode, read, createEncoder, writeBuffer, ParseType, write_checked, ParseOp, Scope, zigzagEncode, zigzagDecode, unicodeToText, textToUnicode, choice_symbol, non_text_symbol, Slot } from '@bintoca/dbuf'
+import { evaluateAll, parse, r, u, write, finishWrite, EncoderState, multiple_symbol, Item, createDecoder, continueDecode, read, createEncoder, writeBuffer, ParseType, write_checked, ParseOp, Scope, zigzagEncode, zigzagDecode, unicodeToText, textToUnicode, choice_symbol, non_text_symbol, Slot, collection_symbol, text_symbol } from '@bintoca/dbuf'
 
 const dv = new DataView(new ArrayBuffer(8))
 test('float', () => {
@@ -95,7 +95,7 @@ test('magicNumber', () => {
     dv.setUint8(3, 'U'.codePointAt(0))
     expect(dv.getUint32(0)).toBe(r.magicNumber)
 })
-test.each([[[r.end_scope], []]])('early end', (i, o) => {
+test.each([[[r.IPv4, r.end_scope], [r.IPv4]]])('early end', (i, o) => {
     const w = writer(i)
     try {
         const s = parse(w)
@@ -113,16 +113,38 @@ test.each([[[r.end_scope], []]])('early end', (i, o) => {
 const op1 = (p: ParseType): ParseOp => { return { type: p } }
 const opv = op1(ParseType.value)
 const opvb = op1(ParseType.vblock)
+const opt = op1(ParseType.text)
+const oprt = op1(ParseType.rich_text)
 const bind_uint_in = [r.bind, r.uint, 2]
 const bind_uint_out = { type: r.bind, needed: 2, items: [r.uint, 2], op: op1(ParseType.value) }
 const u8 = new Uint8Array([1, 2, 3, 4])
 const text_e_in = [u.text, u.e, u.end_scope]
-const text_e_out = { type: u.text, needed: 0, inText: true, items: [u.e] }
+const text_e_out = { type: text_symbol, needed: 0, inText: true, items: [u.e] }
 const bind = (t: Slot, v: Item, p: ParseOp): Scope => { return { type: r.bind, needed: 2, items: [t, v], op: p } }
 const bindO = (t: r, items: Item[], p: ParseOp, v: Item | Item[]): Scope => {
     if (Array.isArray(v)) {
         let i = 0
         function rr(op: ParseOp, tt: Item[]): Scope {
+            if (op.type == ParseType.collection || op.type == ParseType.vCollection) {
+                const it = []
+                const x = op.ops[0]
+                const z = tt[0]
+                const count = v[i]
+                i++
+                for (let k = 0; k < count; k++) {
+                    if (x.type == ParseType.multiple) {
+                        it.push(rr(x, (tt[0] as Scope).items))
+                    }
+                    else {
+                        it.push(v[i])
+                        i++
+                    }
+                }
+                if (typeof z == 'object' && !(z instanceof Uint8Array)) {
+                    z.op = x
+                }
+                return { type: collection_symbol, needed: it.length, items: it, ops: op.ops, parseIndex: 0 }
+            }
             const it = []
             let j = 0
             for (let x of op.ops) {
@@ -145,16 +167,17 @@ const bindO = (t: r, items: Item[], p: ParseOp, v: Item | Item[]): Scope => {
     }
     return { type: r.bind, needed: 2, items: [need0(t, items, p), v], op: p }
 }
-const need0 = (type: r | u | symbol, items: Item[], op?: ParseOp) => { return { type, needed: 0, items, op } }
-const needN = (type: r | u | symbol, items: Item[], op?: ParseOp) => { return { type, needed: items.length, items, op } }
+const need0 = (type: r | symbol, items: Item[], op?: ParseOp) => { return { type, needed: 0, items, op } }
+const needN = (type: r | symbol, items: Item[], op?: ParseOp) => { return { type, needed: items.length, items, op } }
 const opB = (n: number): ParseOp => { return { type: ParseType.block, size: n } }
 const opC = (n: ParseOp[]): ParseOp => { return { type: ParseType.choice, ops: n } }
+const opCo = (n: ParseOp): ParseOp => { return { type: ParseType.collection, ops: [n] } }
+const opvCo = (n: ParseOp): ParseOp => { return { type: ParseType.vCollection, ops: [n] } }
 const opM = (n: ParseOp[]): ParseOp => { return { type: ParseType.multiple, ops: n } }
-const opSc = (s: Scope): ParseOp => { return { type: ParseType.scope, scope: s } }
-const sTex = (items: Item[]): Scope => { return { type: u.text, needed: 0, inText: true, items } }
-const srTex = (items: Item[]): Scope => { return { type: u.text, needed: 0, inText: true, richText: true, items } }
-const bText = (items: Item[]) => bind(r.text, sTex(items), { type: ParseType.scope, scope: sTex(items) })
-const brText = (items: Item[]) => bind(r.rich_text, srTex(items), { type: ParseType.scope, scope: srTex(items) })
+const sTex = (items: Item[]): Scope => { return { type: r.text, needed: 0, inText: true, items } }
+const srTex = (items: Item[]): Scope => { return { type: r.rich_text, needed: 0, inText: true, richText: true, items } }
+const bText = (items: Item[]) => bind(r.text, sTex(items), opt)
+const brText = (items: Item[]) => bind(r.rich_text, srTex(items), oprt)
 const ro: Scope = { type: non_text_symbol, needed: 0, items: [r.IPv4, null, bind_uint_out] }
 const fo: Scope = { type: r.forward_ref, needed: 3, items: [ro, 1, 4], op: { type: ParseType.forward } }
 ro.items[1] = fo
@@ -170,11 +193,14 @@ test.each([
     [[r.bind, r.type_sub, r.uint, r.end_scope, 5], [bindO(r.type_sub, [r.uint], opv, 5)]],
     [[r.bind, r.type_sub, r.uint, r.vblock, r.end_scope, 0, u8], [bindO(r.type_sub, [r.uint, r.vblock], opvb, u8)]],
     [[...bind_uint_in, r.bind, r.type_sub, r.uint, r.item_, r.end_scope, r.back_ref, 0], [bind_uint_out, bindO(r.type_sub, [r.uint, r.item_], op1(ParseType.item), bind_uint_out)]],
-    [[r.bind, r.type_sub, r.text, r.end_scope, u.e, u.end_scope], [bindO(r.type_sub, [r.text], opSc(sTex([u.e])), sTex([u.e]))]],
+    [[r.bind, r.type_sub, r.text, r.end_scope, u.e, u.end_scope], [bindO(r.type_sub, [r.text], opt, sTex([u.e]))]],
     [[r.bind, r.TAI_seconds, u8], [bind(r.TAI_seconds, u8, opB(0))]],
-    [[r.bind, r.type_choice, r.IPv4, r.IPv6, r.end_scope, 1], [bindO(r.type_choice, [r.IPv4, r.IPv6], opC([op1(ParseType.none), op1(ParseType.none)]), needN(choice_symbol, [1]))]],
-    [[r.bind, r.type_choice, r.context_symbol, r.vIEEE_binary, r.context_symbol, r.uint, r.end_scope, 1, 2], [bindO(r.type_choice, [r.context_symbol, r.vIEEE_binary, r.context_symbol, r.uint], opC([opvb, opv]), needN(choice_symbol, [1, 2]))]],
+    [[r.bind, r.type_choice, r.location, r.locator, r.end_scope, 1], [bindO(r.type_choice, [r.location, r.locator], opC([op1(ParseType.none), op1(ParseType.none)]), needN(choice_symbol, [1]))]],
+    [[r.bind, r.type_choice, r.vIEEE_binary, r.uint, r.end_scope, 1, 2], [bindO(r.type_choice, [r.vIEEE_binary, r.uint], opC([opvb, opv]), needN(choice_symbol, [1, 2]))]],
     [[r.bind, r.type_struct, r.vIEEE_binary, r.type_struct, r.uint, r.sint, r.end_scope, r.end_scope, 0, u8, 1, 2], [bindO(r.type_struct, [r.vIEEE_binary, need0(r.type_struct, [r.uint, r.sint])], opM([opvb, opM([opv, opv])]), [u8, 1, 2])]],
+    [[r.bind, r.type_collection, r.uint, r.end_scope, 1, 3, 4], [bindO(r.type_collection, [r.uint], opCo(opv), [2, 3, 4])]],
+    [[r.bind, r.vCollection, r.uint, r.end_scope, 3, 1, 4, 0], [bindO(r.vCollection, [r.uint], opvCo(opv), [2, 3, 4])]],
+    [[r.bind, r.vCollection_merge, r.text, r.end_scope, u.e, u.end_scope, 1, u.a, u.end_scope, 0], [bindO(r.vCollection_merge, [r.text], opvCo(opt), [2, sTex([u.e]), sTex([u.a])])]],
 ])('parse(%#)', (i, o) => {
     const w = writer(i)
     try {
@@ -193,8 +219,11 @@ test.each([
 test.each([
     [[r.IPv4, r.forward_ref, 0, r.uint, r.bind, r.back_ref, 1, 2], 2],
     [[r.forward_ref, 0, r.type_sub, r.uint, r.end_scope, r.bind, r.back_ref, 1, 2], 2],
-    [[r.forward_ref, 0, r.type_choice, r.IPv4, r.context_symbol, r.back_ref, 0, r.end_scope, r.bind, r.back_ref, 0, 1, 1, 0], { type: choice_symbol, items: [1, { type: choice_symbol, items: [1, { type: choice_symbol, items: [0] }] }] }],
-])('parse_Forward(%#)', (i, o) => {
+    [[r.forward_ref, 0, r.type_choice, r.locator, r.back_ref, 0, r.end_scope, r.bind, r.back_ref, 0, 1, 1, 0], { type: choice_symbol, items: [1, { type: choice_symbol, items: [1, { type: choice_symbol, items: [0] }] }] }],
+    [[r.bind, r.type_choice, r.vIEEE_binary, r.type_choice, r.uint, r.sint, r.end_scope, r.end_scope, 1, 1, 2], { type: choice_symbol, items: [1, { type: choice_symbol, items: [1, 2] }] }],
+    [[r.bind, r.type_collection, r.type_struct, r.vIEEE_binary, r.type_choice, r.uint, r.sint, r.end_scope, r.end_scope, r.end_scope, 0, 0, u8, 1, 2], { type: collection_symbol, items: [{ type: multiple_symbol, items: [u8, { type: choice_symbol, items: [1, 2] }] }] }],
+    [[r.bind, r.type_struct, r.vIEEE_binary, r.type_collection, r.type_choice, r.uint, r.sint, r.end_scope, r.end_scope, r.end_scope, 0, u8, 0, 1, 2], { type: multiple_symbol, items: [u8, { type: collection_symbol, items: [{ type: choice_symbol, items: [1, 2] }] }] }],
+])('parse_strip(%#)', (i, o) => {
     const w = writer(i)
     try {
         const s = parse(w)
@@ -205,6 +234,9 @@ test.each([
         const ou = (s.root.items[s.root.items.length - 1] as Scope).items[1]
         function strip(x: Slot) {
             if (typeof x == 'object') {
+                if (x instanceof Uint8Array) {
+                    return x
+                }
                 return { type: x.type, items: x.items.map(y => strip(y as Slot)) }
             }
             return x
@@ -218,6 +250,8 @@ test.each([
 })
 test.each([
     [[r.bind, r.end_scope], 'top of scope_stack invalid for end_scope'],
+    [[r.function, r.end_scope], 'empty end_scope'],
+    [[r.end_scope], 'empty end_scope'],
     [[r.back_ref, 0], 'invalid back_ref'],
     [[r.forward_ref, 0, r.bind, r.back_ref, 0, 2], 'invalid forward index'],
     [[r.forward_ref, 1, r.bind, r.back_ref, 0, 2], 'invalid forward index'],
