@@ -1,5 +1,6 @@
-import { evaluateAll, parse, r, u, write, finishWrite, EncoderState, multiple_symbol, Item, createDecoder, continueDecode, read, createEncoder, writeBuffer, ParseType, write_checked, ParseOp, Scope, zigzagEncode, zigzagDecode, unicodeToText, textToUnicode, choice_symbol, non_text_symbol, Slot, collection_symbol, text_symbol } from '@bintoca/dbuf'
-
+import { evaluateAll, parse, write, finishWrite, EncoderState, multiple_symbol, Item, createDecoder, continueDecode, read, createEncoder, writeBuffer, ParseType, write_checked, ParseOp, Scope, choice_symbol, non_text_symbol, Slot, collection_symbol, text_symbol, write_pad, bits_symbol } from '@bintoca/dbuf'
+import { r, u } from '@bintoca/dbuf/registry'
+import { zigzagEncode, zigzagDecode, unicodeToText, textToUnicode, getLeap_millis, } from '@bintoca/dbuf/util'
 const dv = new DataView(new ArrayBuffer(8))
 test('float', () => {
     dv.setFloat32(0, 1, true)
@@ -62,6 +63,25 @@ test.each(mesh)('read/write(%#)', (i) => {
     }
     expect(o).toEqual(i)
 })
+test('overflow', () => {
+    const dv = new DataView(new ArrayBuffer(12))
+    dv.setUint32(0, 0xFFFFFFFF)
+    dv.setUint32(4, 0xFF000000)
+    dv.setUint32(8, 0xFE000010)
+    expect(read(createDecoder(dv))).toBe(2)
+})
+test('write_pad', () => {
+    const es = createEncoder()
+    write(es, 1)
+    write_pad(es, 18)
+    write(es, 2)
+    finishWrite(es)
+    expect(es.buffers[0]).toEqual(new Uint8Array([0x7f, 0x20, 0, 0, 0xff, 0, 0, 0, 0xf0, 0, 0x20, 0]))
+    const d = createDecoder(es.buffers[0])
+    expect(read(d)).toBe(1)
+    expect(read(d)).toBe(2)
+    expect(read(d)).toBe(0)
+})
 test.each([[[-2, -1, 0, 1, 2, 2147483647, -2147483648]]])('zigzag', (i) => {
     const es = createEncoder()
     for (let x of i) {
@@ -95,6 +115,12 @@ test('magicNumber', () => {
     dv.setUint8(3, 'U'.codePointAt(0))
     expect(dv.getUint32(0)).toBe(r.magicNumber)
 })
+test.each([[(10 * 365 + 2) * 86400, 19], [(11 * 365 + 3 + 181) * 86400, 20]])('leap', (d, o) => {
+    expect(getLeap_millis(d * 1000)).toBe(o * 1000)
+})
+test.each([[(10 * 365 + 2) * 86400 - 1, 'input is before epoch start']])('leap_error', (d, o) => {
+    expect(() => getLeap_millis(d * 1000)).toThrowError(o)
+})
 test.each([[[r.IPv4, r.end_scope], [r.IPv4]]])('early end', (i, o) => {
     const w = writer(i)
     try {
@@ -113,6 +139,7 @@ test.each([[[r.IPv4, r.end_scope], [r.IPv4]]])('early end', (i, o) => {
 const op1 = (p: ParseType): ParseOp => { return { type: p } }
 const opv = op1(ParseType.value)
 const opvb = op1(ParseType.vblock)
+const opvbi = op1(ParseType.vbit)
 const opt = op1(ParseType.text)
 const oprt = op1(ParseType.rich_text)
 const bind_uint_in = [r.bind, r.uint, 2]
@@ -170,6 +197,7 @@ const bindO = (t: r, items: Item[], p: ParseOp, v: Item | Item[]): Scope => {
 const need0 = (type: r | symbol, items: Item[], op?: ParseOp) => { return { type, needed: 0, items, op } }
 const needN = (type: r | symbol, items: Item[], op?: ParseOp) => { return { type, needed: items.length, items, op } }
 const opB = (n: number): ParseOp => { return { type: ParseType.block, size: n } }
+const opBi = (n: number): ParseOp => { return { type: ParseType.bit, size: n } }
 const opC = (n: ParseOp[]): ParseOp => { return { type: ParseType.choice, ops: n } }
 const opCo = (n: ParseOp): ParseOp => { return { type: ParseType.collection, ops: [n] } }
 const opvCo = (n: ParseOp): ParseOp => { return { type: ParseType.vCollection, ops: [n] } }
@@ -186,18 +214,19 @@ test.each([
     [[r.IPv4, r.back_ref, 0, ...bind_uint_in], [r.IPv4, r.IPv4, bind_uint_out]],
     [[r.IPv4, r.forward_ref, 4, ...bind_uint_in], ro.items],
     [[r.bind, r.text, u.a, ...text_e_in, u.back_ref, 0, u.end_scope, r.bind, r.rich_text, u.a, u.non_text, ...bind_uint_in, u.end_scope, u.end_scope], [bText([u.a, text_e_out, text_e_out]), brText([u.a, need0(non_text_symbol, [bind_uint_out])])]],
-    [[r.bind, r.vIEEE_binary, 0, u8], [bind(r.vIEEE_binary, u8, opvb)]],
+    [[r.bind, r.vIEEE_binary, u8], [bind(r.vIEEE_binary, u8, opB(1))]],
+    [[r.bind, r.bitSize, 19, u8], [bind(needN(r.bitSize, [20], opBi(20)), 32 + 4096, opBi(20))]],
     [[r.bind, r.v32_32, 2, u8], [bind(r.v32_32, new Uint8Array([0, 0, 0, 2, 1, 2, 3, 4]), op1(ParseType.v32_32))]],
-    [[r.bind, r.type_sub, r.vIEEE_binary, r.blockSize, 0, r.end_scope, u8], [bindO(r.type_sub, [r.vIEEE_binary, needN(r.blockSize, [0], opB(0))], opB(0), u8)]],
-    [[r.bind, r.type_sub, r.vIEEE_binary, r.end_scope, 0, u8], [bindO(r.type_sub, [r.vIEEE_binary], opvb, u8)]],
-    [[r.bind, r.type_sub, r.uint, r.end_scope, 5], [bindO(r.type_sub, [r.uint], opv, 5)]],
-    [[r.bind, r.type_sub, r.uint, r.vblock, r.end_scope, 0, u8], [bindO(r.type_sub, [r.uint, r.vblock], opvb, u8)]],
-    [[...bind_uint_in, r.bind, r.type_sub, r.uint, r.item_, r.end_scope, r.back_ref, 0], [bind_uint_out, bindO(r.type_sub, [r.uint, r.item_], op1(ParseType.item), bind_uint_out)]],
-    [[r.bind, r.type_sub, r.text, r.end_scope, u.e, u.end_scope], [bindO(r.type_sub, [r.text], opt, sTex([u.e]))]],
-    [[r.bind, r.TAI_seconds, u8], [bind(r.TAI_seconds, u8, opB(0))]],
+    [[r.bind, r.type_wrap, r.vIEEE_binary, r.blockSize, 0, r.end_scope, u8], [bindO(r.type_wrap, [r.vIEEE_binary, needN(r.blockSize, [1], opB(1))], opB(1), u8)]],
+    [[r.bind, r.type_wrap, r.vIEEE_binary, r.vblock, r.end_scope, 0, u8], [bindO(r.type_wrap, [r.vIEEE_binary, r.vblock], opvb, u8)]],
+    [[r.bind, r.type_wrap, r.uint, r.end_scope, 5], [bindO(r.type_wrap, [r.uint], opv, 5)]],
+    [[r.bind, r.type_wrap, r.uint, r.vbit, r.end_scope, 8, u8], [bindO(r.type_wrap, [r.uint, r.vbit], opvbi, 2)]],
+    [[...bind_uint_in, r.bind, r.type_wrap, r.uint, r.item_, r.end_scope, r.back_ref, 0], [bind_uint_out, bindO(r.type_wrap, [r.uint, r.item_], op1(ParseType.item), bind_uint_out)]],
+    [[r.bind, r.type_wrap, r.text, r.end_scope, u.e, u.end_scope], [bindO(r.type_wrap, [r.text], opt, sTex([u.e]))]],
+    [[r.bind, r.TAI_seconds, u8], [bind(r.TAI_seconds, u8, opB(1))]],
     [[r.bind, r.type_choice, r.location, r.locator, r.end_scope, 1], [bindO(r.type_choice, [r.location, r.locator], opC([op1(ParseType.none), op1(ParseType.none)]), needN(choice_symbol, [1]))]],
-    [[r.bind, r.type_choice, r.vIEEE_binary, r.uint, r.end_scope, 1, 2], [bindO(r.type_choice, [r.vIEEE_binary, r.uint], opC([opvb, opv]), needN(choice_symbol, [1, 2]))]],
-    [[r.bind, r.type_struct, r.vIEEE_binary, r.type_struct, r.uint, r.sint, r.end_scope, r.end_scope, 0, u8, 1, 2], [bindO(r.type_struct, [r.vIEEE_binary, need0(r.type_struct, [r.uint, r.sint])], opM([opvb, opM([opv, opv])]), [u8, 1, 2])]],
+    [[r.bind, r.type_choice, r.vIEEE_binary, r.uint, r.end_scope, 1, 2], [bindO(r.type_choice, [r.vIEEE_binary, r.uint], opC([opB(1), opv]), needN(choice_symbol, [1, 2]))]],
+    [[r.bind, r.type_struct, r.vIEEE_binary, r.type_struct, r.uint, r.sint, r.end_scope, r.end_scope, u8, 1, 2], [bindO(r.type_struct, [r.vIEEE_binary, need0(r.type_struct, [r.uint, r.sint])], opM([opB(1), opM([opv, opv])]), [u8, 1, 2])]],
     [[r.bind, r.type_collection, r.uint, r.end_scope, 1, 3, 4], [bindO(r.type_collection, [r.uint], opCo(opv), [2, 3, 4])]],
     [[r.bind, r.vCollection, r.uint, r.end_scope, 3, 1, 4, 0], [bindO(r.vCollection, [r.uint], opvCo(opv), [2, 3, 4])]],
     [[r.bind, r.vCollection_merge, r.text, r.end_scope, u.e, u.end_scope, 1, u.a, u.end_scope, 0], [bindO(r.vCollection_merge, [r.text], opvCo(opt), [2, sTex([u.e]), sTex([u.a])])]],
@@ -207,6 +236,9 @@ test.each([
         const s = parse(w)
         if (s.root.items[s.root.items.length - 1] == r.placeholder) {
             s.root.items.pop()
+        }
+        if (s.scope_stack.length != 1) {
+            console.log(s.scope_stack)
         }
         expect(s.scope_stack.length).toBe(1)
         expect(s.root.items).toEqual(o)
@@ -218,11 +250,12 @@ test.each([
 })
 test.each([
     [[r.IPv4, r.forward_ref, 0, r.uint, r.bind, r.back_ref, 1, 2], 2],
-    [[r.forward_ref, 0, r.type_sub, r.uint, r.end_scope, r.bind, r.back_ref, 1, 2], 2],
+    [[r.forward_ref, 0, r.type_wrap, r.uint, r.end_scope, r.bind, r.back_ref, 1, 2], 2],
     [[r.forward_ref, 0, r.type_choice, r.locator, r.back_ref, 0, r.end_scope, r.bind, r.back_ref, 0, 1, 1, 0], { type: choice_symbol, items: [1, { type: choice_symbol, items: [1, { type: choice_symbol, items: [0] }] }] }],
     [[r.bind, r.type_choice, r.vIEEE_binary, r.type_choice, r.uint, r.sint, r.end_scope, r.end_scope, 1, 1, 2], { type: choice_symbol, items: [1, { type: choice_symbol, items: [1, 2] }] }],
-    [[r.bind, r.type_collection, r.type_struct, r.vIEEE_binary, r.type_choice, r.uint, r.sint, r.end_scope, r.end_scope, r.end_scope, 0, 0, u8, 1, 2], { type: collection_symbol, items: [{ type: multiple_symbol, items: [u8, { type: choice_symbol, items: [1, 2] }] }] }],
-    [[r.bind, r.type_struct, r.vIEEE_binary, r.type_collection, r.type_choice, r.uint, r.sint, r.end_scope, r.end_scope, r.end_scope, 0, u8, 0, 1, 2], { type: multiple_symbol, items: [u8, { type: collection_symbol, items: [{ type: choice_symbol, items: [1, 2] }] }] }],
+    [[r.bind, r.type_collection, r.type_struct, r.vIEEE_binary, r.type_choice, r.uint, r.sint, r.end_scope, r.end_scope, r.end_scope, 0, u8, 1, 2], { type: collection_symbol, items: [{ type: multiple_symbol, items: [u8, { type: choice_symbol, items: [1, 2] }] }] }],
+    [[r.bind, r.type_struct, r.vIEEE_binary, r.type_collection, r.type_choice, r.uint, r.sint, r.end_scope, r.end_scope, r.end_scope, u8, 0, 1, 2], { type: multiple_symbol, items: [u8, { type: collection_symbol, items: [{ type: choice_symbol, items: [1, 2] }] }] }],
+    [[r.bind, r.type_struct, r.uint, r.bitSize, 7, r.bitSize, 7, r.bitSize, 23, r.bitSize, 47, r.uint, r.end_scope, 3, u8, u8, u8, 4], { type: multiple_symbol, items: [3, 1, 2, 0x030401, { type: bits_symbol, items: [0x02030401, 0x0203, 16] }, 4] }],
 ])('parse_strip(%#)', (i, o) => {
     const w = writer(i)
     try {
@@ -231,6 +264,7 @@ test.each([
             s.root.items.pop()
         }
         expect(s.scope_stack.length).toBe(1)
+        //console.log((s.root as any).items[0].items[1])
         const ou = (s.root.items[s.root.items.length - 1] as Scope).items[1]
         function strip(x: Slot) {
             if (typeof x == 'object') {

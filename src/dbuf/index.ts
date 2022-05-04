@@ -1,215 +1,17 @@
-export const bufToDV = (b: BufferSource, offset: number = 0, length?: number): DataView => b instanceof ArrayBuffer ? new DataView(b, offset, length !== undefined ? length : b.byteLength - offset) : new DataView(b.buffer, b.byteOffset + offset, length !== undefined ? length : b.byteLength - offset)
-export const bufToU8 = (b: BufferSource, offset: number = 0, length?: number): Uint8Array => b instanceof ArrayBuffer ? new Uint8Array(b, offset, length !== undefined ? length : b.byteLength - offset) : new Uint8Array(b.buffer, b.byteOffset + offset, length !== undefined ? length : b.byteLength - offset)
-export const enum under_consideration {
-    add,//*
-    subtract,//*
-    multiply,//*
-    divide,//*
-    remainder,//*
+import { r, u } from '@bintoca/dbuf/registry'
+import { bufToDV, bufToU8 } from '@bintoca/dbuf/util'
 
-    complex_i,
-    quaternion_i,
-    quaternion_j,
-    quaternion_k,
-    Math_E,
-    Math_LN10,
-    Math_LN2,
-    Math_LOG10E,
-    Math_LOG2E,
-    Math_PI,
-    Math_SQRT1_2,
-    Math_SQRT2,
-    unorm,
-    snorm,
-
-    second,
-    meter,
-    kilogram,
-    ampere,
-    kelvin,
-    mole,
-    candela,
-    radians,
-
-    red,
-    green,
-    blue,
-    alpha,
-    depth,
-    stencil,
-
-    abs,//*
-    acos,//*
-    acosh,//*
-    asin,//*
-    asinh,//*
-    atan,//*
-    atanh,//*
-    atan2,//*
-    cbrt,//*
-    ceil,//*
-    cos,//*
-    cosh,//*
-    exp,//*
-    expm1,//*
-    floor,//*
-    fround,//*
-    hypot,//*
-    log,//*
-    log1p,//*
-    log10,//*
-    log2,//*
-    pow,//*
-    round,//*
-    sign,//*
-    sin,//*
-    sinh,//*
-    sqrt,//*
-    tan,//*
-    tanh,//*
-    trunc,//*
-
-    UTC_posix_smear_seconds, //24-hour leap smear
-    timezoneOffset,
-
-    //RFC 5545 and updates for recurrence and calendaring
-
-    //latitude, //reference ellipsoids?
-    //longitude,
-    //other geometric structures
-
-    //TODO language tags BCP47
-}
-export const enum r {
-    placeholder,
-    end_scope,
-    back_ref,
-    type_sub,
-    type_choice,
-    type_struct,
-    type_collection,
-    bind,
-
-    text,
-    rich_text,
-    function,
-    call,
-    type_path,
-
-    concat,
-    chain,
-
-    equal,
-    not_equal,
-    greater_than,
-    greater_than_or_equal,
-    less_than,
-    less_than_or_equal,
-    logical_and,
-    logical_or,
-    logical_not,
-
-    next_singular,
-
-    //singular
-    value_,
-    item_,
-    vblock,
-
-    uint,
-    sint,
-    vIEEE_binary,
-    vIEEE_decimal_DPD,
-    dns_idna,
-    TAI_seconds,//unsigned
-    unit,
-
-    first_param,
-    second_param,
-    bitSize,
-    blockSize,
-
-    filter,
-    map,
-    reduce,
-    skip,
-    take,
-    groupKey,
-    groupItems,
-    count,
-
-    locator,
-    integrity,
-    sub_authority,
-    all_data,
-    location,
-
-    numerator = 64,
-    denominator,
-
-    forward_ref,
-    vCollection,
-    vCollection_merge,
-    v32_32,
-    back_ref_hint,
-    TAI_epoch_shift,
-    fixed_point_decimal_places,
-
-    IPv4,
-    IPv6,
-    port,
-    UUID,
-    sha256,
-
-    years,
-    months,
-    days,
-    hours,
-    minutes,
-    seconds,
-    weeks,
-    dateTimeStart,
-    dateTimeEnd,
-    duration,
-    timePeriod,
-
-    license,
-    Apache_LLVM,
-
-    magicNumber = 4473429
-}
-export const enum u {
-    text,
-    end_scope,
-    back_ref,
-    space,
-    a,
-    e,
-    o,
-    t,
-
-    run_length_encoding,
-    non_text,
-    line_feed,
-    exclamation,
-    comma,
-    hyphen,
-    period,
-    question,
-    //remaining A-Z,a-z
-    null = 64,
-    //remaining ascii then continue according to unicode
-}
 export const multiple_symbol = Symbol.for('https://bintoca.com/symbol/multiple')
 export const choice_symbol = Symbol.for('https://bintoca.com/symbol/choice')
 export const text_symbol = Symbol.for('https://bintoca.com/symbol/text')
 export const non_text_symbol = Symbol.for('https://bintoca.com/symbol/nontext')
 export const collection_symbol = Symbol.for('https://bintoca.com/symbol/collection')
 export const rle_symbol = Symbol.for('https://bintoca.com/symbol/rle')
+export const bits_symbol = Symbol.for('https://bintoca.com/symbol/bits')
 export type Scope = { type: r | symbol, needed: number, items: Item[], result?, inText?: boolean, richText?: boolean, op?: ParseOp, ops?: ParseOp[], parseIndex?: number }
 export type Slot = Scope | number
 export type Item = Slot | Uint8Array
-export const enum ParseType { value, vblock, block, item, text, rich_text, collection, vCollection, choice, none, multiple, forward, v32_32 }
+export const enum ParseType { value, vblock, block, bit, vbit, item, text, rich_text, collection, vCollection, choice, none, multiple, forward, v32_32 }
 export type ParseOp = { type: ParseType, size?: number, ops?: ParseOp[], forward?: Scope }
 export type ParsePlan = { ops: ParseOp[], index: number }
 export type ParseState = { root: Scope, scope_stack: Scope[], decoder: DecoderState }
@@ -250,18 +52,20 @@ export const numOp = (i: number, choice: boolean): ParseOp => {
         case r.uint:
         case r.sint:
             return { type: ParseType.value }
+        case r.vbit:
+            return { type: ParseType.vbit }
         case r.vblock:
+            return { type: ParseType.vblock }
         case r.vIEEE_decimal_DPD:
         case r.vIEEE_binary:
-            return { type: ParseType.vblock }
         case r.IPv4:
         case r.TAI_seconds:
-            return { type: ParseType.block, size: 0 }
+            return { type: ParseType.block, size: 1 }
         case r.IPv6:
         case r.UUID:
-            return { type: ParseType.block, size: 3 }
+            return { type: ParseType.block, size: 4 }
         case r.sha256:
-            return { type: ParseType.block, size: 7 }
+            return { type: ParseType.block, size: 8 }
         case r.v32_32:
             return { type: ParseType.v32_32 }
         case r.text:
@@ -285,7 +89,7 @@ export const resolveOp = (st: DecoderState, c: Scope) => {
         case r.vCollection_merge:
             c.op = { type: ParseType.vCollection, ops: [resolveItemOp(c.items[c.items.length - 1])] }
             break
-        case r.type_sub:
+        case r.type_wrap:
             c.op = resolveItemOp(c.items[c.items.length - 1])
             break
         case r.type_choice:
@@ -376,11 +180,19 @@ export const parse = (b: BufferSource): ParseState => {
                     break
                 }
                 case ParseType.block: {
-                    collapse_scope(readBuffer(ds, op.size))
+                    collapse_scope(read_blocks(ds, op.size))
                     break
                 }
                 case ParseType.vblock: {
-                    collapse_scope(readBuffer(ds, read(ds)))
+                    collapse_scope(read_blocks(ds, read(ds) + 1))
+                    break
+                }
+                case ParseType.bit: {
+                    collapse_scope(read_bits(ds, op.size))
+                    break
+                }
+                case ParseType.vbit: {
+                    collapse_scope(read_bits(ds, read(ds) + 1))
                     break
                 }
                 case ParseType.v32_32: {
@@ -422,8 +234,9 @@ export const parse = (b: BufferSource): ParseState => {
                     scope_stack.push({ type: text_symbol, needed: 0, items: [], inText: true })
                     break
                 }
-                case u.run_length_encoding: {
-                    scope_stack.push({ type: rle_symbol, needed: 2, items: [read(ds)], inText: true })
+                case u.repeat_n: {
+                    scope_stack.push({ type: rle_symbol, needed: 1, items: [], inText: true })
+                    collapse_scope(read(ds))
                     break
                 }
                 case u.back_ref: {
@@ -461,7 +274,7 @@ export const parse = (b: BufferSource): ParseState => {
                 case r.call:
                 case r.logical_and:
                 case r.logical_or:
-                case r.type_sub:
+                case r.type_wrap:
                 case r.type_struct:
                 case r.type_choice:
                 case r.type_path:
@@ -498,9 +311,14 @@ export const parse = (b: BufferSource): ParseState => {
                     collapse_scope(read(ds))
                     break
                 }
-                //case r.bitSize:
+                case r.bitSize: {
+                    const s = read(ds) + 1
+                    scope_stack.push({ type: x, needed: 1, items: [], op: { type: ParseType.bit, size: s } })
+                    collapse_scope(s)
+                    break
+                }
                 case r.blockSize: {
-                    const s = read(ds)
+                    const s = read(ds) + 1
                     scope_stack.push({ type: x, needed: 1, items: [], op: { type: ParseType.block, size: s } })
                     collapse_scope(s)
                     break
@@ -512,6 +330,8 @@ export const parse = (b: BufferSource): ParseState => {
                     break
                 }
                 case r.unit:
+                case r.initial_value:
+                case r.seek:
                 case r.logical_not: {
                     scope_stack.push({ type: x, needed: 1, items: [] })
                     break
@@ -603,7 +423,7 @@ export const shiftMap = [
     [0, 11, 32], [0, 11, 31, 35], [0, 11, 30, 33, 35], [0, 11, 30, 34], [0, 12, 34], [0, 12, 33, 35], [0, 13, 35], [0, 14]
 ]
 export const shiftLookup = shiftMap.map(x => x.map(y => shiftInit[y]))
-export type DecoderState = { partial: number, partialBit: number, temp: number[], tempCount: number, tempIndex: number, dv: DataView, dvOffset: number }
+export type DecoderState = { partial: number, partialBit: number, temp: number[], tempCount: number, tempIndex: number, dv: DataView, dvOffset: number, partialBlock: number, partialBlockRemaining: number }
 export const decodeChunk = (s: DecoderState, x: number) => {
     let mesh = x >>> 24
     const nextPartialBit = mesh & 1
@@ -643,34 +463,83 @@ export const createDecoder = (b: BufferSource): DecoderState => {
         throw new Error('data must be multiple of 4 bytes')
     }
     const dv = bufToDV(b)
-    return { partial: 0, partialBit: dv.getUint8(0) >>> 7, temp: Array(8), tempCount: 0, tempIndex: 0, dv, dvOffset: 0 }
+    return { partial: 0, partialBit: dv.getUint8(0) >>> 7, temp: Array(8), tempCount: 0, tempIndex: 0, dv, dvOffset: 0, partialBlock: 0, partialBlockRemaining: 0 }
 }
 export const read = (s: DecoderState): number => {
     while (s.tempCount == 0) {
         decodeChunk(s, s.dv.getUint32(s.dvOffset))
         s.dvOffset += 4
-        if (s.dv.byteLength == s.dvOffset) {
-            s.temp[s.tempCount] = s.partial
-            s.tempCount++
-        }
+        check_end(s)
     }
     const v = s.temp[s.tempIndex]
     s.tempIndex++
     if (s.tempIndex == s.tempCount) {
         s.tempCount = s.tempIndex = 0
     }
+    s.partialBlockRemaining = 0
     return v
 }
-export const readBuffer = (s: DecoderState, n: number) => {
-    const l = (n + 1) * 4
+export const read_blocks = (s: DecoderState, n: number) => {
+    const l = n * 4
     const v = bufToU8(s.dv, s.dvOffset, l)
     s.dvOffset += l
+    s.partialBlockRemaining = 0
+    check_end(s)
     return v
 }
+export const check_end = (s: DecoderState) => {
+    if (s.dv.byteLength == s.dvOffset) {
+        s.temp[s.tempCount] = s.partial
+        s.tempCount++
+    }
+}
+export const read_bits = (s: DecoderState, n: number): number | Scope => {
+    function rb(s: DecoderState, n: number) {
+        if (s.partialBlockRemaining == 0) {
+            s.partialBlock = s.dv.getUint32(s.dvOffset)
+            s.dvOffset += 4
+            s.partialBlockRemaining = 32
+        }
+        if (s.partialBlockRemaining >= n) {
+            const r = (s.partialBlock << (32 - s.partialBlockRemaining)) >>> (32 - n)
+            s.partialBlockRemaining -= n
+            return r
+        }
+        if (n <= 32) {
+            const c = n - s.partialBlockRemaining
+            const hi = (s.partialBlock << (32 - s.partialBlockRemaining)) >>> (32 - n)
+            s.partialBlock = s.dv.getUint32(s.dvOffset)
+            s.dvOffset += 4
+            s.partialBlockRemaining = 32
+            const lo = (s.partialBlock >>> (32 - c))
+            s.partialBlockRemaining -= c
+            return hi | lo
+        }
+    }
+    if (n > 32) {
+        const sc: Scope = { type: bits_symbol, needed: 0, items: [] }
+        while (true) {
+            if (n > 32) {
+                sc.items.push(rb(s, 32))
+                n -= 32
+            }
+            else {
+                sc.items.push(rb(s, n))
+                sc.items.push(n)
+                break
+            }
+        }
+        check_end(s)
+        return sc
+    }
+    const r = rb(s, n)
+    check_end(s)
+    return r
+}
 export const continueDecode = (s: DecoderState): boolean => s.tempCount != 0 || s.dv.byteLength != s.dvOffset
-export type EncoderState = { buffers: Uint8Array[], dv: DataView, offset: number, mesh: number, mesh1: boolean, chunk: number, chunkSpace: number, queue: BufferSource[] }
+export type EncoderState = { buffers: Uint8Array[], dv: DataView, offset: number, mesh: number, meshBit: boolean, chunk: number, chunkSpace: number, queue: BufferSource[] }
 export const createEncoder = (): EncoderState => {
-    return { buffers: [], dv: new DataView(new ArrayBuffer(4096)), offset: 0, mesh: 0, mesh1: false, chunk: 0, chunkSpace: 8, queue: [] }
+    return { buffers: [], dv: new DataView(new ArrayBuffer(4096)), offset: 0, mesh: 0, meshBit: false, chunk: 0, chunkSpace: 8, queue: [] }
 }
 export const maxInteger = 0xFFFFFFFF
 export const sizeLookup = [11, 11, 10, 10, 10, 9, 9, 9, 8, 8, 8, 7, 7, 7, 6, 6, 6, 5, 5, 5, 4, 4, 4, 3, 3, 3, 2, 2, 2, 1, 1, 1, 1]
@@ -681,7 +550,7 @@ export const write = (s: EncoderState, x: number, size?: number) => {
         const len = s.chunkSpace > remaining ? remaining : s.chunkSpace
         const s1 = s.chunkSpace - len
         s.chunk += ((x & maskLookup[remaining]) >>> ((remaining - len) * 3)) << s1 * 3
-        if (s.mesh1) {
+        if (s.meshBit) {
             s.mesh += ((1 << len) - 1) << s1
         }
         s.chunkSpace -= len
@@ -716,7 +585,34 @@ export const write = (s: EncoderState, x: number, size?: number) => {
             }
         }
         if (remaining == 0) {
-            s.mesh1 = !s.mesh1
+            s.meshBit = !s.meshBit
+            break
+        }
+    }
+}
+export const write_pad = (s: EncoderState, size: number) => {
+    let remaining = size
+    while (true) {
+        const len = s.chunkSpace > remaining ? remaining : s.chunkSpace
+        const s1 = s.chunkSpace - len
+        if (s.meshBit) {
+            s.mesh += ((1 << len) - 1) << s1
+        }
+        s.chunkSpace -= len
+        remaining -= len
+        if (s.chunkSpace == 0) {
+            if (s.dv.byteLength == s.offset) {
+                s.buffers.push(bufToU8(s.dv))
+                s.dv = new DataView(new ArrayBuffer(4096))
+                s.offset = 0
+            }
+            s.dv.setUint32(s.offset, (s.mesh << 24) + s.chunk)
+            s.offset += 4
+            s.chunkSpace = 8
+            s.chunk = 0
+            s.mesh = 0
+        }
+        if (remaining == 0) {
             break
         }
     }
@@ -744,19 +640,3 @@ export const finishWrite = (s: EncoderState) => {
     }
     s.buffers.push(bufToU8(s.dv, 0, s.offset))
 }
-export const zigzagEncode = (n: number) => (n >> 31) ^ (n << 1)
-export const zigzagDecode = (n: number) => (n >>> 1) ^ -(n & 1)
-export const unicodeToTextLookup = [64, 65, 66, 67, 68, 69, 70, 71, 72, 73, 10, 74, 75, 76, 77, 78, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88, 89, 90, 91, 92, 93, 94,
-    3, 11, 95, 96, 97, 98, 99, 100, 101, 102, 103, 104, 12, 13, 14, 105, 106, 107, 108, 109, 110, 111, 112, 113, 114, 115, 116, 117, 118, 119, 120, 15,
-    121, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 122, 123, 124, 125, 126,
-    127, 4, 42, 43, 44, 5, 45, 46, 47, 48, 49, 50, 51, 52, 53, 6, 54, 55, 56, 57, 7, 58, 59, 60, 61, 62, 63
-]
-export const textToUnicodeLookup = [, , , 32, 97, 101, 111, 116, , , 10, 33, 44, 45, 46, 63,
-    65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88, 89, 90,
-    98, 99, 100, 102, 103, 104, 105, 106, 107, 108, 109, 110, 112, 113, 114, 115, 117, 118, 119, 120, 121, 122,
-    0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31,
-    34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62,
-    64, 91, 92, 93, 94, 95, 96
-]
-export const unicodeToText = (codePoint: number) => codePoint < 123 ? unicodeToTextLookup[codePoint] : codePoint + 5
-export const textToUnicode = (n: number) => n < 128 ? textToUnicodeLookup[n] : n - 5
