@@ -1,6 +1,6 @@
 import { evaluateAll, parse, write, finishWrite, EncoderState, multiple_symbol, Item, createDecoder, continueDecode, read, createEncoder, writeBuffer, ParseType, write_checked, ParseOp, Scope, choice_symbol, non_text_symbol, Slot, collection_symbol, text_symbol, write_pad, bits_symbol } from '@bintoca/dbuf'
 import { r, u } from '@bintoca/dbuf/registry'
-import { zigzagEncode, zigzagDecode, unicodeToText, textToUnicode, getLeap_millis, } from '@bintoca/dbuf/util'
+import { zigzagEncode, zigzagDecode, unicodeToText, textToUnicode, getLeap_millis, getLeap_millis_tai, } from '@bintoca/dbuf/util'
 const dv = new DataView(new ArrayBuffer(8))
 test('float', () => {
     dv.setFloat32(0, 1, true)
@@ -115,11 +115,17 @@ test('magicNumber', () => {
     dv.setUint8(3, 'U'.codePointAt(0))
     expect(dv.getUint32(0)).toBe(r.magicNumber)
 })
-test.each([[(10 * 365 + 2) * 86400, 19], [(11 * 365 + 3 + 181) * 86400, 20]])('leap', (d, o) => {
+test.each([[(10 * 365 + 7) * 86400, 0], [(11 * 365 + 3 + 181) * 86400, 1]])('leap', (d, o) => {
     expect(getLeap_millis(d * 1000)).toBe(o * 1000)
 })
-test.each([[(10 * 365 + 2) * 86400 - 1, 'input is before epoch start']])('leap_error', (d, o) => {
+test.each([[0, 0], [(366 + 181 - 5) * 86400 + 1, 1]])('leap_reverse', (d, o) => {
+    expect(getLeap_millis_tai(d * 1000)).toBe(o * 1000)
+})
+test.each([[(10 * 365 + 7) * 86400 - 1, 'input is before epoch start']])('leap_error', (d, o) => {
     expect(() => getLeap_millis(d * 1000)).toThrowError(o)
+})
+test.each([[-1, 'input is before epoch start']])('leap_error', (d, o) => {
+    expect(() => getLeap_millis_tai(d * 1000)).toThrowError(o)
 })
 test.each([[[r.IPv4, r.end_scope], [r.IPv4]]])('early end', (i, o) => {
     const w = writer(i)

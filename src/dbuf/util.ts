@@ -18,6 +18,9 @@ export const textToUnicodeLookup = [, , , 32, 97, 101, 111, 116, , , 10, 33, 44,
 export const unicodeToText = (codePoint: number) => codePoint < 123 ? unicodeToTextLookup[codePoint] : codePoint + 5
 export const textToUnicode = (n: number) => n < 128 ? textToUnicodeLookup[n] : n - 5
 
+export const epochOffset = (10 * 365 + 7) * 86400 * 1000 //GPS epoch
+export const posixToTAI_millis = (posix_millis: number, leap_millis: number) => posix_millis - epochOffset + leap_millis
+export const taiToPosix_millis = (tai_millis: number, leap_millis: number) => tai_millis + epochOffset - leap_millis
 export const ietf_leap = [
     // 2272060800, 10,
     // 2287785600, 11,
@@ -48,7 +51,11 @@ export const ietf_leap = [
     [3644697600, 36],
     [3692217600, 37],
 ]
-export const leapLookup = ietf_leap.map(x => [(x[0] - ((70 * 365 + 17) * 24 * 60 * 60)) * 1000, x[1] * 1000])
+export const leapLookup = ietf_leap.map(x => [(x[0] - ((70 * 365 + 17) * 24 * 60 * 60)) * 1000, (x[1] - 19) * 1000])
+leapLookup[0][0] += 5 * 24 * 60 * 60 * 1000
+for (let x of leapLookup) {
+    x.push(posixToTAI_millis(x[0], x[1]))
+}
 export const getLeap_millis = (posix_millis: number) => getLeap_millis_lookup(posix_millis, leapLookup)
 export const getLeap_millis_lookup = (posix_millis: number, lookup: number[][]) => {
     for (let i = lookup.length - 1; i >= 0; i--) {
@@ -58,6 +65,12 @@ export const getLeap_millis_lookup = (posix_millis: number, lookup: number[][]) 
     }
     throw 'input is before epoch start'
 }
-export const epochOffset = (10 * 365 + 2) * 86400 * 1000
-export const posixToTAI_millis = (posix_millis: number, leap_millis: number) => posix_millis - epochOffset + leap_millis
-export const taiToPosix_millis = (tai_millis: number, leap_millis: number) => tai_millis + epochOffset - leap_millis
+export const getLeap_millis_tai = (tai_millis: number) => getLeap_millis_lookup_tai(tai_millis, leapLookup)
+export const getLeap_millis_lookup_tai = (tai_millis: number, lookup: number[][]) => {
+    for (let i = lookup.length - 1; i >= 0; i--) {
+        if (tai_millis >= lookup[i][2]) {
+            return lookup[i][1]
+        }
+    }
+    throw 'input is before epoch start '
+}
