@@ -115,17 +115,11 @@ test('magicNumber', () => {
     dv.setUint8(3, 'U'.codePointAt(0))
     expect(dv.getUint32(0)).toBe(r.magicNumber)
 })
-test.each([[(10 * 365 + 7) * 86400, 0], [(11 * 365 + 3 + 181) * 86400, 1]])('leap', (d, o) => {
+test.each([[-(10 * 365) * 86400, -9], [0, -9], [(10 * 365 + 1) * 86400, -1], [(10 * 365 + 2) * 86400, 0], [(10 * 365 + 7) * 86400, 0], [(11 * 365 + 3 + 181) * 86400, 1]])('leap', (d, o) => {
     expect(getLeap_millis(d * 1000)).toBe(o * 1000)
 })
-test.each([[0, 0], [(366 + 181 - 5) * 86400 + 1, 1]])('leap_reverse', (d, o) => {
+test.each([[-(20 * 365) * 86400, -9], [-(6) * 86400, -1], [-1, 0], [0, 0], [(366 + 181 - 5) * 86400 + 1, 1]])('leap_reverse', (d, o) => {
     expect(getLeap_millis_tai(d * 1000)).toBe(o * 1000)
-})
-test.each([[(10 * 365 + 7) * 86400 - 1, 'input is before epoch start']])('leap_error', (d, o) => {
-    expect(() => getLeap_millis(d * 1000)).toThrowError(o)
-})
-test.each([[-1, 'input is before epoch start']])('leap_error', (d, o) => {
-    expect(() => getLeap_millis_tai(d * 1000)).toThrowError(o)
 })
 test.each([[[r.IPv4, r.end_scope], [r.IPv4]]])('early end', (i, o) => {
     const w = writer(i)
