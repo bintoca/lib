@@ -234,12 +234,6 @@ test.each([
     const w = writer(i)
     try {
         const s = parse(w)
-        if (s.root.items[s.root.items.length - 1] == r.placeholder) {
-            s.root.items.pop()
-        }
-        if (s.scope_stack.length != 1) {
-            console.log(s.scope_stack)
-        }
         expect(s.scope_stack.length).toBe(1)
         expect(s.root.items).toEqual(o)
     }
@@ -255,14 +249,11 @@ test.each([
     [[r.bind, r.type_choice, r.vIEEE_binary, r.type_choice, r.uint, r.sint, r.end_scope, r.end_scope, 1, 1, 2], { type: choice_symbol, items: [1, { type: choice_symbol, items: [1, 2] }] }],
     [[r.bind, r.type_collection, r.type_struct, r.vIEEE_binary, r.type_choice, r.uint, r.sint, r.end_scope, r.end_scope, r.end_scope, 0, u8, 1, 2], { type: collection_symbol, items: [{ type: multiple_symbol, items: [u8, { type: choice_symbol, items: [1, 2] }] }] }],
     [[r.bind, r.type_struct, r.vIEEE_binary, r.type_collection, r.type_choice, r.uint, r.sint, r.end_scope, r.end_scope, r.end_scope, u8, 0, 1, 2], { type: multiple_symbol, items: [u8, { type: collection_symbol, items: [{ type: choice_symbol, items: [1, 2] }] }] }],
-    [[r.bind, r.type_struct, r.uint, r.bitSize, 7, r.bitSize, 7, r.bitSize, 23, r.bitSize, 47, r.uint, r.end_scope, 3, u8, u8, u8, 4], { type: multiple_symbol, items: [3, 1, 2, 0x030401, { type: bits_symbol, items: [0x02030401, 0x0203, 16] }, 4] }],
+    [[r.bind, r.type_struct, r.uint, r.bitSize, 7, r.bitSize, 7, r.bitSize, 23, r.bitSize, 47, r.uint, r.bitSize, 7, r.end_scope, 3, u8, u8, u8, 4, u8], { type: multiple_symbol, items: [3, 1, 2, 0x030401, { type: bits_symbol, items: [0x02030401, 0x0203, 16] }, 4, 1] }],
 ])('parse_strip(%#)', (i, o) => {
     const w = writer(i)
     try {
         const s = parse(w)
-        if (s.root.items[s.root.items.length - 1] == r.placeholder) {
-            s.root.items.pop()
-        }
         expect(s.scope_stack.length).toBe(1)
         //console.log((s.root as any).items[0].items[1])
         const ou = (s.root.items[s.root.items.length - 1] as Scope).items[1]

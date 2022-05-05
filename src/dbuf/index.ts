@@ -15,7 +15,7 @@ export const enum ParseType { value, vblock, block, bit, vbit, item, text, rich_
 export type ParseOp = { type: ParseType, size?: number, ops?: ParseOp[], forward?: Scope }
 export type ParsePlan = { ops: ParseOp[], index: number }
 export type ParseState = { root: Scope, scope_stack: Scope[], decoder: DecoderState }
-export const decoderError = (s: DecoderState, message: string) => { return { message, state: s } }
+export const decoderError = (s: ParseState, message: string) => { return { message, state: s } }
 export const back_ref = (s: ParseState, n: number) => {
     const scopeItems = s.scope_stack.filter(x => x.inText || x.type == non_text_symbol || x.type == r.function)
     let back = n + 1
@@ -35,7 +35,7 @@ export const back_ref = (s: ParseState, n: number) => {
             back -= s.items.length
         }
     }
-    throw decoderError(s.decoder, 'invalid back_ref')
+    throw decoderError(s, 'invalid back_ref')
 }
 export const numOp = (i: number, choice: boolean): ParseOp => {
     switch (i) {
@@ -80,7 +80,7 @@ export const numOp = (i: number, choice: boolean): ParseOp => {
     }
 }
 export const resolveItemOp = (x: Item, choice?: boolean) => typeof x == 'object' ? (x as Scope).op || { type: choice ? ParseType.none : ParseType.item } : numOp(x, choice)
-export const resolveOp = (st: DecoderState, c: Scope) => {
+export const resolveOp = (c: Scope) => {
     switch (c.type) {
         case r.type_collection:
             c.op = { type: ParseType.collection, ops: [resolveItemOp(c.items[c.items.length - 1])] }
@@ -134,23 +134,24 @@ export const parse = (b: BufferSource): ParseState => {
     }
     function forward(op: ParseOp): ParseOp {
         if (scope_stack.length > 1000) {
-            throw decoderError(ds, 'max forward depth')
+            throw decoderError(st, 'max forward depth')
         }
         const t = op.forward.items
         const o = (t[0] as Scope).items[(t[1] as number) + (t[2] as number) + 1]
         if (o === undefined) {
-            throw decoderError(ds, 'invalid forward index')
+            throw decoderError(st, 'invalid forward index')
         }
         return resolveItemOp(o)
     }
     const ds = st.decoder
+    loop:
     while (continueDecode(ds)) {
         const top = scope_top()
         let op = top.ops ? top.ops[top.parseIndex] : top.op
         if (op?.type == ParseType.choice) {
             const c = read(ds)
             if (op.ops.length <= c) {
-                throw decoderError(ds, 'invalid choice index')
+                throw decoderError(st, 'invalid choice index')
             }
             op = op.ops[c]
             if (op.type == ParseType.none) {
@@ -242,7 +243,7 @@ export const parse = (b: BufferSource): ParseState => {
                 case u.back_ref: {
                     const br = back_ref(st, read(ds)) as Slot
                     if (!top.richText && (typeof br == 'number' || br.richText || !br.inText)) {
-                        throw decoderError(ds, 'rich text not allowed in plain text')
+                        throw decoderError(st, 'rich text not allowed in plain text')
                     }
                     collapse_scope(br)
                     break
@@ -252,13 +253,13 @@ export const parse = (b: BufferSource): ParseState => {
                         scope_stack.push({ type: non_text_symbol, needed: 0, items: [] })
                     }
                     else {
-                        throw decoderError(ds, 'non_text not allowed')
+                        throw decoderError(st, 'non_text not allowed')
                     }
                     break
                 }
                 case u.end_scope: {
                     if (top.items.length == 0) {
-                        throw decoderError(ds, 'empty end_scope')
+                        throw decoderError(st, 'empty end_scope')
                     }
                     collapse_scope(scope_stack.pop())
                     break
@@ -287,15 +288,15 @@ export const parse = (b: BufferSource): ParseState => {
                 }
                 case r.end_scope: {
                     if (top.needed) {
-                        throw decoderError(ds, 'top of scope_stack invalid for end_scope')
+                        throw decoderError(st, 'top of scope_stack invalid for end_scope')
                     }
                     if (top.items.length == 0) {
-                        throw decoderError(ds, 'empty end_scope')
+                        throw decoderError(st, 'empty end_scope')
                     }
-                    resolveOp(ds, top)
+                    resolveOp(top)
                     const t = scope_stack.pop()
                     if (scope_stack.length == 0) {
-                        return st
+                        break loop
                     }
                     collapse_scope(t)
                     break
@@ -350,6 +351,12 @@ export const parse = (b: BufferSource): ParseState => {
                     collapse_scope(x)
             }
         }
+    }
+    if (st.root.items[st.root.items.length - 1] === r.placeholder) {
+        st.root.items.pop()
+    }
+    if (st.scope_stack.length > 1) {
+        throw decoderError(st, 'unfinished parse stack')
     }
     return st
 }
@@ -424,7 +431,7 @@ export const shiftMap = [
 ]
 export const shiftLookup = shiftMap.map(x => x.map(y => shiftInit[y]))
 export type DecoderState = { partial: number, partialBit: number, temp: number[], tempCount: number, tempIndex: number, dv: DataView, dvOffset: number, partialBlock: number, partialBlockRemaining: number }
-export const decodeChunk = (s: DecoderState, x: number) => {
+export const decodeVarintBlock = (s: DecoderState, x: number) => {
     let mesh = x >>> 24
     const nextPartialBit = mesh & 1
     const continueBit = mesh >>> 7
@@ -467,7 +474,7 @@ export const createDecoder = (b: BufferSource): DecoderState => {
 }
 export const read = (s: DecoderState): number => {
     while (s.tempCount == 0) {
-        decodeChunk(s, s.dv.getUint32(s.dvOffset))
+        decodeVarintBlock(s, s.dv.getUint32(s.dvOffset))
         s.dvOffset += 4
         check_end(s)
     }
