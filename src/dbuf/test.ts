@@ -146,7 +146,7 @@ const bind_uint_in = [r.bind, r.uint, 2]
 const bind_uint_out = { type: r.bind, needed: 2, items: [r.uint, 2], op: op1(ParseType.value) }
 const u8 = new Uint8Array([1, 2, 3, 4])
 const text_e_in = [u.text, u.e, u.end_scope]
-const text_e_out = { type: text_symbol, needed: 0, inText: true, items: [u.e] }
+const text_e_out = { type: text_symbol, inText: true, items: [u.e] }
 const bind = (t: Slot, v: Item, p: ParseOp): Scope => { return { type: r.bind, needed: 2, items: [t, v], op: p } }
 const bindO = (t: r, items: Item[], p: ParseOp, v: Item | Item[]): Scope => {
     if (Array.isArray(v)) {
@@ -194,7 +194,7 @@ const bindO = (t: r, items: Item[], p: ParseOp, v: Item | Item[]): Scope => {
     }
     return { type: r.bind, needed: 2, items: [need0(t, items, p), v], op: p }
 }
-const need0 = (type: r | symbol, items: Item[], op?: ParseOp) => { return { type, needed: 0, items, op } }
+const need0 = (type: r | symbol, items: Item[], op?: ParseOp) => { return { type, items, op } }
 const needN = (type: r | symbol, items: Item[], op?: ParseOp) => { return { type, needed: items.length, items, op } }
 const opB = (n: number): ParseOp => { return { type: ParseType.block, size: n } }
 const opBi = (n: number): ParseOp => { return { type: ParseType.bit, size: n } }
@@ -202,17 +202,31 @@ const opC = (n: ParseOp[]): ParseOp => { return { type: ParseType.choice, ops: n
 const opCo = (n: ParseOp): ParseOp => { return { type: ParseType.collection, ops: [n] } }
 const opvCo = (n: ParseOp): ParseOp => { return { type: ParseType.vCollection, ops: [n] } }
 const opM = (n: ParseOp[]): ParseOp => { return { type: ParseType.multiple, ops: n } }
-const sTex = (items: Item[]): Scope => { return { type: r.text, needed: 0, inText: true, items } }
-const srTex = (items: Item[]): Scope => { return { type: r.rich_text, needed: 0, inText: true, richText: true, items } }
+const sTex = (items: Item[]): Scope => { return { type: r.text, inText: true, items } }
+const srTex = (items: Item[]): Scope => { return { type: r.rich_text, inText: true, richText: true, items } }
 const bText = (items: Item[]) => bind(r.text, sTex(items), opt)
 const brText = (items: Item[]) => bind(r.rich_text, srTex(items), oprt)
-const ro: Scope = { type: non_text_symbol, needed: 0, items: [r.IPv4, null, bind_uint_out] }
-const fo: Scope = { type: r.forward_ref, needed: 3, items: [ro, 1, 4], op: { type: ParseType.forward } }
+const pos = (off: number, ti?: number, br?: number) => { return { dvOffset: off, tempIndex: ti, partialBlockRemaining: br } }
+const ro: Scope = { type: non_text_symbol, items: [r.IPv4, null, { type: r.bind, needed: 2, items: [r.uint, 2], op: op1(ParseType.value), start: pos(4), end: pos(8, 3) }] }
+const fo: Scope = { type: r.forward_ref, needed: 3, items: [ro, 1, 4], op: { type: ParseType.forward }, start: pos(4, 1), end: pos(4) }
 ro.items[1] = fo
 fo.op.forward = fo
 test.each([
-    [[r.IPv4, r.back_ref, 0, ...bind_uint_in], [r.IPv4, r.IPv4, bind_uint_out]],
     [[r.IPv4, r.forward_ref, 4, ...bind_uint_in], ro.items],
+])('parse_full(%#)', (i, o) => {
+    const w = writer(i)
+    try {
+        const s = parse(w)
+        expect(s.scope_stack.length).toBe(1)
+        expect(s.root.items).toEqual(o)
+    }
+    catch (e) {
+        console.log(w)
+        throw e
+    }
+})
+test.each([
+    [[r.IPv4, r.back_ref, 0, ...bind_uint_in], [r.IPv4, r.IPv4, bind_uint_out]],
     [[r.bind, r.text, u.a, ...text_e_in, u.back_ref, 0, u.end_scope, r.bind, r.rich_text, u.a, u.non_text, ...bind_uint_in, u.end_scope, u.end_scope], [bText([u.a, text_e_out, text_e_out]), brText([u.a, need0(non_text_symbol, [bind_uint_out])])]],
     [[r.bind, r.vIEEE_binary, u8], [bind(r.vIEEE_binary, u8, opB(1))]],
     [[r.bind, r.bitSize, 19, u8], [bind(needN(r.bitSize, [20], opBi(20)), 32 + 4096, opBi(20))]],
@@ -235,7 +249,17 @@ test.each([
     try {
         const s = parse(w)
         expect(s.scope_stack.length).toBe(1)
-        expect(s.root.items).toEqual(o)
+        function strip(x: Item) {
+            if (typeof x == 'object') {
+                if (x instanceof Uint8Array) {
+                    return x
+                }
+                const d: Scope = { type: x.type, items: x.items.map(y => strip(y)), needed: x.needed, op: x.op, ops: x.ops, parseIndex: x.parseIndex, inText: x.inText, richText: x.richText }
+                return d
+            }
+            return x
+        }
+        expect(s.root.items.map(x => strip(x))).toEqual(o)
     }
     catch (e) {
         console.log(w)
@@ -274,15 +298,15 @@ test.each([
     }
 })
 test.each([
-    [[r.bind, r.end_scope], 'top of scope_stack invalid for end_scope'],
-    [[r.function, r.end_scope], 'empty end_scope'],
-    [[r.end_scope], 'empty end_scope'],
-    [[r.back_ref, 0], 'invalid back_ref'],
-    [[r.forward_ref, 0, r.bind, r.back_ref, 0, 2], 'invalid forward index'],
-    [[r.forward_ref, 1, r.bind, r.back_ref, 0, 2], 'invalid forward index'],
-    [[r.forward_ref, 1, r.type_struct, r.back_ref, 0, r.end_scope, r.type_struct, r.back_ref, 1, r.end_scope, r.bind, r.back_ref, 1, 2], 'max forward depth'],
-    [[r.bind, r.text, u.non_text, u.end_scope], 'non_text not allowed'],
-    [[r.IPv4, r.bind, r.text, u.back_ref, 0, u.end_scope], 'rich text not allowed in plain text'],
+    [[r.bind, r.end_scope], r.error_invalid_end_scope],
+    [[r.function, r.end_scope], r.error_empty_scope],
+    [[r.end_scope], r.error_empty_scope],
+    [[r.back_ref, 0], r.error_invalid_back_ref],
+    [[r.forward_ref, 0, r.bind, r.back_ref, 0, 2], r.error_invalid_forward_ref],
+    [[r.forward_ref, 1, r.bind, r.back_ref, 0, 2], r.error_invalid_forward_ref],
+    [[r.forward_ref, 1, r.type_struct, r.back_ref, 0, r.end_scope, r.type_struct, r.back_ref, 1, r.end_scope, r.bind, r.back_ref, 1, 2], r.error_max_forward_depth],
+    [[r.bind, r.text, u.non_text, u.end_scope], r.error_non_text_in_plain],
+    [[r.IPv4, r.bind, r.text, u.back_ref, 0, u.end_scope], r.error_rich_text_in_plain],
 ])('parseError(%#)', (i, o) => {
     let er
     try {
@@ -291,7 +315,10 @@ test.each([
     catch (e) {
         er = e
     }
-    expect(er?.message).toEqual(o)
+    if (er?.regError == r.error_internal) {
+        console.log(er)
+    }
+    expect(er?.regError).toEqual(o)
 })
 // test.each([
 //     //[[r.function, r.type_hint_value_quotient_uint, 0, r.end_scope, r.call, r.back_ref, 0, r.end_scope], [{ type: r.type_hint_value_quotient_uint, items: [0], needed: 1, next_literal_item: false }]],

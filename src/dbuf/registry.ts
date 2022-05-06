@@ -142,6 +142,7 @@ export const enum r {
     sub_authority,
     all_data,
     location,
+    error,
 
     numerator = 64,
     denominator,
@@ -152,6 +153,7 @@ export const enum r {
     vCollection_merge,
     v32_32,
     back_ref_hint,
+    return_early_error,
     TAI_epoch_shift,
     fixed_point_decimal_places,
     repeat,
@@ -181,6 +183,17 @@ export const enum r {
 
     license,
     Apache_LLVM,
+
+    error_internal,
+    error_invalid_back_ref,
+    error_max_forward_depth,
+    error_invalid_forward_ref,
+    error_invalid_choice_index,
+    error_rich_text_in_plain,
+    error_non_text_in_plain,
+    error_empty_scope,
+    error_invalid_end_scope,
+    error_unfinished_parse_stack,
 
     magicNumber = 4473429
 }
