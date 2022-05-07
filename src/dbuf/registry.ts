@@ -184,6 +184,9 @@ export const enum r {
     license,
     Apache_LLVM,
 
+    blocks_read = 512,
+    block_chunk_index,
+    block_bit_remaining,
     error_internal,
     error_invalid_back_ref,
     error_max_forward_depth,
@@ -194,6 +197,8 @@ export const enum r {
     error_empty_scope,
     error_invalid_end_scope,
     error_unfinished_parse_stack,
+    error_invalid_text_value,
+    error_invalid_registry_value,
 
     magicNumber = 4473429
 }

@@ -1,6 +1,6 @@
-import { evaluateAll, parse, write, finishWrite, EncoderState, multiple_symbol, Item, createDecoder, continueDecode, read, createEncoder, writeBuffer, ParseType, write_checked, ParseOp, Scope, choice_symbol, non_text_symbol, Slot, collection_symbol, text_symbol, write_pad, bits_symbol } from '@bintoca/dbuf'
+import { parse, write, finishWrite, struct_sym, Item, createDecoder, continueDecode, read, createEncoder, writeBuffer, ParseType, write_checked, ParseOp, Scope, choice_sym, non_text_sym, Slot, collection_sym, text_sym, write_pad, bits_sym } from '@bintoca/dbuf/codec'
 import { r, u } from '@bintoca/dbuf/registry'
-import { zigzagEncode, zigzagDecode, unicodeToText, textToUnicode, getLeap_millis, getLeap_millis_tai, } from '@bintoca/dbuf/util'
+import { zigzagEncode, zigzagDecode, unicodeToText, textToUnicode, getLeap_millis, getLeap_millis_tai, strip} from '@bintoca/dbuf/util'
 const dv = new DataView(new ArrayBuffer(8))
 test('float', () => {
     dv.setFloat32(0, 1, true)
@@ -125,11 +125,10 @@ test.each([[[r.IPv4, r.end_scope], [r.IPv4]]])('early end', (i, o) => {
     const w = writer(i)
     try {
         const s = parse(w)
-        if (s.root.items[s.root.items.length - 1] == r.placeholder) {
-            s.root.items.pop()
+        if (s.items[s.items.length - 1] == r.placeholder) {
+            s.items.pop()
         }
-        expect(s.scope_stack.length).toBe(0)
-        expect(s.root.items).toEqual(o)
+        expect(s.items).toEqual(o)
     }
     catch (e) {
         console.log(w)
@@ -146,7 +145,7 @@ const bind_uint_in = [r.bind, r.uint, 2]
 const bind_uint_out = { type: r.bind, needed: 2, items: [r.uint, 2], op: op1(ParseType.value) }
 const u8 = new Uint8Array([1, 2, 3, 4])
 const text_e_in = [u.text, u.e, u.end_scope]
-const text_e_out = { type: text_symbol, inText: true, items: [u.e] }
+const text_e_out = { type: text_sym, inText: true, items: [u.e] }
 const bind = (t: Slot, v: Item, p: ParseOp): Scope => { return { type: r.bind, needed: 2, items: [t, v], op: p } }
 const bindO = (t: r, items: Item[], p: ParseOp, v: Item | Item[]): Scope => {
     if (Array.isArray(v)) {
@@ -170,7 +169,7 @@ const bindO = (t: r, items: Item[], p: ParseOp, v: Item | Item[]): Scope => {
                 if (typeof z == 'object' && !(z instanceof Uint8Array)) {
                     z.op = x
                 }
-                return { type: collection_symbol, needed: it.length, items: it, ops: op.ops, parseIndex: 0 }
+                return { type: collection_sym, needed: it.length, items: it, ops: op.ops, parseIndex: 0 }
             }
             const it = []
             let j = 0
@@ -188,7 +187,7 @@ const bindO = (t: r, items: Item[], p: ParseOp, v: Item | Item[]): Scope => {
                 }
                 j++
             }
-            return { type: multiple_symbol, needed: op.ops.length, items: it, ops: op.ops, parseIndex: op.ops.length }
+            return { type: struct_sym, needed: op.ops.length, items: it, ops: op.ops, parseIndex: op.ops.length }
         }
         v = rr(p, items)
     }
@@ -207,7 +206,7 @@ const srTex = (items: Item[]): Scope => { return { type: r.rich_text, inText: tr
 const bText = (items: Item[]) => bind(r.text, sTex(items), opt)
 const brText = (items: Item[]) => bind(r.rich_text, srTex(items), oprt)
 const pos = (off: number, ti?: number, br?: number) => { return { dvOffset: off, tempIndex: ti, partialBlockRemaining: br } }
-const ro: Scope = { type: non_text_symbol, items: [r.IPv4, null, { type: r.bind, needed: 2, items: [r.uint, 2], op: op1(ParseType.value), start: pos(4), end: pos(8, 3) }] }
+const ro: Scope = { type: non_text_sym, items: [r.IPv4, null, { type: r.bind, needed: 2, items: [r.uint, 2], op: op1(ParseType.value), start: pos(4), end: pos(8, 3) }] }
 const fo: Scope = { type: r.forward_ref, needed: 3, items: [ro, 1, 4], op: { type: ParseType.forward }, start: pos(4, 1), end: pos(4) }
 ro.items[1] = fo
 fo.op.forward = fo
@@ -217,8 +216,7 @@ test.each([
     const w = writer(i)
     try {
         const s = parse(w)
-        expect(s.scope_stack.length).toBe(1)
-        expect(s.root.items).toEqual(o)
+        expect(s.items).toEqual(o)
     }
     catch (e) {
         console.log(w)
@@ -227,7 +225,7 @@ test.each([
 })
 test.each([
     [[r.IPv4, r.back_ref, 0, ...bind_uint_in], [r.IPv4, r.IPv4, bind_uint_out]],
-    [[r.bind, r.text, u.a, ...text_e_in, u.back_ref, 0, u.end_scope, r.bind, r.rich_text, u.a, u.non_text, ...bind_uint_in, u.end_scope, u.end_scope], [bText([u.a, text_e_out, text_e_out]), brText([u.a, need0(non_text_symbol, [bind_uint_out])])]],
+    [[r.bind, r.text, u.a, ...text_e_in, u.back_ref, 0, u.end_scope, r.bind, r.rich_text, u.a, u.non_text, ...bind_uint_in, u.end_scope, u.end_scope], [bText([u.a, text_e_out, text_e_out]), brText([u.a, need0(non_text_sym, [bind_uint_out])])]],
     [[r.bind, r.vIEEE_binary, u8], [bind(r.vIEEE_binary, u8, opB(1))]],
     [[r.bind, r.bitSize, 19, u8], [bind(needN(r.bitSize, [20], opBi(20)), 32 + 4096, opBi(20))]],
     [[r.bind, r.v32_32, 2, u8], [bind(r.v32_32, new Uint8Array([0, 0, 0, 2, 1, 2, 3, 4]), op1(ParseType.v32_32))]],
@@ -238,8 +236,8 @@ test.each([
     [[...bind_uint_in, r.bind, r.type_wrap, r.uint, r.item_, r.end_scope, r.back_ref, 0], [bind_uint_out, bindO(r.type_wrap, [r.uint, r.item_], op1(ParseType.item), bind_uint_out)]],
     [[r.bind, r.type_wrap, r.text, r.end_scope, u.e, u.end_scope], [bindO(r.type_wrap, [r.text], opt, sTex([u.e]))]],
     [[r.bind, r.TAI_seconds, u8], [bind(r.TAI_seconds, u8, opB(1))]],
-    [[r.bind, r.type_choice, r.location, r.locator, r.end_scope, 1], [bindO(r.type_choice, [r.location, r.locator], opC([op1(ParseType.none), op1(ParseType.none)]), needN(choice_symbol, [1]))]],
-    [[r.bind, r.type_choice, r.vIEEE_binary, r.uint, r.end_scope, 1, 2], [bindO(r.type_choice, [r.vIEEE_binary, r.uint], opC([opB(1), opv]), needN(choice_symbol, [1, 2]))]],
+    [[r.bind, r.type_choice, r.location, r.locator, r.end_scope, 1], [bindO(r.type_choice, [r.location, r.locator], opC([op1(ParseType.none), op1(ParseType.none)]), needN(choice_sym, [1]))]],
+    [[r.bind, r.type_choice, r.vIEEE_binary, r.uint, r.end_scope, 1, 2], [bindO(r.type_choice, [r.vIEEE_binary, r.uint], opC([opB(1), opv]), needN(choice_sym, [1, 2]))]],
     [[r.bind, r.type_struct, r.vIEEE_binary, r.type_struct, r.uint, r.sint, r.end_scope, r.end_scope, u8, 1, 2], [bindO(r.type_struct, [r.vIEEE_binary, need0(r.type_struct, [r.uint, r.sint])], opM([opB(1), opM([opv, opv])]), [u8, 1, 2])]],
     [[r.bind, r.type_collection, r.uint, r.end_scope, 1, 3, 4], [bindO(r.type_collection, [r.uint], opCo(opv), [2, 3, 4])]],
     [[r.bind, r.vCollection, r.uint, r.end_scope, 3, 1, 4, 0], [bindO(r.vCollection, [r.uint], opvCo(opv), [2, 3, 4])]],
@@ -248,7 +246,6 @@ test.each([
     const w = writer(i)
     try {
         const s = parse(w)
-        expect(s.scope_stack.length).toBe(1)
         function strip(x: Item) {
             if (typeof x == 'object') {
                 if (x instanceof Uint8Array) {
@@ -259,7 +256,7 @@ test.each([
             }
             return x
         }
-        expect(s.root.items.map(x => strip(x))).toEqual(o)
+        expect(s.items.map(x => strip(x))).toEqual(o)
     }
     catch (e) {
         console.log(w)
@@ -268,29 +265,20 @@ test.each([
 })
 test.each([
     [[r.IPv4, r.forward_ref, 0, r.uint, r.bind, r.back_ref, 1, 2], 2],
+    [[r.bind, r.bind, r.vIEEE_binary, u8, r.IPv4], r.IPv4],
     [[r.forward_ref, 0, r.type_wrap, r.uint, r.end_scope, r.bind, r.back_ref, 1, 2], 2],
-    [[r.forward_ref, 0, r.type_choice, r.locator, r.back_ref, 0, r.end_scope, r.bind, r.back_ref, 0, 1, 1, 0], { type: choice_symbol, items: [1, { type: choice_symbol, items: [1, { type: choice_symbol, items: [0] }] }] }],
-    [[r.bind, r.type_choice, r.vIEEE_binary, r.type_choice, r.uint, r.sint, r.end_scope, r.end_scope, 1, 1, 2], { type: choice_symbol, items: [1, { type: choice_symbol, items: [1, 2] }] }],
-    [[r.bind, r.type_collection, r.type_struct, r.vIEEE_binary, r.type_choice, r.uint, r.sint, r.end_scope, r.end_scope, r.end_scope, 0, u8, 1, 2], { type: collection_symbol, items: [{ type: multiple_symbol, items: [u8, { type: choice_symbol, items: [1, 2] }] }] }],
-    [[r.bind, r.type_struct, r.vIEEE_binary, r.type_collection, r.type_choice, r.uint, r.sint, r.end_scope, r.end_scope, r.end_scope, u8, 0, 1, 2], { type: multiple_symbol, items: [u8, { type: collection_symbol, items: [{ type: choice_symbol, items: [1, 2] }] }] }],
-    [[r.bind, r.type_struct, r.uint, r.bitSize, 7, r.bitSize, 7, r.bitSize, 23, r.bitSize, 47, r.uint, r.bitSize, 7, r.end_scope, 3, u8, u8, u8, 4, u8], { type: multiple_symbol, items: [3, 1, 2, 0x030401, { type: bits_symbol, items: [0x02030401, 0x0203, 16] }, 4, 1] }],
+    [[r.forward_ref, 0, r.type_choice, r.locator, r.back_ref, 0, r.end_scope, r.bind, r.back_ref, 0, 1, 1, 0], { type: choice_sym, items: [1, { type: choice_sym, items: [1, { type: choice_sym, items: [0] }] }] }],
+    [[r.bind, r.type_choice, r.vIEEE_binary, r.type_choice, r.uint, r.sint, r.end_scope, r.end_scope, 1, 1, 2], { type: choice_sym, items: [1, { type: choice_sym, items: [1, 2] }] }],
+    [[r.bind, r.type_collection, r.type_struct, r.vIEEE_binary, r.type_choice, r.uint, r.sint, r.end_scope, r.end_scope, r.end_scope, 0, u8, 1, 2], { type: collection_sym, items: [{ type: struct_sym, items: [u8, { type: choice_sym, items: [1, 2] }] }] }],
+    [[r.bind, r.type_struct, r.vIEEE_binary, r.type_collection, r.type_choice, r.uint, r.sint, r.end_scope, r.end_scope, r.end_scope, u8, 0, 1, 2], { type: struct_sym, items: [u8, { type: collection_sym, items: [{ type: choice_sym, items: [1, 2] }] }] }],
+    [[r.bind, r.type_struct, r.uint, r.bitSize, 7, r.bitSize, 7, r.bitSize, 23, r.bitSize, 47, r.uint, r.bitSize, 7, r.end_scope, 3, u8, u8, u8, 4, u8], { type: struct_sym, items: [3, 1, 2, 0x030401, { type: bits_sym, items: [0x02030401, 0x0203, 16] }, 4, 1] }],
 ])('parse_strip(%#)', (i, o) => {
     const w = writer(i)
     try {
         const s = parse(w)
-        expect(s.scope_stack.length).toBe(1)
         //console.log((s.root as any).items[0].items[1])
-        const ou = (s.root.items[s.root.items.length - 1] as Scope).items[1]
-        function strip(x: Slot) {
-            if (typeof x == 'object') {
-                if (x instanceof Uint8Array) {
-                    return x
-                }
-                return { type: x.type, items: x.items.map(y => strip(y as Slot)) }
-            }
-            return x
-        }
-        expect(strip(ou as Slot)).toEqual(o)
+        const ou = (s.items[s.items.length - 1] as Scope).items[1]
+        expect(strip(ou)).toEqual(o)
     }
     catch (e) {
         console.log(w)
@@ -307,34 +295,16 @@ test.each([
     [[r.forward_ref, 1, r.type_struct, r.back_ref, 0, r.end_scope, r.type_struct, r.back_ref, 1, r.end_scope, r.bind, r.back_ref, 1, 2], r.error_max_forward_depth],
     [[r.bind, r.text, u.non_text, u.end_scope], r.error_non_text_in_plain],
     [[r.IPv4, r.bind, r.text, u.back_ref, 0, u.end_scope], r.error_rich_text_in_plain],
+    [[r.bind, r.type_choice, r.uint, r.end_scope, 3], r.error_invalid_choice_index],
+    [[r.bind, r.type_choice, r.uint], r.error_unfinished_parse_stack],
+    [[r.bind, r.text, 0xFFFFFF], r.error_invalid_text_value],
+    [[0xFFFFFF], r.error_invalid_registry_value],
 ])('parseError(%#)', (i, o) => {
-    let er
-    try {
-        parse(writer(i))
+    const er = parse(writer(i))
+    if (typeof er.items[1] == 'number') {
+        expect(er.items[1]).toEqual(o)
     }
-    catch (e) {
-        er = e
+    else {
+        expect((er as any).items[1].items[1].items[0]).toEqual(o)
     }
-    if (er?.regError == r.error_internal) {
-        console.log(er)
-    }
-    expect(er?.regError).toEqual(o)
 })
-// test.each([
-//     //[[r.function, r.type_hint_value_quotient_uint, 0, r.end_scope, r.call, r.back_ref, 0, r.end_scope], [{ type: r.type_hint_value_quotient_uint, items: [0], needed: 1, next_literal_item: false }]],
-//     //[[r.function, r.unicode, u.a, u.placeholder, r.type_hint_value_quotient_uint, 0, u.end_scope, u.e, u.end_scope, r.end_scope, r.call, r.back_ref, 0, r.end_scope],
-//     //[{ type: u.unicode, items: [u.a, { type: u.placeholder, items: [{ type: r.type_hint_value_quotient_uint, items: [0], needed: 1, next_literal_item: false }], needed: 0 }, u.e], needed: 0, inUnicode: true }]],
-//     //[[r.function, r.unicode, u.a, u.unicode, u.e, u.end_scope, u.i, u.back_ref, 0, r.end_scope, r.end_scope, r.call, r.back_ref, 0, r.end_scope],
-//     //[{ type: r.unicode, needed: 0, inUnicode: true, items: [u.a, { type: u.unicode, needed: 0, inUnicode: true, items: [u.e] }, u.i, { type: u.back_ref, needed: 1, inUnicode: true, items: [0], next_literal_item: false, ref: { type: u.unicode, needed: 0, inUnicode: true, items: [u.e] } }] }]],
-// ])('evaluate', (i, o) => {
-//     const b = encode(i)
-//     const s = parse(decode(b[0]))
-//     evaluateAll(s.slots)
-//     expect(s.slots.map(x => typeof x == 'object' && !(x instanceof Uint8Array) && !Array.isArray(x) && x.result ? x.result : null).filter(x => x)).toEqual(o)
-// })
-// test.each([
-//     [[r.call, 6000, r.end_scope], 'not implemented x1 6000'],
-// ])('evaluateError', (i, o) => {
-//     const s = parse(i)
-//     expect(() => evaluateAll(s.slots)).toThrowError(o)
-// })

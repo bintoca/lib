@@ -1,6 +1,27 @@
+import { Item, Slot } from '@bintoca/dbuf/codec'
 export const bufToDV = (b: BufferSource, offset: number = 0, length?: number): DataView => b instanceof ArrayBuffer ? new DataView(b, offset, length !== undefined ? length : b.byteLength - offset) : new DataView(b.buffer, b.byteOffset + offset, length !== undefined ? length : b.byteLength - offset)
 export const bufToU8 = (b: BufferSource, offset: number = 0, length?: number): Uint8Array => b instanceof ArrayBuffer ? new Uint8Array(b, offset, length !== undefined ? length : b.byteLength - offset) : new Uint8Array(b.buffer, b.byteOffset + offset, length !== undefined ? length : b.byteLength - offset)
-
+export const concat = (buffers: BufferSource[]): Uint8Array => {
+    if (buffers.length == 1) {
+        return buffers[0] instanceof Uint8Array ? buffers[0] : bufToU8(buffers[0])
+    }
+    const u = new Uint8Array(buffers.reduce((a, b) => a + b.byteLength, 0))
+    let offset = 0
+    for (let b of buffers) {
+        u.set(b instanceof Uint8Array ? b : bufToU8(b), offset)
+        offset += b.byteLength
+    }
+    return u
+}
+export const strip = (x: Item) => {
+    if (typeof x == 'object') {
+        if (x instanceof Uint8Array) {
+            return x
+        }
+        return { type: x.type, items: x.items.map(y => strip(y as Slot)) }
+    }
+    return x
+}
 export const zigzagEncode = (n: number) => (n >> 31) ^ (n << 1)
 export const zigzagDecode = (n: number) => (n >>> 1) ^ -(n & 1)
 export const unicodeToTextLookup = [64, 65, 66, 67, 68, 69, 70, 71, 72, 73, 10, 74, 75, 76, 77, 78, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88, 89, 90, 91, 92, 93, 94,
