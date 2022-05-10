@@ -207,11 +207,11 @@ const bText = (items: Item[]) => bind(r.text, sTex(items), opt)
 const brText = (items: Item[]) => bind(r.rich_text, srTex(items), oprt)
 const pos = (off: number, ti?: number, br?: number) => { return { dvOffset: off, tempIndex: ti, partialBlockRemaining: br } }
 const ro: Scope = { type: non_text_sym, items: [r.IPv4, null, { type: r.bind, needed: 2, items: [r.uint, 2], op: op1(ParseType.value), start: pos(4), end: pos(8, 3) }] }
-const fo: Scope = { type: r.forward_ref, needed: 3, items: [ro, 1, 4], op: { type: ParseType.forward }, start: pos(4, 1), end: pos(4) }
+const fo: Scope = { type: r.forward_reference, needed: 3, items: [ro, 1, 4], op: { type: ParseType.forward }, start: pos(4, 1), end: pos(4) }
 ro.items[1] = fo
 fo.op.forward = fo
 test.each([
-    [[r.IPv4, r.forward_ref, 4, ...bind_uint_in], ro.items],
+    [[r.IPv4, r.forward_reference, 4, ...bind_uint_in], ro.items],
 ])('parse_full(%#)', (i, o) => {
     const w = writer(i)
     try {
@@ -224,7 +224,7 @@ test.each([
     }
 })
 test.each([
-    [[r.IPv4, r.back_ref, 0, ...bind_uint_in], [r.IPv4, r.IPv4, bind_uint_out]],
+    [[r.IPv4, r.back_reference, 0, ...bind_uint_in], [r.IPv4, r.IPv4, bind_uint_out]],
     [[r.bind, r.text, u.a, ...text_e_in, u.back_ref, 0, u.end_scope, r.bind, r.rich_text, u.a, u.non_text, ...bind_uint_in, u.end_scope, u.end_scope], [bText([u.a, text_e_out, text_e_out]), brText([u.a, need0(non_text_sym, [bind_uint_out])])]],
     [[r.bind, r.vIEEE_binary, u8], [bind(r.vIEEE_binary, u8, opB(1))]],
     [[r.bind, r.bitSize, 19, u8], [bind(needN(r.bitSize, [20], opBi(20)), 32 + 4096, opBi(20))]],
@@ -233,10 +233,10 @@ test.each([
     [[r.bind, r.type_wrap, r.vIEEE_binary, r.vblock, r.end_scope, 0, u8], [bindO(r.type_wrap, [r.vIEEE_binary, r.vblock], opvb, u8)]],
     [[r.bind, r.type_wrap, r.uint, r.end_scope, 5], [bindO(r.type_wrap, [r.uint], opv, 5)]],
     [[r.bind, r.type_wrap, r.uint, r.vbit, r.end_scope, 8, u8], [bindO(r.type_wrap, [r.uint, r.vbit], opvbi, 2)]],
-    [[...bind_uint_in, r.bind, r.type_wrap, r.uint, r.item_, r.end_scope, r.back_ref, 0], [bind_uint_out, bindO(r.type_wrap, [r.uint, r.item_], op1(ParseType.item), bind_uint_out)]],
+    [[...bind_uint_in, r.bind, r.type_wrap, r.uint, r.item_, r.end_scope, r.back_reference, 0], [bind_uint_out, bindO(r.type_wrap, [r.uint, r.item_], op1(ParseType.item), bind_uint_out)]],
     [[r.bind, r.type_wrap, r.text, r.end_scope, u.e, u.end_scope], [bindO(r.type_wrap, [r.text], opt, sTex([u.e]))]],
     [[r.bind, r.TAI_seconds, u8], [bind(r.TAI_seconds, u8, opB(1))]],
-    [[r.bind, r.type_choice, r.location, r.locator, r.end_scope, 1], [bindO(r.type_choice, [r.location, r.locator], opC([op1(ParseType.none), op1(ParseType.none)]), needN(choice_sym, [1]))]],
+    [[r.bind, r.type_choice, r.blocks_read, r.block_chunk_index, r.end_scope, 1], [bindO(r.type_choice, [r.blocks_read, r.block_chunk_index], opC([op1(ParseType.none), op1(ParseType.none)]), needN(choice_sym, [1]))]],
     [[r.bind, r.type_choice, r.vIEEE_binary, r.uint, r.end_scope, 1, 2], [bindO(r.type_choice, [r.vIEEE_binary, r.uint], opC([opB(1), opv]), needN(choice_sym, [1, 2]))]],
     [[r.bind, r.type_struct, r.vIEEE_binary, r.type_struct, r.uint, r.sint, r.end_scope, r.end_scope, u8, 1, 2], [bindO(r.type_struct, [r.vIEEE_binary, need0(r.type_struct, [r.uint, r.sint])], opM([opB(1), opM([opv, opv])]), [u8, 1, 2])]],
     [[r.bind, r.type_collection, r.uint, r.end_scope, 1, 3, 4], [bindO(r.type_collection, [r.uint], opCo(opv), [2, 3, 4])]],
@@ -264,10 +264,10 @@ test.each([
     }
 })
 test.each([
-    [[r.IPv4, r.forward_ref, 0, r.uint, r.bind, r.back_ref, 1, 2], 2],
+    [[r.IPv4, r.forward_reference, 0, r.uint, r.bind, r.back_reference, 1, 2], 2],
     [[r.bind, r.bind, r.vIEEE_binary, u8, r.IPv4], r.IPv4],
-    [[r.forward_ref, 0, r.type_wrap, r.uint, r.end_scope, r.bind, r.back_ref, 1, 2], 2],
-    [[r.forward_ref, 0, r.type_choice, r.locator, r.back_ref, 0, r.end_scope, r.bind, r.back_ref, 0, 1, 1, 0], { type: choice_sym, items: [1, { type: choice_sym, items: [1, { type: choice_sym, items: [0] }] }] }],
+    [[r.forward_reference, 0, r.type_wrap, r.uint, r.end_scope, r.bind, r.back_reference, 1, 2], 2],
+    [[r.forward_reference, 0, r.type_choice, r.blocks_read, r.back_reference, 0, r.end_scope, r.bind, r.back_reference, 0, 1, 1, 0], { type: choice_sym, items: [1, { type: choice_sym, items: [1, { type: choice_sym, items: [0] }] }] }],
     [[r.bind, r.type_choice, r.vIEEE_binary, r.type_choice, r.uint, r.sint, r.end_scope, r.end_scope, 1, 1, 2], { type: choice_sym, items: [1, { type: choice_sym, items: [1, 2] }] }],
     [[r.bind, r.type_collection, r.type_struct, r.vIEEE_binary, r.type_choice, r.uint, r.sint, r.end_scope, r.end_scope, r.end_scope, 0, u8, 1, 2], { type: collection_sym, items: [{ type: struct_sym, items: [u8, { type: choice_sym, items: [1, 2] }] }] }],
     [[r.bind, r.type_struct, r.vIEEE_binary, r.type_collection, r.type_choice, r.uint, r.sint, r.end_scope, r.end_scope, r.end_scope, u8, 0, 1, 2], { type: struct_sym, items: [u8, { type: collection_sym, items: [{ type: choice_sym, items: [1, 2] }] }] }],
@@ -289,10 +289,10 @@ test.each([
     [[r.bind, r.end_scope], r.error_invalid_end_scope],
     [[r.function, r.end_scope], r.error_empty_scope],
     [[r.end_scope], r.error_empty_scope],
-    [[r.back_ref, 0], r.error_invalid_back_ref],
-    [[r.forward_ref, 0, r.bind, r.back_ref, 0, 2], r.error_invalid_forward_ref],
-    [[r.forward_ref, 1, r.bind, r.back_ref, 0, 2], r.error_invalid_forward_ref],
-    [[r.forward_ref, 1, r.type_struct, r.back_ref, 0, r.end_scope, r.type_struct, r.back_ref, 1, r.end_scope, r.bind, r.back_ref, 1, 2], r.error_max_forward_depth],
+    [[r.back_reference, 0], r.error_invalid_back_ref],
+    [[r.forward_reference, 0, r.bind, r.back_reference, 0, 2], r.error_invalid_forward_ref],
+    [[r.forward_reference, 1, r.bind, r.back_reference, 0, 2], r.error_invalid_forward_ref],
+    [[r.forward_reference, 1, r.type_struct, r.back_reference, 0, r.end_scope, r.type_struct, r.back_reference, 1, r.end_scope, r.bind, r.back_reference, 1, 2], r.error_max_forward_depth],
     [[r.bind, r.text, u.non_text, u.end_scope], r.error_non_text_in_plain],
     [[r.IPv4, r.bind, r.text, u.back_ref, 0, u.end_scope], r.error_rich_text_in_plain],
     [[r.bind, r.type_choice, r.uint, r.end_scope, 3], r.error_invalid_choice_index],

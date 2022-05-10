@@ -1,6 +1,149 @@
 import { r, u } from '@bintoca/dbuf/registry'
 import { bufToDV, bufToU8 } from '@bintoca/dbuf/util'
 
+export const shiftInit = [
+    [8, 29], [8, 26], [8, 23], [8, 20], [8, 17], [8, 14], [8, 11], [8, 8],//7
+    [11, 29], [11, 26], [11, 23], [11, 20], [11, 17], [11, 14], [11, 11],//14
+    [14, 29], [14, 26], [14, 23], [14, 20], [14, 17], [14, 14],//20
+    [17, 29], [17, 26], [17, 23], [17, 20], [17, 17],//25
+    [20, 29], [20, 26], [20, 23], [20, 20],//29
+    [23, 29], [23, 26], [23, 23],//32
+    [26, 29], [26, 26],//34
+    [29, 29]//35
+]
+export const shiftMap = [
+    [7], [6, 35], [5, 33, 35], [5, 34], [4, 30, 34], [4, 30, 33, 35], [4, 31, 35], [4, 32],
+    [3, 26, 32], [3, 26, 31, 35], [3, 26, 30, 33, 35], [3, 26, 30, 34], [3, 27, 34], [3, 27, 33, 35], [3, 28, 35], [3, 29],
+    [2, 21, 29], [2, 21, 28, 35], [2, 21, 27, 33, 35], [2, 21, 27, 34], [2, 21, 26, 30, 34], [2, 21, 26, 30, 33, 35], [2, 21, 26, 31, 35], [2, 21, 26, 32],
+    [2, 22, 32], [2, 22, 31, 35], [2, 22, 30, 33, 35], [2, 22, 30, 34], [2, 23, 34], [2, 23, 33, 35], [2, 24, 35], [2, 25],
+    [1, 15, 25], [1, 15, 24, 35], [1, 15, 23, 33, 35], [1, 15, 23, 34], [1, 15, 22, 30, 34], [1, 15, 22, 30, 33, 35], [1, 15, 22, 31, 35], [1, 15, 22, 32],
+    [1, 15, 21, 26, 32], [1, 15, 21, 26, 31, 35], [1, 15, 21, 26, 30, 33, 35], [1, 15, 21, 26, 30, 34], [1, 15, 21, 27, 34], [1, 15, 21, 27, 33, 35], [1, 15, 21, 28, 35], [1, 15, 21, 29],
+    [1, 16, 29], [1, 16, 28, 35], [1, 16, 27, 33, 35], [1, 16, 27, 34], [1, 16, 26, 30, 34], [1, 16, 26, 30, 33, 35], [1, 16, 26, 31, 35], [1, 16, 26, 32],
+    [1, 17, 32], [1, 17, 31, 35], [1, 17, 30, 33, 35], [1, 17, 30, 34], [1, 18, 34], [1, 18, 33, 35], [1, 19, 35], [1, 20],
+    [0, 8, 20], [0, 8, 19, 35], [0, 8, 18, 33, 35], [0, 8, 18, 34], [0, 8, 17, 30, 34], [0, 8, 17, 30, 33, 35], [0, 8, 17, 31, 35], [0, 8, 17, 32],
+    [0, 8, 16, 26, 32], [0, 8, 16, 26, 31, 35], [0, 8, 16, 26, 30, 33, 35], [0, 8, 16, 26, 30, 34], [0, 8, 16, 27, 34], [0, 8, 16, 27, 33, 35], [0, 8, 16, 28, 35], [0, 8, 16, 29],
+    [0, 8, 15, 21, 29], [0, 8, 15, 21, 28, 35], [0, 8, 15, 21, 27, 33, 35], [0, 8, 15, 21, 27, 34], [0, 8, 15, 21, 26, 30, 34], [0, 8, 15, 21, 26, 30, 33, 35], [0, 8, 15, 21, 26, 31, 35], [0, 8, 15, 21, 26, 32],
+    [0, 8, 15, 22, 32], [0, 8, 15, 22, 31, 35], [0, 8, 15, 22, 30, 33, 35], [0, 8, 15, 22, 30, 34], [0, 8, 15, 23, 34], [0, 8, 15, 23, 33, 35], [0, 8, 15, 24, 35], [0, 8, 15, 25],
+    [0, 9, 25], [0, 9, 24, 35], [0, 9, 23, 33, 35], [0, 9, 23, 34], [0, 9, 22, 30, 34], [0, 9, 22, 30, 33, 35], [0, 9, 22, 31, 35], [0, 9, 22, 32],
+    [0, 9, 21, 26, 32], [0, 9, 21, 26, 31, 35], [0, 9, 21, 26, 30, 33, 35], [0, 9, 21, 26, 30, 34], [0, 9, 21, 27, 34], [0, 9, 21, 27, 33, 35], [0, 9, 21, 28, 35], [0, 9, 21, 29],
+    [0, 10, 29], [0, 10, 28, 35], [0, 10, 27, 33, 35], [0, 10, 27, 34], [0, 10, 26, 30, 34], [0, 10, 26, 30, 33, 35], [0, 10, 26, 31, 35], [0, 10, 26, 32],
+    [0, 11, 32], [0, 11, 31, 35], [0, 11, 30, 33, 35], [0, 11, 30, 34], [0, 12, 34], [0, 12, 33, 35], [0, 13, 35], [0, 14]
+]
+export const shiftLookup = shiftMap.map(x => x.map(y => shiftInit[y]))
+export type DecoderState = { partial: number, partialBit: number, temp: number[], tempCount: number, tempIndex: number, dv: DataView, dvOffset: number, partialBlock: number, partialBlockRemaining: number }
+export const decodeVarintBlock = (s: DecoderState, x: number) => {
+    let mesh = x >>> 24
+    const nextPartialBit = mesh & 1
+    const continueBit = mesh >>> 7
+    if (continueBit) {
+        mesh = mesh ^ 255
+    }
+    const a = shiftLookup[mesh]
+    if (continueBit == s.partialBit) {
+        if (a.length == 1) {
+            s.tempCount = 0
+            s.partial = ((s.partial << 24) >>> 0) + (x & 0xFFFFFF)
+        }
+        else {
+            s.temp[0] = ((s.partial << (32 - a[0][1])) >>> 0) + ((x << a[0][0]) >>> a[0][1])
+            s.tempCount = a.length - 1
+            for (let i = 1; i < a.length - 1; i++) {
+                s.temp[i] = (x << a[i][0]) >>> a[i][1]
+            }
+            const an = a[a.length - 1]
+            s.partial = (x << an[0]) >>> an[1]
+        }
+    }
+    else {
+        s.temp[0] = s.partial
+        s.tempCount = a.length
+        for (let i = 0; i < a.length - 1; i++) {
+            s.temp[i + 1] = (x << a[i][0]) >>> a[i][1]
+        }
+        const an = a[a.length - 1]
+        s.partial = (x << an[0]) >>> an[1]
+    }
+    s.partialBit = nextPartialBit
+}
+export const createDecoder = (b: BufferSource): DecoderState => {
+    if (b.byteLength == 0 || b.byteLength % 4 != 0) {
+        throw new Error('data must be multiple of 4 bytes, length: ' + b.byteLength)
+    }
+    const dv = bufToDV(b)
+    return { partial: 0, partialBit: dv.getUint8(0) >>> 7, temp: Array(8), tempCount: 0, tempIndex: 0, dv, dvOffset: 0, partialBlock: 0, partialBlockRemaining: 0 }
+}
+export const read = (s: DecoderState): number => {
+    while (s.tempCount == 0) {
+        decodeVarintBlock(s, s.dv.getUint32(s.dvOffset))
+        s.dvOffset += 4
+        check_end(s)
+    }
+    const v = s.temp[s.tempIndex]
+    s.tempIndex++
+    if (s.tempIndex == s.tempCount) {
+        s.tempCount = s.tempIndex = 0
+    }
+    s.partialBlockRemaining = 0
+    return v
+}
+export const read_blocks = (s: DecoderState, n: number) => {
+    const l = n * 4
+    const v = bufToU8(s.dv, s.dvOffset, l)
+    s.dvOffset += l
+    s.partialBlockRemaining = 0
+    check_end(s)
+    return v
+}
+export const check_end = (s: DecoderState) => {
+    if (s.dv.byteLength == s.dvOffset) {
+        s.temp[s.tempCount] = s.partial
+        s.tempCount++
+    }
+}
+export const read_bits = (s: DecoderState, n: number): number | Scope => {
+    function rb(s: DecoderState, n: number) {
+        if (s.partialBlockRemaining == 0) {
+            s.partialBlock = s.dv.getUint32(s.dvOffset)
+            s.dvOffset += 4
+            s.partialBlockRemaining = 32
+        }
+        if (s.partialBlockRemaining >= n) {
+            const r = (s.partialBlock << (32 - s.partialBlockRemaining)) >>> (32 - n)
+            s.partialBlockRemaining -= n
+            return r
+        }
+        if (n <= 32) {
+            const c = n - s.partialBlockRemaining
+            const hi = (s.partialBlock << (32 - s.partialBlockRemaining)) >>> (32 - n)
+            s.partialBlock = s.dv.getUint32(s.dvOffset)
+            s.dvOffset += 4
+            s.partialBlockRemaining = 32
+            const lo = (s.partialBlock >>> (32 - c))
+            s.partialBlockRemaining -= c
+            return hi | lo
+        }
+    }
+    if (n > 32) {
+        const sc: Scope = { type: bits_sym, items: [] }
+        while (true) {
+            if (n > 32) {
+                sc.items.push(rb(s, 32))
+                n -= 32
+            }
+            else {
+                sc.items.push(rb(s, n))
+                sc.items.push(n)
+                break
+            }
+        }
+        check_end(s)
+        return sc
+    }
+    const r = rb(s, n)
+    check_end(s)
+    return r
+}
+export const continueDecode = (s: DecoderState): boolean => s.tempCount != 0 || s.dv.byteLength != s.dvOffset
 export const struct_sym = Symbol.for('https://bintoca.com/symbol/struct')
 export const choice_sym = Symbol.for('https://bintoca.com/symbol/choice')
 export const text_sym = Symbol.for('https://bintoca.com/symbol/text')
@@ -319,16 +462,12 @@ export const parse = (b: BufferSource): Scope => {
                 switch (x) {
                     case r.function:
                     case r.call:
-                    case r.logical_and:
-                    case r.logical_or:
                     case r.type_wrap:
                     case r.type_struct:
                     case r.type_choice:
-                    case r.type_path:
                     case r.type_collection:
                     case r.vCollection:
-                    case r.vCollection_merge:
-                    case r.concat: {
+                    case r.vCollection_merge: {
                         scope_push({ type: x, items: [] })
                         break
                     }
@@ -348,7 +487,7 @@ export const parse = (b: BufferSource): Scope => {
                         collapse_scope(t)
                         break
                     }
-                    case r.back_ref: {
+                    case r.back_reference: {
                         const br = back_ref(st, read(ds))
                         if (br === undefined) {
                             return parseError(st, r.error_invalid_back_ref)
@@ -356,7 +495,7 @@ export const parse = (b: BufferSource): Scope => {
                         collapse_scope(br)
                         break
                     }
-                    case r.forward_ref: {
+                    case r.forward_reference: {
                         const s: Scope = { type: x, needed: 3, items: [top, top.items.length], op: { type: ParseType.forward } }
                         s.op.forward = s
                         scope_push(s)
@@ -375,26 +514,12 @@ export const parse = (b: BufferSource): Scope => {
                         collapse_scope(s)
                         break
                     }
-                    case r.back_ref_hint:
                     case r.next_singular: {
                         scope_push({ type: x, needed: 1, items: [] })
                         collapse_scope(read(ds))
                         break
                     }
-                    case r.unit:
-                    case r.initial_value:
-                    case r.seek:
-                    case r.logical_not: {
-                        scope_push({ type: x, needed: 1, items: [] })
-                        break
-                    }
-                    case r.bind:
-                    case r.equal:
-                    case r.not_equal:
-                    case r.greater_than:
-                    case r.greater_than_or_equal:
-                    case r.less_than:
-                    case r.less_than_or_equal: {
+                    case r.bind: {
                         scope_push({ type: x, needed: 2, items: [] })
                         break
                     }
@@ -422,149 +547,6 @@ export const parse = (b: BufferSource): Scope => {
         return parseError(st, r.error_internal)
     }
 }
-export const shiftInit = [
-    [8, 29], [8, 26], [8, 23], [8, 20], [8, 17], [8, 14], [8, 11], [8, 8],//7
-    [11, 29], [11, 26], [11, 23], [11, 20], [11, 17], [11, 14], [11, 11],//14
-    [14, 29], [14, 26], [14, 23], [14, 20], [14, 17], [14, 14],//20
-    [17, 29], [17, 26], [17, 23], [17, 20], [17, 17],//25
-    [20, 29], [20, 26], [20, 23], [20, 20],//29
-    [23, 29], [23, 26], [23, 23],//32
-    [26, 29], [26, 26],//34
-    [29, 29]//35
-]
-export const shiftMap = [
-    [7], [6, 35], [5, 33, 35], [5, 34], [4, 30, 34], [4, 30, 33, 35], [4, 31, 35], [4, 32],
-    [3, 26, 32], [3, 26, 31, 35], [3, 26, 30, 33, 35], [3, 26, 30, 34], [3, 27, 34], [3, 27, 33, 35], [3, 28, 35], [3, 29],
-    [2, 21, 29], [2, 21, 28, 35], [2, 21, 27, 33, 35], [2, 21, 27, 34], [2, 21, 26, 30, 34], [2, 21, 26, 30, 33, 35], [2, 21, 26, 31, 35], [2, 21, 26, 32],
-    [2, 22, 32], [2, 22, 31, 35], [2, 22, 30, 33, 35], [2, 22, 30, 34], [2, 23, 34], [2, 23, 33, 35], [2, 24, 35], [2, 25],
-    [1, 15, 25], [1, 15, 24, 35], [1, 15, 23, 33, 35], [1, 15, 23, 34], [1, 15, 22, 30, 34], [1, 15, 22, 30, 33, 35], [1, 15, 22, 31, 35], [1, 15, 22, 32],
-    [1, 15, 21, 26, 32], [1, 15, 21, 26, 31, 35], [1, 15, 21, 26, 30, 33, 35], [1, 15, 21, 26, 30, 34], [1, 15, 21, 27, 34], [1, 15, 21, 27, 33, 35], [1, 15, 21, 28, 35], [1, 15, 21, 29],
-    [1, 16, 29], [1, 16, 28, 35], [1, 16, 27, 33, 35], [1, 16, 27, 34], [1, 16, 26, 30, 34], [1, 16, 26, 30, 33, 35], [1, 16, 26, 31, 35], [1, 16, 26, 32],
-    [1, 17, 32], [1, 17, 31, 35], [1, 17, 30, 33, 35], [1, 17, 30, 34], [1, 18, 34], [1, 18, 33, 35], [1, 19, 35], [1, 20],
-    [0, 8, 20], [0, 8, 19, 35], [0, 8, 18, 33, 35], [0, 8, 18, 34], [0, 8, 17, 30, 34], [0, 8, 17, 30, 33, 35], [0, 8, 17, 31, 35], [0, 8, 17, 32],
-    [0, 8, 16, 26, 32], [0, 8, 16, 26, 31, 35], [0, 8, 16, 26, 30, 33, 35], [0, 8, 16, 26, 30, 34], [0, 8, 16, 27, 34], [0, 8, 16, 27, 33, 35], [0, 8, 16, 28, 35], [0, 8, 16, 29],
-    [0, 8, 15, 21, 29], [0, 8, 15, 21, 28, 35], [0, 8, 15, 21, 27, 33, 35], [0, 8, 15, 21, 27, 34], [0, 8, 15, 21, 26, 30, 34], [0, 8, 15, 21, 26, 30, 33, 35], [0, 8, 15, 21, 26, 31, 35], [0, 8, 15, 21, 26, 32],
-    [0, 8, 15, 22, 32], [0, 8, 15, 22, 31, 35], [0, 8, 15, 22, 30, 33, 35], [0, 8, 15, 22, 30, 34], [0, 8, 15, 23, 34], [0, 8, 15, 23, 33, 35], [0, 8, 15, 24, 35], [0, 8, 15, 25],
-    [0, 9, 25], [0, 9, 24, 35], [0, 9, 23, 33, 35], [0, 9, 23, 34], [0, 9, 22, 30, 34], [0, 9, 22, 30, 33, 35], [0, 9, 22, 31, 35], [0, 9, 22, 32],
-    [0, 9, 21, 26, 32], [0, 9, 21, 26, 31, 35], [0, 9, 21, 26, 30, 33, 35], [0, 9, 21, 26, 30, 34], [0, 9, 21, 27, 34], [0, 9, 21, 27, 33, 35], [0, 9, 21, 28, 35], [0, 9, 21, 29],
-    [0, 10, 29], [0, 10, 28, 35], [0, 10, 27, 33, 35], [0, 10, 27, 34], [0, 10, 26, 30, 34], [0, 10, 26, 30, 33, 35], [0, 10, 26, 31, 35], [0, 10, 26, 32],
-    [0, 11, 32], [0, 11, 31, 35], [0, 11, 30, 33, 35], [0, 11, 30, 34], [0, 12, 34], [0, 12, 33, 35], [0, 13, 35], [0, 14]
-]
-export const shiftLookup = shiftMap.map(x => x.map(y => shiftInit[y]))
-export type DecoderState = { partial: number, partialBit: number, temp: number[], tempCount: number, tempIndex: number, dv: DataView, dvOffset: number, partialBlock: number, partialBlockRemaining: number }
-export const decodeVarintBlock = (s: DecoderState, x: number) => {
-    let mesh = x >>> 24
-    const nextPartialBit = mesh & 1
-    const continueBit = mesh >>> 7
-    if (continueBit) {
-        mesh = mesh ^ 255
-    }
-    const a = shiftLookup[mesh]
-    if (continueBit == s.partialBit) {
-        if (a.length == 1) {
-            s.tempCount = 0
-            s.partial = ((s.partial << 24) >>> 0) + (x & 0xFFFFFF)
-        }
-        else {
-            s.temp[0] = ((s.partial << (32 - a[0][1])) >>> 0) + ((x << a[0][0]) >>> a[0][1])
-            s.tempCount = a.length - 1
-            for (let i = 1; i < a.length - 1; i++) {
-                s.temp[i] = (x << a[i][0]) >>> a[i][1]
-            }
-            const an = a[a.length - 1]
-            s.partial = (x << an[0]) >>> an[1]
-        }
-    }
-    else {
-        s.temp[0] = s.partial
-        s.tempCount = a.length
-        for (let i = 0; i < a.length - 1; i++) {
-            s.temp[i + 1] = (x << a[i][0]) >>> a[i][1]
-        }
-        const an = a[a.length - 1]
-        s.partial = (x << an[0]) >>> an[1]
-    }
-    s.partialBit = nextPartialBit
-}
-export const createDecoder = (b: BufferSource): DecoderState => {
-    if (b.byteLength == 0 || b.byteLength % 4 != 0) {
-        throw new Error('data must be multiple of 4 bytes, length: ' + b.byteLength)
-    }
-    const dv = bufToDV(b)
-    return { partial: 0, partialBit: dv.getUint8(0) >>> 7, temp: Array(8), tempCount: 0, tempIndex: 0, dv, dvOffset: 0, partialBlock: 0, partialBlockRemaining: 0 }
-}
-export const read = (s: DecoderState): number => {
-    while (s.tempCount == 0) {
-        decodeVarintBlock(s, s.dv.getUint32(s.dvOffset))
-        s.dvOffset += 4
-        check_end(s)
-    }
-    const v = s.temp[s.tempIndex]
-    s.tempIndex++
-    if (s.tempIndex == s.tempCount) {
-        s.tempCount = s.tempIndex = 0
-    }
-    s.partialBlockRemaining = 0
-    return v
-}
-export const read_blocks = (s: DecoderState, n: number) => {
-    const l = n * 4
-    const v = bufToU8(s.dv, s.dvOffset, l)
-    s.dvOffset += l
-    s.partialBlockRemaining = 0
-    check_end(s)
-    return v
-}
-export const check_end = (s: DecoderState) => {
-    if (s.dv.byteLength == s.dvOffset) {
-        s.temp[s.tempCount] = s.partial
-        s.tempCount++
-    }
-}
-export const read_bits = (s: DecoderState, n: number): number | Scope => {
-    function rb(s: DecoderState, n: number) {
-        if (s.partialBlockRemaining == 0) {
-            s.partialBlock = s.dv.getUint32(s.dvOffset)
-            s.dvOffset += 4
-            s.partialBlockRemaining = 32
-        }
-        if (s.partialBlockRemaining >= n) {
-            const r = (s.partialBlock << (32 - s.partialBlockRemaining)) >>> (32 - n)
-            s.partialBlockRemaining -= n
-            return r
-        }
-        if (n <= 32) {
-            const c = n - s.partialBlockRemaining
-            const hi = (s.partialBlock << (32 - s.partialBlockRemaining)) >>> (32 - n)
-            s.partialBlock = s.dv.getUint32(s.dvOffset)
-            s.dvOffset += 4
-            s.partialBlockRemaining = 32
-            const lo = (s.partialBlock >>> (32 - c))
-            s.partialBlockRemaining -= c
-            return hi | lo
-        }
-    }
-    if (n > 32) {
-        const sc: Scope = { type: bits_sym, items: [] }
-        while (true) {
-            if (n > 32) {
-                sc.items.push(rb(s, 32))
-                n -= 32
-            }
-            else {
-                sc.items.push(rb(s, n))
-                sc.items.push(n)
-                break
-            }
-        }
-        check_end(s)
-        return sc
-    }
-    const r = rb(s, n)
-    check_end(s)
-    return r
-}
-export const continueDecode = (s: DecoderState): boolean => s.tempCount != 0 || s.dv.byteLength != s.dvOffset
 export type EncoderState = { buffers: Uint8Array[], dv: DataView, offset: number, mesh: number, meshBit: boolean, chunk: number, chunkSpace: number, queue: BufferSource[] }
 export const createEncoder = (): EncoderState => {
     return { buffers: [], dv: new DataView(new ArrayBuffer(4096)), offset: 0, mesh: 0, meshBit: false, chunk: 0, chunkSpace: 8, queue: [] }
@@ -678,16 +660,12 @@ export const write_scope = (s: Scope, e: EncoderState) => {
             switch (x.type) {
                 case r.function:
                 case r.call:
-                case r.logical_and:
-                case r.logical_or:
                 case r.type_wrap:
                 case r.type_struct:
                 case r.type_choice:
-                case r.type_path:
                 case r.type_collection:
                 case r.vCollection:
                 case r.vCollection_merge:
-                case r.concat:
                 case text_sym:
                 case non_text_sym:
                     end = true

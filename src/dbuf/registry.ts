@@ -1,4 +1,55 @@
 export const enum under_consideration {
+    type_path,
+    equal,
+    not_equal,
+    greater_than,
+    greater_than_or_equal,
+    less_than,
+    less_than_or_equal,
+    logical_and,
+    logical_or,
+    logical_not,
+
+    unit,
+    first_param,
+    second_param,
+
+    filter,
+    map,
+    reduce,
+    skip,
+    take,
+    groupKey,
+    groupItems,
+    count,
+
+    locator,
+    integrity,
+    sub_authority,
+    all_data,
+    location,
+
+    back_ref_hint,
+    TAI_epoch_shift,
+
+    repeat,
+    repeat_n,
+    initial_value,
+    seek,
+    delta,
+    doubleDelta,
+
+    dateTimeStart,
+    dateTimeEnd,
+    duration,
+    timePeriod,
+
+    license,
+    Apache_LLVM,
+
+    numerator,
+    denominator,
+
     add,//*
     subtract,//*
     multiply,//*
@@ -81,7 +132,7 @@ export const enum under_consideration {
 export const enum r {
     placeholder,
     end_scope,
-    back_ref,
+    back_reference,
     type_wrap,
     type_choice,
     type_struct,
@@ -92,20 +143,6 @@ export const enum r {
     rich_text,
     function,
     call,
-    type_path,
-
-    concat,
-    chain,
-
-    equal,
-    not_equal,
-    greater_than,
-    greater_than_or_equal,
-    less_than,
-    less_than_or_equal,
-    logical_and,
-    logical_or,
-    logical_not,
 
     next_singular,
 
@@ -121,47 +158,18 @@ export const enum r {
     vIEEE_decimal_DPD,
     dns_idna,
     TAI_seconds,//unsigned
-    unit,
-
-    first_param,
-    second_param,
+    
     bitSize,
     blockSize,
-
-    filter,
-    map,
-    reduce,
-    skip,
-    take,
-    groupKey,
-    groupItems,
-    count,
-
-    locator,
-    integrity,
-    sub_authority,
-    all_data,
-    location,
     error,
-
-    numerator = 64,
-    denominator,
-
-    nint,
-    forward_ref,
+    
+    forward_reference = 64,
     vCollection,
     vCollection_merge,
     v32_32,
-    back_ref_hint,
+    nint,
     return_early_error,
-    TAI_epoch_shift,
     fixed_point_decimal_places,
-    repeat,
-    repeat_n,
-    initial_value,
-    seek,
-    delta,
-    doubleDelta,
 
     IPv4,
     IPv6,
@@ -176,13 +184,6 @@ export const enum r {
     minutes,
     seconds,
     weeks,
-    dateTimeStart,
-    dateTimeEnd,
-    duration,
-    timePeriod,
-
-    license,
-    Apache_LLVM,
 
     blocks_read = 512,
     block_chunk_index,

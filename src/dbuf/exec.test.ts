@@ -4,7 +4,7 @@ import { r, u } from '@bintoca/dbuf/registry'
 import { concat, strip } from '@bintoca/dbuf/util'
 
 const sc = (type: r | symbol, items: Item[]) => { return { type, items } }
-const br = (n: number): Scope => sc(r.back_ref, [n])
+const br = (n: number): Scope => sc(r.back_reference, [n])
 const bi = (x: Item, y: Item): Scope => sc(r.bind, [x, y])
 const perr = (er: r, blocksRead: number, index?: number, bits?: number) => parseErrorPos({ dvOffset: blocksRead * 4, tempIndex: index, partialBlockRemaining: bits }, er)
 test.each([
