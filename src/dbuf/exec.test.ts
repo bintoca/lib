@@ -9,7 +9,7 @@ const bi = (x: Item, y: Item): Scope => sc(r.bind, [x, y])
 const perr = (er: r, blocksRead: number, index?: number, bits?: number) => parseErrorPos({ dvOffset: blocksRead * 4, tempIndex: index, partialBlockRemaining: bits }, er)
 test.each([
     [[r.IPv4, r.placeholder], null],
-    [br(0), perr(r.error_invalid_back_ref, 1, 2)],
+    [br(0), perr(r.error_invalid_back_reference, 1, 2)],
 ])('run', (i, o) => {
     const es = createEncoder()
     write_scope({ type: non_text_sym, items: Array.isArray(i) ? i : [i] }, es)

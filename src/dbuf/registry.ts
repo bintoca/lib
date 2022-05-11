@@ -139,35 +139,33 @@ export const enum r {
     type_collection,
     bind,
 
-    text,
-    rich_text,
+    parse_varint,
+    parse_item,
+    block_size,
+    block_variable,
+    bit_size,
+    bit_variable,
+
+    text_plain,
+    text_rich,
+    text_dns,
+    integer_unsigned,
+    integer_signed,
+    IEEE_binary,
+    IEEE_decimal,
+    TAI_seconds,
+    error,
+    
     function,
     call,
 
     next_singular,
-
-    //singular
-    value_,
-    item_,
-    vblock,
-    vbit,
-
-    uint,
-    sint,
-    vIEEE_binary,
-    vIEEE_decimal_DPD,
-    dns_idna,
-    TAI_seconds,//unsigned
-    
-    bitSize,
-    blockSize,
-    error,
     
     forward_reference = 64,
-    vCollection,
-    vCollection_merge,
-    v32_32,
-    nint,
+    type_collection_stream,
+    type_stream_merge,
+    varint_plus_block,
+    integer_negative,
     return_early_error,
     fixed_point_decimal_places,
 
@@ -186,27 +184,26 @@ export const enum r {
     weeks,
 
     blocks_read = 512,
-    block_chunk_index,
-    block_bit_remaining,
+    block_varint_index,
+    block_bits_remaining,
     error_internal,
-    error_invalid_back_ref,
+    error_invalid_back_reference,
     error_max_forward_depth,
-    error_invalid_forward_ref,
+    error_invalid_forward_reference,
     error_invalid_choice_index,
-    error_rich_text_in_plain,
-    error_non_text_in_plain,
+    error_text_rich_in_plain,
     error_empty_scope,
     error_invalid_end_scope,
     error_unfinished_parse_stack,
     error_invalid_text_value,
     error_invalid_registry_value,
 
-    magicNumber = 4473429
+    magic_number = 4473429
 }
 export const enum u {
     text,
     end_scope,
-    back_ref,
+    back_reference,
     space,
     a,
     e,

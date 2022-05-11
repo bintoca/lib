@@ -154,7 +154,7 @@ export const bits_sym = Symbol.for('https://bintoca.com/symbol/bits')
 export type Scope = { type: r | symbol, needed?: number, items: Item[], result?, inText?: boolean, richText?: boolean, op?: ParseOp, ops?: ParseOp[], parseIndex?: number, start?: ParsePosition, end?: ParsePosition }
 export type Slot = Scope | number
 export type Item = Slot | Uint8Array
-export const enum ParseType { value, vblock, block, bit, vbit, item, text, rich_text, collection, vCollection, choice, none, multiple, forward, v32_32 }
+export const enum ParseType { varint, item, block_size, block_variable, bit_size, bit_variable, text_plain, text_rich, collection, collection_stream, choice, struct, varint_plus_block, none, forward }
 export type ParseOp = { type: ParseType, size?: number, ops?: ParseOp[], forward?: Scope }
 export type ParsePlan = { ops: ParseOp[], index: number }
 export type ParseState = { root: Scope, scope_stack: Scope[], decoder: DecoderState }
@@ -165,14 +165,14 @@ export const createStruct = (fields: Slot[], values: Item[]): Scope => { return 
 export const createWrap = (slots: Slot[]): Scope => { return { type: r.type_wrap, items: slots } }
 export const parseError = (s: ParseState, regError: r) => parseErrorPos(createPosition(s.decoder), regError)
 export const parseErrorPos = (pos: ParsePosition, regError: r) => {
-    const fields = [r.error, createWrap([r.blocks_read, r.uint])]
+    const fields = [r.error, createWrap([r.blocks_read, r.integer_unsigned,])]
     const values = [regError, pos.dvOffset / 4]
     if (pos.tempIndex !== undefined) {
-        fields.push(createWrap([r.block_chunk_index, r.uint]))
+        fields.push(createWrap([r.block_varint_index, r.integer_unsigned,]))
         values.push(pos.tempIndex)
     }
     if (pos.partialBlockRemaining !== undefined) {
-        fields.push(createWrap([r.block_bit_remaining, r.uint]))
+        fields.push(createWrap([r.block_bits_remaining, r.integer_unsigned,]))
         values.push(pos.partialBlockRemaining)
     }
     return createError(createStruct(fields, values))
@@ -209,7 +209,7 @@ export const resolveItemOp = (x: Item, none?: boolean) => {
     }
     else {
         switch (x) {
-            case r.value_:
+            case r.parse_varint:
             case r.fixed_point_decimal_places:
             case r.years:
             case r.months:
@@ -219,30 +219,30 @@ export const resolveItemOp = (x: Item, none?: boolean) => {
             case r.seconds:
             case r.weeks:
             case r.port:
-            case r.uint:
-            case r.sint:
-                return { type: ParseType.value }
-            case r.vbit:
-                return { type: ParseType.vbit }
-            case r.vblock:
-                return { type: ParseType.vblock }
-            case r.vIEEE_decimal_DPD:
-            case r.vIEEE_binary:
+            case r.integer_unsigned:
+            case r.integer_signed:
+                return { type: ParseType.varint }
+            case r.bit_variable:
+                return { type: ParseType.bit_variable }
+            case r.block_variable:
+                return { type: ParseType.block_variable }
+            case r.IEEE_decimal:
+            case r.IEEE_binary:
             case r.IPv4:
             case r.TAI_seconds:
-                return { type: ParseType.block, size: 1 }
+                return { type: ParseType.block_size, size: 1 }
             case r.IPv6:
             case r.UUID:
-                return { type: ParseType.block, size: 4 }
+                return { type: ParseType.block_size, size: 4 }
             case r.sha256:
-                return { type: ParseType.block, size: 8 }
-            case r.v32_32:
-                return { type: ParseType.v32_32 }
-            case r.text:
-            case r.dns_idna:
-                return { type: ParseType.text }
-            case r.rich_text:
-                return { type: ParseType.rich_text }
+                return { type: ParseType.block_size, size: 8 }
+            case r.varint_plus_block:
+                return { type: ParseType.varint_plus_block }
+            case r.text_plain:
+            case r.text_dns:
+                return { type: ParseType.text_plain }
+            case r.text_rich:
+                return { type: ParseType.text_rich }
         }
     }
     return { type: none ? ParseType.none : ParseType.item }
@@ -252,9 +252,9 @@ export const resolveOp = (c: Scope) => {
         case r.type_collection:
             c.op = { type: ParseType.collection, ops: [resolveItemOp(c.items[c.items.length - 1])] }
             break
-        case r.vCollection:
-        case r.vCollection_merge:
-            c.op = { type: ParseType.vCollection, ops: [resolveItemOp(c.items[c.items.length - 1])] }
+        case r.type_collection_stream:
+        case r.type_stream_merge:
+            c.op = { type: ParseType.collection_stream, ops: [resolveItemOp(c.items[c.items.length - 1])] }
             break
         case r.type_wrap:
             c.op = resolveItemOp(c.items[c.items.length - 1])
@@ -263,12 +263,12 @@ export const resolveOp = (c: Scope) => {
             c.op = { type: ParseType.choice, ops: c.items.map(x => resolveItemOp(x, true)) }
             break
         case r.type_struct:
-            c.op = { type: ParseType.multiple, ops: c.items.map(x => resolveItemOp(x)) }
+            c.op = { type: ParseType.struct, ops: c.items.map(x => resolveItemOp(x)) }
             break
     }
 }
 export const isInvalidText = (n: number) => n > 0x10FFFF + 5
-export const isInvalidRegistry = (n: number) => n > r.magicNumber || (n < r.magicNumber && n > 600) || (n < 512 && n > 200)
+export const isInvalidRegistry = (n: number) => n > r.magic_number || (n < r.magic_number && n > 600) || (n < 512 && n > 200)
 export const createPosition = (s: DecoderState): ParsePosition => { return { dvOffset: s.dvOffset, tempIndex: s.tempCount ? s.tempIndex : undefined, partialBlockRemaining: s.partialBlockRemaining ? s.partialBlockRemaining : undefined } }
 export let log = (...x) => console.log(...x)
 export const parse = (b: BufferSource): Scope => {
@@ -336,7 +336,7 @@ export const parse = (b: BufferSource): Scope => {
                 else if (op.type == ParseType.forward) {
                     const f = forward(op)
                     if (f === undefined) {
-                        return parseError(st, r.error_invalid_forward_ref)
+                        return parseError(st, r.error_invalid_forward_reference)
                     }
                     scope_push({ type: choice_sym, needed: 2, items: [c], op: resolveItemOp(f) })
                     continue
@@ -352,33 +352,33 @@ export const parse = (b: BufferSource): Scope => {
             if (op?.type == ParseType.forward) {
                 const f = forward(op)
                 if (f === undefined) {
-                    return parseError(st, r.error_invalid_forward_ref)
+                    return parseError(st, r.error_invalid_forward_reference)
                 }
                 op = resolveItemOp(f)
             }
             if (op && op.type != ParseType.item) {
                 switch (op.type) {
-                    case ParseType.value: {
+                    case ParseType.varint: {
                         collapse_scope(read(ds))
                         break
                     }
-                    case ParseType.block: {
+                    case ParseType.block_size: {
                         collapse_scope(read_blocks(ds, op.size))
                         break
                     }
-                    case ParseType.vblock: {
+                    case ParseType.block_variable: {
                         collapse_scope(read_blocks(ds, read(ds) + 1))
                         break
                     }
-                    case ParseType.bit: {
+                    case ParseType.bit_size: {
                         collapse_scope(read_bits(ds, op.size))
                         break
                     }
-                    case ParseType.vbit: {
+                    case ParseType.bit_variable: {
                         collapse_scope(read_bits(ds, read(ds) + 1))
                         break
                     }
-                    case ParseType.v32_32: {
+                    case ParseType.varint_plus_block: {
                         const dv = new DataView(new ArrayBuffer(8))
                         dv.setUint32(0, read(ds))
                         dv.setUint32(4, ds.dv.getUint32(ds.dvOffset))
@@ -386,23 +386,23 @@ export const parse = (b: BufferSource): Scope => {
                         collapse_scope(bufToU8(dv))
                         break
                     }
-                    case ParseType.multiple: {
+                    case ParseType.struct: {
                         scope_push({ type: struct_sym, needed: op.ops.length, items: [], ops: op.ops, parseIndex: 0 })
                         break
                     }
-                    case ParseType.text: {
-                        scope_push({ type: r.text, items: [], inText: true })
+                    case ParseType.text_plain: {
+                        scope_push({ type: r.text_plain, items: [], inText: true })
                         break
                     }
-                    case ParseType.rich_text: {
-                        scope_push({ type: r.rich_text, items: [], inText: true, richText: true })
+                    case ParseType.text_rich: {
+                        scope_push({ type: r.text_rich, items: [], inText: true, richText: true })
                         break
                     }
                     case ParseType.collection: {
                         scope_push({ type: collection_sym, needed: read(ds) + 1, items: [], ops: op.ops, parseIndex: 0 })
                         break
                     }
-                    case ParseType.vCollection: {
+                    case ParseType.collection_stream: {
                         scope_push({ type: collection_sym, items: [], ops: op.ops, parseIndex: 0 })
                         break
                     }
@@ -422,13 +422,13 @@ export const parse = (b: BufferSource): Scope => {
                         collapse_scope(read(ds))
                         break
                     }
-                    case u.back_ref: {
+                    case u.back_reference: {
                         const br = back_ref(st, read(ds)) as Slot
                         if (br === undefined) {
-                            return parseError(st, r.error_invalid_back_ref)
+                            return parseError(st, r.error_invalid_back_reference)
                         }
                         if (!top.richText && (typeof br == 'number' || br.richText || !br.inText)) {
-                            return parseError(st, r.error_rich_text_in_plain)
+                            return parseError(st, r.error_text_rich_in_plain)
                         }
                         collapse_scope(br)
                         break
@@ -438,7 +438,7 @@ export const parse = (b: BufferSource): Scope => {
                             scope_push({ type: non_text_sym, items: [] })
                         }
                         else {
-                            return parseError(st, r.error_non_text_in_plain)
+                            return parseError(st, r.error_text_rich_in_plain)
                         }
                         break
                     }
@@ -466,8 +466,8 @@ export const parse = (b: BufferSource): Scope => {
                     case r.type_struct:
                     case r.type_choice:
                     case r.type_collection:
-                    case r.vCollection:
-                    case r.vCollection_merge: {
+                    case r.type_collection_stream:
+                    case r.type_stream_merge: {
                         scope_push({ type: x, items: [] })
                         break
                     }
@@ -490,7 +490,7 @@ export const parse = (b: BufferSource): Scope => {
                     case r.back_reference: {
                         const br = back_ref(st, read(ds))
                         if (br === undefined) {
-                            return parseError(st, r.error_invalid_back_ref)
+                            return parseError(st, r.error_invalid_back_reference)
                         }
                         collapse_scope(br)
                         break
@@ -502,15 +502,15 @@ export const parse = (b: BufferSource): Scope => {
                         collapse_scope(read(ds))
                         break
                     }
-                    case r.bitSize: {
+                    case r.bit_size: {
                         const s = read(ds) + 1
-                        scope_push({ type: x, needed: 1, items: [], op: { type: ParseType.bit, size: s } })
+                        scope_push({ type: x, needed: 1, items: [], op: { type: ParseType.bit_size, size: s } })
                         collapse_scope(s)
                         break
                     }
-                    case r.blockSize: {
+                    case r.block_size: {
                         const s = read(ds) + 1
-                        scope_push({ type: x, needed: 1, items: [], op: { type: ParseType.block, size: s } })
+                        scope_push({ type: x, needed: 1, items: [], op: { type: ParseType.block_size, size: s } })
                         collapse_scope(s)
                         break
                     }
@@ -664,8 +664,8 @@ export const write_scope = (s: Scope, e: EncoderState) => {
                 case r.type_struct:
                 case r.type_choice:
                 case r.type_collection:
-                case r.vCollection:
-                case r.vCollection_merge:
+                case r.type_collection_stream:
+                case r.type_stream_merge:
                 case text_sym:
                 case non_text_sym:
                     end = true
