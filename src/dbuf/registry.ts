@@ -141,6 +141,7 @@ export const enum r {
 
     parse_varint,
     parse_item,
+    parse_none,
     block_size,
     block_variable,
     bit_size,

@@ -155,7 +155,7 @@ export type Scope = { type: r | symbol, needed?: number, items: Item[], result?,
 export type Slot = Scope | number
 export type Item = Slot | Uint8Array
 export const enum ParseType { varint, item, block_size, block_variable, bit_size, bit_variable, text_plain, text_rich, collection, collection_stream, choice, struct, varint_plus_block, none, forward }
-export type ParseOp = { type: ParseType, size?: number, ops?: ParseOp[], forward?: Scope }
+export type ParseOp = { type: ParseType, size?: number, ops?: ParseOp[], forward?: Scope, item?: Item }
 export type ParsePlan = { ops: ParseOp[], index: number }
 export type ParseState = { root: Scope, scope_stack: Scope[], decoder: DecoderState }
 export type ParsePosition = { dvOffset: number, tempIndex: number, partialBlockRemaining: number }
@@ -197,12 +197,9 @@ export const back_ref = (s: ParseState, n: number) => {
         }
     }
 }
-export const resolveItemOp = (x: Item, none?: boolean) => {
+export const resolveItemOp = (x: Item) => {
     if (typeof x == 'object') {
         const s = x as Scope
-        if (s.type == r.bind) {
-            return { type: ParseType.item }
-        }
         if (s.op) {
             return s.op
         }
@@ -221,6 +218,9 @@ export const resolveItemOp = (x: Item, none?: boolean) => {
             case r.port:
             case r.integer_unsigned:
             case r.integer_signed:
+            case r.blocks_read:
+            case r.block_varint_index:
+            case r.block_bits_remaining:
                 return { type: ParseType.varint }
             case r.bit_variable:
                 return { type: ParseType.bit_variable }
@@ -245,9 +245,9 @@ export const resolveItemOp = (x: Item, none?: boolean) => {
                 return { type: ParseType.text_rich }
         }
     }
-    return { type: none ? ParseType.none : ParseType.item }
+    return { type: ParseType.item }
 }
-export const resolveOp = (c: Scope) => {
+export const resolveScopeOp = (c: Scope) => {
     switch (c.type) {
         case r.type_collection:
             c.op = { type: ParseType.collection, ops: [resolveItemOp(c.items[c.items.length - 1])] }
@@ -260,7 +260,7 @@ export const resolveOp = (c: Scope) => {
             c.op = resolveItemOp(c.items[c.items.length - 1])
             break
         case r.type_choice:
-            c.op = { type: ParseType.choice, ops: c.items.map(x => resolveItemOp(x, true)) }
+            c.op = { type: ParseType.choice, ops: c.items.map(x => resolveItemOp(x)) }
             break
         case r.type_struct:
             c.op = { type: ParseType.struct, ops: c.items.map(x => resolveItemOp(x)) }
@@ -296,8 +296,11 @@ export const parse = (b: BufferSource): Scope => {
                         t.parseIndex++
                     }
                 }
-                if (t.type == r.bind && !t.op) {
-                    t.op = resolveItemOp(i)
+                if (t.type == r.bind) {
+                    t.op = t.items.length == 1 ? resolveItemOp(i) : { type: ParseType.item }
+                }
+                else if (t.type == r.parse_none) {
+                    t.op = { type: ParseType.none, item: t.items[0] }
                 }
                 if (t.items.length == t.needed) {
                     t.end = createPosition(ds)
@@ -406,6 +409,10 @@ export const parse = (b: BufferSource): Scope => {
                         scope_push({ type: collection_sym, items: [], ops: op.ops, parseIndex: 0 })
                         break
                     }
+                    case ParseType.none: {
+                        collapse_scope(op.item)
+                        break
+                    }
                     default:
                         throw { message: 'not implemented ParseType: ' + op.type, st }
                 }
@@ -479,7 +486,7 @@ export const parse = (b: BufferSource): Scope => {
                             return parseError(st, r.error_empty_scope)
                         }
                         top.end = createPosition(ds)
-                        resolveOp(top)
+                        resolveScopeOp(top)
                         const t = st.scope_stack.pop()
                         if (st.scope_stack.length == 0) {
                             break loop
@@ -521,6 +528,10 @@ export const parse = (b: BufferSource): Scope => {
                     }
                     case r.bind: {
                         scope_push({ type: x, needed: 2, items: [] })
+                        break
+                    }
+                    case r.parse_none: {
+                        scope_push({ type: x, needed: 1, items: [] })
                         break
                     }
                     default:

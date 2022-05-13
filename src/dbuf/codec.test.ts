@@ -142,11 +142,11 @@ const opvbi = op1(ParseType.bit_variable)
 const opt = op1(ParseType.text_plain)
 const oprt = op1(ParseType.text_rich)
 const bind_uint_in = [r.bind, r.integer_unsigned, 2]
-const bind_uint_out = { type: r.bind, needed: 2, items: [r.integer_unsigned, 2], op: op1(ParseType.varint) }
+const bind_uint_out = { type: r.bind, needed: 2, items: [r.integer_unsigned, 2], op: op1(ParseType.item) }
 const u8 = new Uint8Array([1, 2, 3, 4])
 const text_e_in = [u.text, u.e, u.end_scope]
 const text_e_out = { type: text_sym, inText: true, items: [u.e] }
-const bind = (t: Slot, v: Item, p: ParseOp): Scope => { return { type: r.bind, needed: 2, items: [t, v], op: p } }
+const bind = (t: Slot, v: Item): Scope => { return { type: r.bind, needed: 2, items: [t, v], op: op1(ParseType.item) } }
 const bindO = (t: r, items: Item[], p: ParseOp, v: Item | Item[]): Scope => {
     if (Array.isArray(v)) {
         let i = 0
@@ -191,7 +191,7 @@ const bindO = (t: r, items: Item[], p: ParseOp, v: Item | Item[]): Scope => {
         }
         v = rr(p, items)
     }
-    return { type: r.bind, needed: 2, items: [need0(t, items, p), v], op: p }
+    return { type: r.bind, needed: 2, items: [need0(t, items, p), v], op: op1(ParseType.item) }
 }
 const need0 = (type: r | symbol, items: Item[], op?: ParseOp) => { return { type, items, op } }
 const needN = (type: r | symbol, items: Item[], op?: ParseOp) => { return { type, needed: items.length, items, op } }
@@ -203,10 +203,10 @@ const opvCo = (n: ParseOp): ParseOp => { return { type: ParseType.collection_str
 const opM = (n: ParseOp[]): ParseOp => { return { type: ParseType.struct, ops: n } }
 const sTex = (items: Item[]): Scope => { return { type: r.text_plain, inText: true, items } }
 const srTex = (items: Item[]): Scope => { return { type: r.text_rich, inText: true, richText: true, items } }
-const bText = (items: Item[]) => bind(r.text_plain, sTex(items), opt)
-const brText = (items: Item[]) => bind(r.text_rich, srTex(items), oprt)
+const bText = (items: Item[]) => bind(r.text_plain, sTex(items))
+const brText = (items: Item[]) => bind(r.text_rich, srTex(items))
 const pos = (off: number, ti?: number, br?: number) => { return { dvOffset: off, tempIndex: ti, partialBlockRemaining: br } }
-const ro: Scope = { type: non_text_sym, items: [r.IPv4, null, { type: r.bind, needed: 2, items: [r.integer_unsigned, 2], op: op1(ParseType.varint), start: pos(4), end: pos(8, 3) }] }
+const ro: Scope = { type: non_text_sym, items: [r.IPv4, null, { type: r.bind, needed: 2, items: [r.integer_unsigned, 2], op: op1(ParseType.item), start: pos(4), end: pos(8, 3) }] }
 const fo: Scope = { type: r.forward_reference, needed: 3, items: [ro, 1, 4], op: { type: ParseType.forward }, start: pos(4, 1), end: pos(4) }
 ro.items[1] = fo
 fo.op.forward = fo
@@ -226,18 +226,19 @@ test.each([
 test.each([
     [[r.IPv4, r.back_reference, 0, ...bind_uint_in], [r.IPv4, r.IPv4, bind_uint_out]],
     [[r.bind, r.text_plain, u.a, ...text_e_in, u.back_reference, 0, u.end_scope, r.bind, r.text_rich, u.a, u.non_text, ...bind_uint_in, u.end_scope, u.end_scope], [bText([u.a, text_e_out, text_e_out]), brText([u.a, need0(non_text_sym, [bind_uint_out])])]],
-    [[r.bind, r.IEEE_binary, u8], [bind(r.IEEE_binary, u8, opB(1))]],
-    [[r.bind, r.bind, r.IEEE_binary, u8], [bind(bind(r.IEEE_binary, u8, opB(1)), r.placeholder, op1(ParseType.item))]],
-    [[r.bind, r.bit_size, 19, u8], [bind(needN(r.bit_size, [20], opBi(20)), 32 + 4096, opBi(20))]],
-    [[r.bind, r.varint_plus_block, 2, u8], [bind(r.varint_plus_block, new Uint8Array([0, 0, 0, 2, 1, 2, 3, 4]), op1(ParseType.varint_plus_block))]],
+    [[r.bind, r.IEEE_binary, u8], [bind(r.IEEE_binary, u8)]],
+    [[r.bind, r.bind, r.IEEE_binary, u8], [bind(bind(r.IEEE_binary, u8), r.placeholder)]],
+    [[r.bind, r.parse_none, r.bind, r.IEEE_binary, u8], [bind(needN(r.parse_none, [bind(r.IEEE_binary, u8)], op1(ParseType.none)), bind(r.IEEE_binary, u8))]],
+    [[r.bind, r.bit_size, 19, u8], [bind(needN(r.bit_size, [20], opBi(20)), 32 + 4096)]],
+    [[r.bind, r.varint_plus_block, 2, u8], [bind(r.varint_plus_block, new Uint8Array([0, 0, 0, 2, 1, 2, 3, 4]))]],
     [[r.bind, r.type_wrap, r.IEEE_binary, r.block_size, 0, r.end_scope, u8], [bindO(r.type_wrap, [r.IEEE_binary, needN(r.block_size, [1], opB(1))], opB(1), u8)]],
     [[r.bind, r.type_wrap, r.IEEE_binary, r.block_variable, r.end_scope, 0, u8], [bindO(r.type_wrap, [r.IEEE_binary, r.block_variable], opvb, u8)]],
     [[r.bind, r.type_wrap, r.integer_unsigned, r.end_scope, 5], [bindO(r.type_wrap, [r.integer_unsigned,], opv, 5)]],
     [[r.bind, r.type_wrap, r.integer_unsigned, r.bit_variable, r.end_scope, 8, u8], [bindO(r.type_wrap, [r.integer_unsigned, r.bit_variable], opvbi, 2)]],
     [[...bind_uint_in, r.bind, r.type_wrap, r.integer_unsigned, r.parse_item, r.end_scope, r.back_reference, 0], [bind_uint_out, bindO(r.type_wrap, [r.integer_unsigned, r.parse_item], op1(ParseType.item), bind_uint_out)]],
     [[r.bind, r.type_wrap, r.text_plain, r.end_scope, u.e, u.end_scope], [bindO(r.type_wrap, [r.text_plain], opt, sTex([u.e]))]],
-    [[r.bind, r.TAI_seconds, u8], [bind(r.TAI_seconds, u8, opB(1))]],
-    [[r.bind, r.type_choice, r.blocks_read, r.block_varint_index, r.end_scope, 1], [bindO(r.type_choice, [r.blocks_read, r.block_varint_index], opC([op1(ParseType.none), op1(ParseType.none)]), needN(choice_sym, [1]))]],
+    [[r.bind, r.TAI_seconds, u8], [bind(r.TAI_seconds, u8)]],
+    [[r.bind, r.type_choice, r.blocks_read, r.IEEE_binary, r.end_scope, 1, u8], [bindO(r.type_choice, [r.blocks_read, r.IEEE_binary], opC([op1(ParseType.varint), opB(1)]), needN(choice_sym, [1, u8]))]],
     [[r.bind, r.type_choice, r.IEEE_binary, r.integer_unsigned, r.end_scope, 1, 2], [bindO(r.type_choice, [r.IEEE_binary, r.integer_unsigned,], opC([opB(1), opv]), needN(choice_sym, [1, 2]))]],
     [[r.bind, r.type_struct, r.IEEE_binary, r.type_struct, r.integer_unsigned, r.integer_signed, r.end_scope, r.end_scope, u8, 1, 2], [bindO(r.type_struct, [r.IEEE_binary, need0(r.type_struct, [r.integer_unsigned, r.integer_signed])], opM([opB(1), opM([opv, opv])]), [u8, 1, 2])]],
     [[r.bind, r.type_collection, r.integer_unsigned, r.end_scope, 1, 3, 4], [bindO(r.type_collection, [r.integer_unsigned,], opCo(opv), [2, 3, 4])]],
@@ -253,10 +254,14 @@ test.each([
                     return x
                 }
                 const d: Scope = { type: x.type, items: x.items.map(y => strip(y)), needed: x.needed, op: x.op, ops: x.ops, parseIndex: x.parseIndex, inText: x.inText, richText: x.richText }
+                if (d.op?.item) {
+                    d.op.item = undefined
+                }
                 return d
             }
             return x
         }
+        //console.log(s.items[0])
         expect(s.items.map(x => strip(x))).toEqual(o)
     }
     catch (e) {
@@ -268,7 +273,7 @@ test.each([
     [[r.IPv4, r.forward_reference, 0, r.integer_unsigned, r.bind, r.back_reference, 1, 2], 2],
     [[r.bind, r.bind, r.IEEE_binary, u8, r.IPv4], r.IPv4],
     [[r.forward_reference, 0, r.type_wrap, r.integer_unsigned, r.end_scope, r.bind, r.back_reference, 1, 2], 2],
-    [[r.forward_reference, 0, r.type_choice, r.blocks_read, r.back_reference, 0, r.end_scope, r.bind, r.back_reference, 0, 1, 1, 0], { type: choice_sym, items: [1, { type: choice_sym, items: [1, { type: choice_sym, items: [0] }] }] }],
+    [[r.forward_reference, 0, r.type_choice, r.blocks_read, r.back_reference, 0, r.end_scope, r.bind, r.back_reference, 0, 1, 1, 0, 2], { type: choice_sym, items: [1, { type: choice_sym, items: [1, { type: choice_sym, items: [0, 2] }] }] }],
     [[r.bind, r.type_choice, r.IEEE_binary, r.type_choice, r.integer_unsigned, r.integer_signed, r.end_scope, r.end_scope, 1, 1, 2], { type: choice_sym, items: [1, { type: choice_sym, items: [1, 2] }] }],
     [[r.bind, r.type_collection, r.type_struct, r.IEEE_binary, r.type_choice, r.integer_unsigned, r.integer_signed, r.end_scope, r.end_scope, r.end_scope, 0, u8, 1, 2], { type: collection_sym, items: [{ type: struct_sym, items: [u8, { type: choice_sym, items: [1, 2] }] }] }],
     [[r.bind, r.type_struct, r.IEEE_binary, r.type_collection, r.type_choice, r.integer_unsigned, r.integer_signed, r.end_scope, r.end_scope, r.end_scope, u8, 0, 1, 2], { type: struct_sym, items: [u8, { type: collection_sym, items: [{ type: choice_sym, items: [1, 2] }] }] }],
