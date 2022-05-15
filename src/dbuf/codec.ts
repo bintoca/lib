@@ -154,7 +154,7 @@ export const bits_sym = Symbol.for('https://bintoca.com/symbol/bits')
 export type Scope = { type: r | symbol, needed?: number, items: Item[], result?, inText?: boolean, richText?: boolean, op?: ParseOp, ops?: ParseOp[], parseIndex?: number, start?: ParsePosition, end?: ParsePosition }
 export type Slot = Scope | number
 export type Item = Slot | Uint8Array
-export const enum ParseType { varint, item, block_size, block_variable, bit_size, bit_variable, text_plain, text_rich, collection, collection_stream, choice, struct, varint_plus_block, none, forward }
+export const enum ParseType { varint, item, block_size, block_variable, bit_size, bit_variable, text_plain, text_rich, collection, collection_stream, choice, struct, varint_plus_block, none, back, forward }
 export type ParseOp = { type: ParseType, size?: number, ops?: ParseOp[], forward?: Scope, item?: Item }
 export type ParsePlan = { ops: ParseOp[], index: number }
 export type ParseState = { root: Scope, scope_stack: Scope[], decoder: DecoderState }
@@ -215,34 +215,37 @@ export const resolveItemOp = (x: Item) => {
             case r.minutes:
             case r.seconds:
             case r.weeks:
-            case r.port:
+            case r.week_day:
+            case r.IP_port:
             case r.integer_unsigned:
             case r.integer_signed:
             case r.blocks_read:
             case r.block_varint_index:
             case r.block_bits_remaining:
                 return { type: ParseType.varint }
-            case r.bit_variable:
+            case r.parse_bit_variable:
                 return { type: ParseType.bit_variable }
-            case r.block_variable:
+            case r.parse_block_variable:
                 return { type: ParseType.block_variable }
-            case r.IEEE_decimal:
-            case r.IEEE_binary:
+            case r.IEEE_754_decimal:
+            case r.IEEE_754_binary:
             case r.IPv4:
             case r.TAI_seconds:
                 return { type: ParseType.block_size, size: 1 }
             case r.IPv6:
             case r.UUID:
                 return { type: ParseType.block_size, size: 4 }
-            case r.sha256:
+            case r.SHA256:
                 return { type: ParseType.block_size, size: 8 }
-            case r.varint_plus_block:
+            case r.parse_varint_plus_block:
                 return { type: ParseType.varint_plus_block }
             case r.text_plain:
             case r.text_dns:
                 return { type: ParseType.text_plain }
             case r.text_rich:
                 return { type: ParseType.text_rich }
+            case r.parse_back_reference:
+                return { type: ParseType.back }
         }
     }
     return { type: ParseType.item }
@@ -413,6 +416,14 @@ export const parse = (b: BufferSource): Scope => {
                         collapse_scope(op.item)
                         break
                     }
+                    case ParseType.back: {
+                        const br = back_ref(st, read(ds))
+                        if (br === undefined) {
+                            return parseError(st, r.error_invalid_back_reference)
+                        }
+                        collapse_scope(br)
+                        break
+                    }
                     default:
                         throw { message: 'not implemented ParseType: ' + op.type, st }
                 }
@@ -509,13 +520,13 @@ export const parse = (b: BufferSource): Scope => {
                         collapse_scope(read(ds))
                         break
                     }
-                    case r.bit_size: {
+                    case r.parse_bit_size: {
                         const s = read(ds) + 1
                         scope_push({ type: x, needed: 1, items: [], op: { type: ParseType.bit_size, size: s } })
                         collapse_scope(s)
                         break
                     }
-                    case r.block_size: {
+                    case r.parse_block_size: {
                         const s = read(ds) + 1
                         scope_push({ type: x, needed: 1, items: [], op: { type: ParseType.block_size, size: s } })
                         collapse_scope(s)

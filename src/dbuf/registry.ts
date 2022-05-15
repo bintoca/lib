@@ -47,9 +47,6 @@ export const enum under_consideration {
     license,
     Apache_LLVM,
 
-    numerator,
-    denominator,
-
     add,//*
     subtract,//*
     multiply,//*
@@ -139,21 +136,18 @@ export const enum r {
     type_collection,
     bind,
 
-    parse_varint,
-    parse_item,
+    parse_block_size,
+    parse_bit_size,
     parse_none,
-    block_size,
-    block_variable,
-    bit_size,
-    bit_variable,
+    parse_back_reference,
 
     text_plain,
     text_rich,
     text_dns,
     integer_unsigned,
     integer_signed,
-    IEEE_binary,
-    IEEE_decimal,
+    IEEE_754_binary,
+    IEEE_754_decimal,
     TAI_seconds,
     error,
     
@@ -165,16 +159,24 @@ export const enum r {
     forward_reference = 64,
     type_collection_stream,
     type_stream_merge,
-    varint_plus_block,
+    parse_varint,
+    parse_item,
+    parse_varint_plus_block,
+    parse_block_variable,
+    parse_bit_variable,
     integer_negative,
-    return_early_error,
+    numerator,
+    denominator,
+    exponent_base2,
+    exponent_base10,
     fixed_point_decimal_places,
+    execute_early,
 
     IPv4,
     IPv6,
-    port,
+    IP_port,
     UUID,
-    sha256,
+    SHA256,
 
     years,
     months,
@@ -183,6 +185,7 @@ export const enum r {
     minutes,
     seconds,
     weeks,
+    week_day,
 
     blocks_read = 512,
     block_varint_index,

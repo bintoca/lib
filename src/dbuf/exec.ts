@@ -10,7 +10,7 @@ export const exec_item = (i: Item): Scope => {
     return createError(r.error_internal)
 }
 export const exec = (root: Scope): Scope => {
-    const early = root.items.filter(x => typeof x == 'object' && (x as Scope).type == r.bind && (x as Scope).items[0] == r.return_early_error)
+    const early = root.items.filter(x => typeof x == 'object' && (x as Scope).type == r.bind && (x as Scope).items[0] == r.execute_early)
     for (let x of early) {
         const e = exec_item(x)
         if (isError(e)) {
