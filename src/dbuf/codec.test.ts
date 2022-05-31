@@ -224,7 +224,7 @@ test.each([
 })
 test.each([
     [[r.IPv4, r.back_reference, 0, ...bind_uint_in], [r.IPv4, needN(r.back_reference, [0, r.IPv4], op1(ParseType.back_ref)), bind_uint_out]],
-    [[r.bind, r.text_plain, u.a, ...text_e_in, u.back_reference, 0, u.end_scope, r.bind, r.text_rich, u.a, u.non_text, ...bind_uint_in, u.end_scope, u.end_scope], [bText([u.a, text_e_out, text_e_out]), brText([u.a, need0(non_text_sym, [bind_uint_out])])]],
+    [[r.bind, r.text_plain, u.a, ...text_e_in, u.back_reference, 0, u.end_scope, r.bind, r.text_rich, u.a, u.non_text, ...bind_uint_in, u.end_scope, u.end_scope], [bText([u.a, text_e_out, needN(r.back_reference, [0, text_e_out], op1(ParseType.back_ref))]), brText([u.a, need0(non_text_sym, [bind_uint_out])])]],
     [[r.bind, r.IEEE_754_binary, u8], [bind(r.IEEE_754_binary, u8)]],
     [[r.bind, r.bind, r.IEEE_754_binary, u8], [bind(bind(r.IEEE_754_binary, u8), r.placeholder)]],
     [[r.bind, r.parse_none, r.bind, r.IEEE_754_binary, u8], [bind(needN(r.parse_none, [bind(r.IEEE_754_binary, u8)], op1(ParseType.none)), bind(r.IEEE_754_binary, u8))]],
@@ -255,6 +255,7 @@ test.each([
                 const d: Scope = { type: x.type, items: x.items.map(y => strip(y)), needed: x.needed, op: x.op, ops: x.ops, parseIndex: x.parseIndex, inText: x.inText, richText: x.richText }
                 if (d.op?.item) {
                     d.op.item = undefined
+                    d.op.capture = undefined
                 }
                 return d
             }
@@ -271,7 +272,7 @@ test.each([
 test.each([
     [[r.IPv4, r.forward_reference, 0, r.integer_unsigned, r.bind, r.back_reference, 1, 2], 2],
     [[r.bind, r.bind, r.IEEE_754_binary, u8, r.IPv4], r.IPv4],
-    [[r.IPv6, r.IPv4, r.bind, r.parse_back_reference, 1], r.IPv6],
+    [[r.IPv6, r.IPv4, r.bind, r.parse_back_reference, 1], { type: r.back_reference, items: [1, r.IPv6] }],
     [[r.forward_reference, 0, r.type_wrap, r.integer_unsigned, r.end_scope, r.bind, r.back_reference, 1, 2], 2],
     [[r.forward_reference, 0, r.type_choice, r.blocks_read, r.back_reference, 0, r.end_scope, r.bind, r.back_reference, 0, 1, 1, 0, 2], { type: choice_sym, items: [1, { type: choice_sym, items: [1, { type: choice_sym, items: [0, 2] }] }] }],
     [[r.bind, r.type_choice, r.IEEE_754_binary, r.type_choice, r.integer_unsigned, r.integer_signed, r.end_scope, r.end_scope, 1, 1, 2], { type: choice_sym, items: [1, { type: choice_sym, items: [1, 2] }] }],

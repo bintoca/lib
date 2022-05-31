@@ -155,7 +155,7 @@ export type Scope = { type: r | symbol, needed?: number, items: Item[], result?,
 export type Slot = Scope | number
 export type Item = Slot | Uint8Array
 export const enum ParseType { varint, item, block_size, block_variable, bit_size, bit_variable, text_plain, text_rich, collection, collection_stream, choice, struct, varint_plus_block, none, back, forward, back_ref }
-export type ParseOp = { type: ParseType, size?: number, ops?: ParseOp[], forward?: Scope, item?: Item }
+export type ParseOp = { type: ParseType, size?: number, ops?: ParseOp[], forward?: Scope, item?: Item, capture?: boolean }
 export type ParsePlan = { ops: ParseOp[], index: number }
 export type ParseState = { root: Scope, scope_stack: Scope[], decoder: DecoderState }
 export type ParsePosition = { dvOffset: number, tempIndex: number, partialBlockRemaining: number }
@@ -180,18 +180,22 @@ export const parseErrorPos = (pos: ParsePosition, regError: r) => {
 export const back_ref = (s: ParseState, n: number) => {
     const scopeItems = s.scope_stack.filter(x => x.inText || x.type == non_text_sym || x.type == r.function)
     let back = n + 1
+    let funcs = 0
     for (let l = scopeItems.length - 1; l >= 0; l--) {
         const s = scopeItems[l]
+        if (s.type == r.function) {
+            funcs++
+        }
         if (s.inText) {
             const scopes = s.items.filter(x => typeof x == 'object')
             if (scopes.length >= back) {
-                return scopes[scopes.length - back]
+                return { ref: scopes[scopes.length - back], capture: false }
             }
             back -= scopes.length
         }
         else {
             if (s.items.length >= back) {
-                return s.items[s.items.length - back]
+                return { ref: s.items[s.items.length - back], capture: s.type == r.function && funcs > 1 }
             }
             back -= s.items.length
         }
@@ -346,13 +350,6 @@ export const parse = (b: BufferSource): Scope => {
                 }
             }
         }
-        function forward(op: ParseOp): Item {
-            if (st.scope_stack.length > 1000) {
-                throw parseError(st, r.error_max_forward_depth)
-            }
-            const t = op.forward.items
-            return (t[0] as Scope).items[(t[1] as number) + (t[2] as number) + 1]
-        }
         let position: ParsePosition
         const ds = st.decoder
         loop:
@@ -449,11 +446,14 @@ export const parse = (b: BufferSource): Scope => {
                         break
                     }
                     case ParseType.back: {
-                        const br = back_ref(st, read(ds))
+                        const d = read(ds)
+                        const br = back_ref(st, d)
                         if (br === undefined) {
                             return parseError(st, r.error_invalid_back_reference)
                         }
-                        collapse_scope(br)
+                        const s: Scope = { type: r.back_reference, needed: 2, items: [d], op: { type: ParseType.back_ref, item: br.ref, capture: br.capture } }
+                        scope_push(s)
+                        collapse_scope(br.ref)
                         break
                     }
                     default:
@@ -473,14 +473,18 @@ export const parse = (b: BufferSource): Scope => {
                         break
                     }
                     case u.back_reference: {
-                        const br = back_ref(st, read(ds)) as Slot
+                        const d = read(ds)
+                        const br = back_ref(st, d)
                         if (br === undefined) {
                             return parseError(st, r.error_invalid_back_reference)
                         }
-                        if (!top.richText && (typeof br == 'number' || br.richText || !br.inText)) {
+                        const bt = br.ref as Slot
+                        if (!top.richText && (typeof bt == 'number' || bt.richText || !bt.inText)) {
                             return parseError(st, r.error_text_rich_in_plain)
                         }
-                        collapse_scope(br)
+                        const s: Scope = { type: r.back_reference, needed: 2, items: [d], op: { type: ParseType.back_ref, item: br.ref, capture: br.capture } }
+                        scope_push(s)
+                        collapse_scope(br.ref)
                         break
                     }
                     case u.non_text: {
@@ -543,9 +547,9 @@ export const parse = (b: BufferSource): Scope => {
                         if (br === undefined) {
                             return parseError(st, r.error_invalid_back_reference)
                         }
-                        const s: Scope = { type: x, needed: 2, items: [d], op: { type: ParseType.back_ref, item: br } }
+                        const s: Scope = { type: x, needed: 2, items: [d], op: { type: ParseType.back_ref, item: br.ref, capture: br.capture } }
                         scope_push(s)
-                        collapse_scope(br)
+                        collapse_scope(br.ref)
                         break
                     }
                     case r.forward_reference: {
