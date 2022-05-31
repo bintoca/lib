@@ -140,7 +140,6 @@ const opv = op1(ParseType.varint)
 const opvb = op1(ParseType.block_variable)
 const opvbi = op1(ParseType.bit_variable)
 const opt = op1(ParseType.text_plain)
-const oprt = op1(ParseType.text_rich)
 const bind_uint_in = [r.bind, r.integer_unsigned, 2]
 const bind_uint_out = { type: r.bind, needed: 2, items: [r.integer_unsigned, 2], op: op1(ParseType.item) }
 const u8 = new Uint8Array([1, 2, 3, 4])
@@ -224,7 +223,7 @@ test.each([
     }
 })
 test.each([
-    [[r.IPv4, r.back_reference, 0, ...bind_uint_in], [r.IPv4, r.IPv4, bind_uint_out]],
+    [[r.IPv4, r.back_reference, 0, ...bind_uint_in], [r.IPv4, needN(r.back_reference, [0, r.IPv4], op1(ParseType.back_ref)), bind_uint_out]],
     [[r.bind, r.text_plain, u.a, ...text_e_in, u.back_reference, 0, u.end_scope, r.bind, r.text_rich, u.a, u.non_text, ...bind_uint_in, u.end_scope, u.end_scope], [bText([u.a, text_e_out, text_e_out]), brText([u.a, need0(non_text_sym, [bind_uint_out])])]],
     [[r.bind, r.IEEE_754_binary, u8], [bind(r.IEEE_754_binary, u8)]],
     [[r.bind, r.bind, r.IEEE_754_binary, u8], [bind(bind(r.IEEE_754_binary, u8), r.placeholder)]],
@@ -235,7 +234,7 @@ test.each([
     [[r.bind, r.type_wrap, r.IEEE_754_binary, r.parse_block_variable, r.end_scope, 0, u8], [bindO(r.type_wrap, [r.IEEE_754_binary, r.parse_block_variable], opvb, u8)]],
     [[r.bind, r.type_wrap, r.integer_unsigned, r.end_scope, 5], [bindO(r.type_wrap, [r.integer_unsigned,], opv, 5)]],
     [[r.bind, r.type_wrap, r.integer_unsigned, r.parse_bit_variable, r.end_scope, 8, u8], [bindO(r.type_wrap, [r.integer_unsigned, r.parse_bit_variable], opvbi, 2)]],
-    [[...bind_uint_in, r.bind, r.type_wrap, r.integer_unsigned, r.parse_item, r.end_scope, r.back_reference, 0], [bind_uint_out, bindO(r.type_wrap, [r.integer_unsigned, r.parse_item], op1(ParseType.item), bind_uint_out)]],
+    [[...bind_uint_in, r.bind, r.type_wrap, r.integer_unsigned, r.parse_item, r.end_scope, r.back_reference, 0], [bind_uint_out, bindO(r.type_wrap, [r.integer_unsigned, r.parse_item], op1(ParseType.item), needN(r.back_reference, [0, bind_uint_out], op1(ParseType.back_ref)))]],
     [[r.bind, r.type_wrap, r.text_plain, r.end_scope, u.e, u.end_scope], [bindO(r.type_wrap, [r.text_plain], opt, sTex([u.e]))]],
     [[r.bind, r.TAI_seconds, u8], [bind(r.TAI_seconds, u8)]],
     [[r.bind, r.type_choice, r.blocks_read, r.IEEE_754_binary, r.end_scope, 1, u8], [bindO(r.type_choice, [r.blocks_read, r.IEEE_754_binary], opC([op1(ParseType.varint), opB(1)]), needN(choice_sym, [1, u8]))]],
