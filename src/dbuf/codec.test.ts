@@ -256,6 +256,8 @@ test.each([
                 if (d.op?.item) {
                     d.op.item = undefined
                     d.op.capture = undefined
+                    d.op.back_scope = undefined
+                    d.op.back_position = undefined
                 }
                 return d
             }

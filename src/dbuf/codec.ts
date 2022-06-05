@@ -155,7 +155,7 @@ export type Scope = { type: r | symbol, needed?: number, items: Item[], result?,
 export type Slot = Scope | number
 export type Item = Slot | Uint8Array
 export const enum ParseType { varint, item, block_size, block_variable, bit_size, bit_variable, text_plain, text_rich, collection, collection_stream, choice, struct, varint_plus_block, none, back, forward, back_ref }
-export type ParseOp = { type: ParseType, size?: number, ops?: ParseOp[], forward?: Scope, item?: Item, capture?: boolean }
+export type ParseOp = { type: ParseType, size?: number, ops?: ParseOp[], forward?: Scope, item?: Item, capture?: boolean, back_scope?: Scope, back_position?: number }
 export type ParsePlan = { ops: ParseOp[], index: number }
 export type ParseState = { root: Scope, scope_stack: Scope[], decoder: DecoderState }
 export type ParsePosition = { dvOffset: number, tempIndex: number, partialBlockRemaining: number }
@@ -189,13 +189,15 @@ export const back_ref = (s: ParseState, n: number) => {
         if (s.inText) {
             const scopes = s.items.filter(x => typeof x == 'object')
             if (scopes.length >= back) {
-                return { ref: scopes[scopes.length - back], capture: false }
+                const position = scopes.length - back
+                return { ref: scopes[position], capture: false, scope: s, position }
             }
             back -= scopes.length
         }
         else {
             if (s.items.length >= back) {
-                return { ref: s.items[s.items.length - back], capture: s.type == r.function && funcs > 1 }
+                const position = s.items.length - back
+                return { ref: s.items[position], capture: s.type == r.function && funcs > 1, scope: s, position }
             }
             back -= s.items.length
         }
@@ -451,7 +453,7 @@ export const parse = (b: BufferSource): Scope => {
                         if (br === undefined) {
                             return parseError(st, r.error_invalid_back_reference)
                         }
-                        const s: Scope = { type: r.back_reference, needed: 2, items: [d], op: { type: ParseType.back_ref, item: br.ref, capture: br.capture } }
+                        const s: Scope = { type: r.back_reference, needed: 2, items: [d], op: { type: ParseType.back_ref, item: br.ref, capture: br.capture, back_scope: br.scope, back_position: br.position } }
                         scope_push(s)
                         collapse_scope(br.ref)
                         break
@@ -482,7 +484,7 @@ export const parse = (b: BufferSource): Scope => {
                         if (!top.richText && (typeof bt == 'number' || bt.richText || !bt.inText)) {
                             return parseError(st, r.error_text_rich_in_plain)
                         }
-                        const s: Scope = { type: r.back_reference, needed: 2, items: [d], op: { type: ParseType.back_ref, item: br.ref, capture: br.capture } }
+                        const s: Scope = { type: r.back_reference, needed: 2, items: [d], op: { type: ParseType.back_ref, item: br.ref, capture: br.capture, back_scope: br.scope, back_position: br.position } }
                         scope_push(s)
                         collapse_scope(br.ref)
                         break
@@ -547,7 +549,7 @@ export const parse = (b: BufferSource): Scope => {
                         if (br === undefined) {
                             return parseError(st, r.error_invalid_back_reference)
                         }
-                        const s: Scope = { type: x, needed: 2, items: [d], op: { type: ParseType.back_ref, item: br.ref, capture: br.capture } }
+                        const s: Scope = { type: x, needed: 2, items: [d], op: { type: ParseType.back_ref, item: br.ref, capture: br.capture, back_scope: br.scope, back_position: br.position } }
                         scope_push(s)
                         collapse_scope(br.ref)
                         break
