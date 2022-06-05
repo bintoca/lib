@@ -201,6 +201,7 @@ export const enum r {
     error_unfinished_parse_stack,
     error_invalid_text_value,
     error_invalid_registry_value,
+    error_max_execution_stack,
 
     magic_number = 4473429
 }

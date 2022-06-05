@@ -203,11 +203,19 @@ export const back_ref = (s: ParseState, n: number) => {
         }
     }
 }
+export const forward_ref = (fr: Scope): Item => {
+    const t = fr.op.forward.items
+    return (t[0] as Scope).items[forward_ref_position(fr)]
+}
+export const forward_ref_position = (fr: Scope): number => {
+    const t = fr.op.forward.items
+    return (t[1] as number) + (t[2] as number) + 1
+}
 export const resolveRef = (st: ParseState, c: Item): Item | { returnError: r } => {
     let i = 0
     let x: Item = c
     while (true) {
-        if (i > 1000) {
+        if (i >= 1000) {
             return { returnError: r.error_max_forward_depth }
         }
         if (typeof x == 'object') {
@@ -216,11 +224,10 @@ export const resolveRef = (st: ParseState, c: Item): Item | { returnError: r } =
                 x = xs.items[1]
             }
             else if (xs.type == r.forward_reference) {
-                if (st.scope_stack.length > 1000) {
+                if (st.scope_stack.length >= 1000) {
                     return { returnError: r.error_max_forward_depth }
                 }
-                const t = xs.op.forward.items
-                x = (t[0] as Scope).items[(t[1] as number) + (t[2] as number) + 1]
+                x = forward_ref(xs)
                 if (x === undefined) {
                     return { returnError: r.error_invalid_forward_reference }
                 }
