@@ -13,6 +13,8 @@ export const concat = (buffers: BufferSource[]): Uint8Array => {
     }
     return u
 }
+export let log = (...x) => console.log(...x)
+export const setLog = (l) => log = l
 export const strip = (x: Item) => {
     if (typeof x == 'object') {
         if (x instanceof Uint8Array) {

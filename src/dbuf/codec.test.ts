@@ -206,7 +206,7 @@ const bText = (items: Item[]) => bind(r.text_plain, sTex(items))
 const brText = (items: Item[]) => bind(r.text_rich, srTex(items))
 const pos = (off: number, ti?: number, br?: number) => { return { dvOffset: off, tempIndex: ti, partialBlockRemaining: br } }
 const ro: Scope = { type: non_text_sym, items: [r.IPv4, null, { type: r.bind, needed: 2, items: [r.integer_unsigned, 2], op: op1(ParseType.item), start: pos(4), end: pos(8, 3) }] }
-const fo: Scope = { type: r.forward_reference, needed: 3, items: [ro, 1, 4], op: { type: ParseType.forward }, start: pos(4, 1), end: pos(4) }
+const fo: Scope = { type: r.forward_reference, needed: 1, items: [4], op: { type: ParseType.forward, item_scope: ro, item_position: 1 }, start: pos(4, 1), end: pos(4) }
 ro.items[1] = fo
 fo.op.forward = fo
 test.each([
@@ -223,8 +223,8 @@ test.each([
     }
 })
 test.each([
-    [[r.IPv4, r.back_reference, 0, ...bind_uint_in], [r.IPv4, needN(r.back_reference, [0, r.IPv4], op1(ParseType.back_ref)), bind_uint_out]],
-    [[r.bind, r.text_plain, u.a, ...text_e_in, u.back_reference, 0, u.end_scope, r.bind, r.text_rich, u.a, u.non_text, ...bind_uint_in, u.end_scope, u.end_scope], [bText([u.a, text_e_out, needN(r.back_reference, [0, text_e_out], op1(ParseType.back_ref))]), brText([u.a, need0(non_text_sym, [bind_uint_out])])]],
+    [[r.IPv4, r.back_reference, 0, ...bind_uint_in], [r.IPv4, needN(r.back_reference, [0], op1(ParseType.back_ref)), bind_uint_out]],
+    [[r.bind, r.text_plain, u.a, ...text_e_in, u.back_reference, 0, u.end_scope, r.bind, r.text_rich, u.a, u.non_text, ...bind_uint_in, u.end_scope, u.end_scope], [bText([u.a, text_e_out, needN(r.back_reference, [0], op1(ParseType.back_ref))]), brText([u.a, need0(non_text_sym, [bind_uint_out])])]],
     [[r.bind, r.IEEE_754_binary, u8], [bind(r.IEEE_754_binary, u8)]],
     [[r.bind, r.bind, r.IEEE_754_binary, u8], [bind(bind(r.IEEE_754_binary, u8), r.placeholder)]],
     [[r.bind, r.parse_none, r.bind, r.IEEE_754_binary, u8], [bind(needN(r.parse_none, [bind(r.IEEE_754_binary, u8)], op1(ParseType.none)), bind(r.IEEE_754_binary, u8))]],
@@ -234,7 +234,7 @@ test.each([
     [[r.bind, r.type_wrap, r.IEEE_754_binary, r.parse_block_variable, r.end_scope, 0, u8], [bindO(r.type_wrap, [r.IEEE_754_binary, r.parse_block_variable], opvb, u8)]],
     [[r.bind, r.type_wrap, r.integer_unsigned, r.end_scope, 5], [bindO(r.type_wrap, [r.integer_unsigned,], opv, 5)]],
     [[r.bind, r.type_wrap, r.integer_unsigned, r.parse_bit_variable, r.end_scope, 8, u8], [bindO(r.type_wrap, [r.integer_unsigned, r.parse_bit_variable], opvbi, 2)]],
-    [[...bind_uint_in, r.bind, r.type_wrap, r.integer_unsigned, r.parse_item, r.end_scope, r.back_reference, 0], [bind_uint_out, bindO(r.type_wrap, [r.integer_unsigned, r.parse_item], op1(ParseType.item), needN(r.back_reference, [0, bind_uint_out], op1(ParseType.back_ref)))]],
+    [[...bind_uint_in, r.bind, r.type_wrap, r.integer_unsigned, r.parse_item, r.end_scope, r.back_reference, 0], [bind_uint_out, bindO(r.type_wrap, [r.integer_unsigned, r.parse_item], op1(ParseType.item), needN(r.back_reference, [0], op1(ParseType.back_ref)))]],
     [[r.bind, r.type_wrap, r.text_plain, r.end_scope, u.e, u.end_scope], [bindO(r.type_wrap, [r.text_plain], opt, sTex([u.e]))]],
     [[r.bind, r.TAI_seconds, u8], [bind(r.TAI_seconds, u8)]],
     [[r.bind, r.type_choice, r.blocks_read, r.IEEE_754_binary, r.end_scope, 1, u8], [bindO(r.type_choice, [r.blocks_read, r.IEEE_754_binary], opC([op1(ParseType.varint), opB(1)]), needN(choice_sym, [1, u8]))]],
@@ -256,8 +256,8 @@ test.each([
                 if (d.op?.item) {
                     d.op.item = undefined
                     d.op.capture = undefined
-                    d.op.back_scope = undefined
-                    d.op.back_position = undefined
+                    d.op.item_scope = undefined
+                    d.op.item_position = undefined
                 }
                 return d
             }
@@ -274,7 +274,7 @@ test.each([
 test.each([
     [[r.IPv4, r.forward_reference, 0, r.integer_unsigned, r.bind, r.back_reference, 1, 2], 2],
     [[r.bind, r.bind, r.IEEE_754_binary, u8, r.IPv4], r.IPv4],
-    [[r.IPv6, r.IPv4, r.bind, r.parse_back_reference, 1], { type: r.back_reference, items: [1, r.IPv6] }],
+    [[r.IPv6, r.IPv4, r.bind, r.parse_back_reference, 1], { type: r.back_reference, items: [1] }],
     [[r.forward_reference, 0, r.type_wrap, r.integer_unsigned, r.end_scope, r.bind, r.back_reference, 1, 2], 2],
     [[r.forward_reference, 0, r.type_choice, r.blocks_read, r.back_reference, 0, r.end_scope, r.bind, r.back_reference, 0, 1, 1, 0, 2], { type: choice_sym, items: [1, { type: choice_sym, items: [1, { type: choice_sym, items: [0, 2] }] }] }],
     [[r.bind, r.type_choice, r.IEEE_754_binary, r.type_choice, r.integer_unsigned, r.integer_signed, r.end_scope, r.end_scope, 1, 1, 2], { type: choice_sym, items: [1, { type: choice_sym, items: [1, 2] }] }],

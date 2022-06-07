@@ -1,5 +1,5 @@
 import { r, u } from '@bintoca/dbuf/registry'
-import { bufToDV, bufToU8 } from '@bintoca/dbuf/util'
+import { bufToDV, bufToU8, log } from '@bintoca/dbuf/util'
 
 export const shiftInit = [
     [8, 29], [8, 26], [8, 23], [8, 20], [8, 17], [8, 14], [8, 11], [8, 8],//7
@@ -155,7 +155,7 @@ export type Scope = { type: r | symbol, needed?: number, items: Item[], result?,
 export type Slot = Scope | number
 export type Item = Slot | Uint8Array
 export const enum ParseType { varint, item, block_size, block_variable, bit_size, bit_variable, text_plain, text_rich, collection, collection_stream, choice, struct, varint_plus_block, none, back, forward, back_ref }
-export type ParseOp = { type: ParseType, size?: number, ops?: ParseOp[], forward?: Scope, item?: Item, capture?: boolean, back_scope?: Scope, back_position?: number }
+export type ParseOp = { type: ParseType, size?: number, ops?: ParseOp[], forward?: Scope, item?: Item, capture?: boolean, item_scope?: Scope, item_position?: number }
 export type ParsePlan = { ops: ParseOp[], index: number }
 export type ParseState = { root: Scope, scope_stack: Scope[], decoder: DecoderState }
 export type ParsePosition = { dvOffset: number, tempIndex: number, partialBlockRemaining: number }
@@ -203,13 +203,10 @@ export const back_ref = (s: ParseState, n: number) => {
         }
     }
 }
-export const forward_ref = (fr: Scope): Item => {
-    const t = fr.op.forward.items
-    return (t[0] as Scope).items[forward_ref_position(fr)]
-}
+export const forward_ref = (fr: Scope): Item => fr.op.item_scope.items[forward_ref_position(fr)]
 export const forward_ref_position = (fr: Scope): number => {
     const t = fr.op.forward.items
-    return (t[1] as number) + (t[2] as number) + 1
+    return fr.op.item_position + (t[0] as number) + 1
 }
 export const resolveRef = (st: ParseState, c: Item): Item | { returnError: r } => {
     let i = 0
@@ -221,7 +218,7 @@ export const resolveRef = (st: ParseState, c: Item): Item | { returnError: r } =
         if (typeof x == 'object') {
             const xs = x as Scope
             if (xs.type == r.back_reference) {
-                x = xs.items[1]
+                x = xs.op.item
             }
             else if (xs.type == r.forward_reference) {
                 if (st.scope_stack.length >= 1000) {
@@ -318,7 +315,7 @@ export const resolveScopeOp = (c: Scope) => {
 export const isInvalidText = (n: number) => n > 0x10FFFF + 5
 export const isInvalidRegistry = (n: number) => n > r.magic_number || (n < r.magic_number && n > 600) || (n < 512 && n > 200)
 export const createPosition = (s: DecoderState): ParsePosition => { return { dvOffset: s.dvOffset, tempIndex: s.tempCount ? s.tempIndex : undefined, partialBlockRemaining: s.partialBlockRemaining ? s.partialBlockRemaining : undefined } }
-export let log = (...x) => console.log(...x)
+
 export const parse = (b: BufferSource): Scope => {
     const root = { type: non_text_sym, items: [] }
     const st: ParseState = { root, scope_stack: [root], decoder: createDecoder(b) }
@@ -460,9 +457,9 @@ export const parse = (b: BufferSource): Scope => {
                         if (br === undefined) {
                             return parseError(st, r.error_invalid_back_reference)
                         }
-                        const s: Scope = { type: r.back_reference, needed: 2, items: [d], op: { type: ParseType.back_ref, item: br.ref, capture: br.capture, back_scope: br.scope, back_position: br.position } }
+                        const s: Scope = { type: r.back_reference, needed: 1, items: [], op: { type: ParseType.back_ref, item: br.ref, capture: br.capture, item_scope: br.scope, item_position: br.position } }
                         scope_push(s)
-                        collapse_scope(br.ref)
+                        collapse_scope(d)
                         break
                     }
                     default:
@@ -491,9 +488,9 @@ export const parse = (b: BufferSource): Scope => {
                         if (!top.richText && (typeof bt == 'number' || bt.richText || !bt.inText)) {
                             return parseError(st, r.error_text_rich_in_plain)
                         }
-                        const s: Scope = { type: r.back_reference, needed: 2, items: [d], op: { type: ParseType.back_ref, item: br.ref, capture: br.capture, back_scope: br.scope, back_position: br.position } }
+                        const s: Scope = { type: r.back_reference, needed: 1, items: [], op: { type: ParseType.back_ref, item: br.ref, capture: br.capture, item_scope: br.scope, item_position: br.position } }
                         scope_push(s)
-                        collapse_scope(br.ref)
+                        collapse_scope(d)
                         break
                     }
                     case u.non_text: {
@@ -556,16 +553,16 @@ export const parse = (b: BufferSource): Scope => {
                         if (br === undefined) {
                             return parseError(st, r.error_invalid_back_reference)
                         }
-                        const s: Scope = { type: x, needed: 2, items: [d], op: { type: ParseType.back_ref, item: br.ref, capture: br.capture, back_scope: br.scope, back_position: br.position } }
+                        const s: Scope = { type: x, needed: 1, items: [], op: { type: ParseType.back_ref, item: br.ref, capture: br.capture, item_scope: br.scope, item_position: br.position } }
                         scope_push(s)
-                        collapse_scope(br.ref)
+                        collapse_scope(d)
                         break
                     }
                     case r.forward_reference: {
                         if (top.type != non_text_sym && top.type != r.function) {
                             return parseError(st, r.error_invalid_forward_reference)
                         }
-                        const s: Scope = { type: x, needed: 3, items: [top, top.items.length], op: { type: ParseType.forward } }
+                        const s: Scope = { type: x, needed: 1, items: [], op: { type: ParseType.forward, item_scope: top, item_position: top.items.length } }
                         s.op.forward = s
                         scope_push(s)
                         collapse_scope(read(ds))
