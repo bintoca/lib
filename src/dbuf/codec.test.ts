@@ -206,8 +206,9 @@ const bText = (items: Item[]) => bind(r.text_plain, sTex(items))
 const brText = (items: Item[]) => bind(r.text_rich, srTex(items))
 const pos = (off: number, ti?: number, br?: number) => { return { dvOffset: off, tempIndex: ti, partialBlockRemaining: br } }
 const ro: Scope = { type: non_text_sym, items: [r.IPv4, null, { type: r.bind, needed: 2, items: [r.integer_unsigned, 2], op: op1(ParseType.item), start: pos(4), end: pos(8, 3) }] }
-const fo: Scope = { type: r.forward_reference, needed: 1, items: [4], op: { type: ParseType.forward, item_scope: ro, item_position: 1 }, start: pos(4, 1), end: pos(4) }
-ro.items[1] = fo
+const fo: Scope = { type: r.forward_reference, needed: 1, items: [4], op: { type: ParseType.forward, item_scope: ro, item_position: 1 }, start: pos(4, 1), end: pos(4), parent: ro, has_forward_ref: true }
+ro.items[1] = fo;
+(ro.items[2] as Scope).parent = ro
 fo.op.forward = fo
 test.each([
     [[r.IPv4, r.forward_reference, 4, ...bind_uint_in], ro.items],
@@ -240,8 +241,8 @@ test.each([
     [[r.bind, r.type_choice, r.blocks_read, r.IEEE_754_binary, r.end_scope, 1, u8], [bindO(r.type_choice, [r.blocks_read, r.IEEE_754_binary], opC([op1(ParseType.varint), opB(1)]), needN(choice_sym, [1, u8]))]],
     [[r.bind, r.type_choice, r.IEEE_754_binary, r.integer_unsigned, r.end_scope, 1, 2], [bindO(r.type_choice, [r.IEEE_754_binary, r.integer_unsigned,], opC([opB(1), opv]), needN(choice_sym, [1, 2]))]],
     [[r.bind, r.type_struct, r.IEEE_754_binary, r.type_struct, r.integer_unsigned, r.integer_signed, r.end_scope, r.end_scope, u8, 1, 2], [bindO(r.type_struct, [r.IEEE_754_binary, need0(r.type_struct, [r.integer_unsigned, r.integer_signed])], opM([opB(1), opM([opv, opv])]), [u8, 1, 2])]],
-    [[r.bind, r.type_collection, r.integer_unsigned, r.end_scope, 1, 3, 4], [bindO(r.type_collection, [r.integer_unsigned,], opCo(opv), [2, 3, 4])]],
-    [[r.bind, r.type_collection_stream, r.integer_unsigned, r.end_scope, 3, 1, 4, 0], [bindO(r.type_collection_stream, [r.integer_unsigned,], opvCo(opv), [2, 3, 4])]],
+    [[r.bind, r.type_collection, r.integer_unsigned, r.end_scope, 1, 3, 4], [bindO(r.type_collection, [r.integer_unsigned], opCo(opv), [2, 3, 4])]],
+    [[r.bind, r.type_collection_stream, r.integer_unsigned, r.end_scope, 3, 1, 4, 0], [bindO(r.type_collection_stream, [r.integer_unsigned], opvCo(opv), [2, 3, 4])]],
     [[r.bind, r.type_stream_merge, r.text_plain, r.end_scope, u.e, u.end_scope, 1, u.a, u.end_scope, 0], [bindO(r.type_stream_merge, [r.text_plain], opvCo(opt), [2, sTex([u.e]), sTex([u.a])])]],
 ])('parse(%#)', (i, o) => {
     const w = writer(i)

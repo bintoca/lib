@@ -151,7 +151,7 @@ export const non_text_sym = Symbol.for('https://bintoca.com/symbol/nontext')
 export const collection_sym = Symbol.for('https://bintoca.com/symbol/collection')
 export const rle_sym = Symbol.for('https://bintoca.com/symbol/rle')
 export const bits_sym = Symbol.for('https://bintoca.com/symbol/bits')
-export type Scope = { type: r | symbol, needed?: number, items: Item[], result?, inText?: boolean, richText?: boolean, op?: ParseOp, ops?: ParseOp[], parseIndex?: number, start?: ParsePosition, end?: ParsePosition }
+export type Scope = { type: r | symbol, needed?: number, items: Item[], result?, inText?: boolean, richText?: boolean, op?: ParseOp, ops?: ParseOp[], parseIndex?: number, start?: ParsePosition, end?: ParsePosition, parent?: Scope, has_forward_ref?: boolean }
 export type Slot = Scope | number
 export type Item = Slot | Uint8Array
 export const enum ParseType { varint, item, block_size, block_variable, bit_size, bit_variable, text_plain, text_rich, collection, collection_stream, choice, struct, varint_plus_block, none, back, forward, back_ref }
@@ -208,9 +208,10 @@ export const forward_ref_position = (fr: Scope): number => {
     const t = fr.op.forward.items
     return fr.op.item_position + (t[0] as number) + 1
 }
-export const resolveRef = (st: ParseState, c: Item): Item | { returnError: r } => {
+export const resolveRef = (st: ParseState, c: Item): { returnError?: r, ref?: Item, forward_parent?: Scope } => {
     let i = 0
     let x: Item = c
+    let forward_parent: Scope
     while (true) {
         if (i >= 1000) {
             return { returnError: r.error_max_forward_depth }
@@ -224,17 +225,18 @@ export const resolveRef = (st: ParseState, c: Item): Item | { returnError: r } =
                 if (st.scope_stack.length >= 1000) {
                     return { returnError: r.error_max_forward_depth }
                 }
+                forward_parent = xs.parent
                 x = forward_ref(xs)
                 if (x === undefined) {
                     return { returnError: r.error_invalid_forward_reference }
                 }
             }
             else {
-                return x
+                return { ref: x, forward_parent }
             }
         }
         else {
-            return x
+            return { ref: x, forward_parent }
         }
         i++
     }
@@ -323,9 +325,10 @@ export const parse = (b: BufferSource): Scope => {
         const scope_top = () => st.scope_stack[st.scope_stack.length - 1]
         const scope_push = (s: Scope) => {
             s.start = position
+            s.parent = scope_top()
             st.scope_stack.push(s)
         }
-        function collapse_scope(x: Item) {
+        const collapse_scope = (x: Item) => {
             let loop = true
             let i = x
             while (loop) {
@@ -356,6 +359,15 @@ export const parse = (b: BufferSource): Scope => {
                 }
             }
         }
+        const forward_parent = (s: Scope, end: Scope) => {
+            while (true) {
+                if (s == end) {
+                    break
+                }
+                s.has_forward_ref = true
+                s = s.parent
+            }
+        }
         let position: ParsePosition
         const ds = st.decoder
         loop:
@@ -365,10 +377,10 @@ export const parse = (b: BufferSource): Scope => {
             let op = top.ops ? top.ops[top.parseIndex] : top.op
             if (op?.type == ParseType.back_ref) {
                 const b = resolveRef(st, op.item)
-                if ((b as any).returnError) {
-                    return parseError(st, (b as any).returnError)
+                if (b.returnError) {
+                    return parseError(st, b.returnError)
                 }
-                op = resolveItemOp(b as Item)
+                op = resolveItemOp(b.ref)
             }
             if (op?.type == ParseType.choice) {
                 const c = read(ds)
@@ -383,10 +395,10 @@ export const parse = (b: BufferSource): Scope => {
                 }
                 else if (op.type == ParseType.back_ref) {
                     const b = resolveRef(st, op.item)
-                    if ((b as any).returnError) {
-                        return parseError(st, (b as any).returnError)
+                    if (b.returnError) {
+                        return parseError(st, b.returnError)
                     }
-                    scope_push({ type: choice_sym, needed: 2, items: [c], op: resolveItemOp(b as Item) })
+                    scope_push({ type: choice_sym, needed: 2, items: [c], op: resolveItemOp(b.ref) })
                     continue
                 }
                 else if (op.type == ParseType.choice) {
@@ -459,6 +471,10 @@ export const parse = (b: BufferSource): Scope => {
                         }
                         const s: Scope = { type: r.back_reference, needed: 1, items: [], op: { type: ParseType.back_ref, item: br.ref, capture: br.capture, item_scope: br.scope, item_position: br.position } }
                         scope_push(s)
+                        const rr = resolveRef(st, s)
+                        if (rr.forward_parent) {
+                            forward_parent(s, rr.forward_parent)
+                        }
                         collapse_scope(d)
                         break
                     }
@@ -490,6 +506,10 @@ export const parse = (b: BufferSource): Scope => {
                         }
                         const s: Scope = { type: r.back_reference, needed: 1, items: [], op: { type: ParseType.back_ref, item: br.ref, capture: br.capture, item_scope: br.scope, item_position: br.position } }
                         scope_push(s)
+                        const rr = resolveRef(st, s)
+                        if (rr.forward_parent) {
+                            forward_parent(s, rr.forward_parent)
+                        }
                         collapse_scope(d)
                         break
                     }
@@ -555,6 +575,10 @@ export const parse = (b: BufferSource): Scope => {
                         }
                         const s: Scope = { type: x, needed: 1, items: [], op: { type: ParseType.back_ref, item: br.ref, capture: br.capture, item_scope: br.scope, item_position: br.position } }
                         scope_push(s)
+                        const rr = resolveRef(st, s)
+                        if (rr.forward_parent) {
+                            forward_parent(s, rr.forward_parent)
+                        }
                         collapse_scope(d)
                         break
                     }
@@ -562,7 +586,7 @@ export const parse = (b: BufferSource): Scope => {
                         if (top.type != non_text_sym && top.type != r.function) {
                             return parseError(st, r.error_invalid_forward_reference)
                         }
-                        const s: Scope = { type: x, needed: 1, items: [], op: { type: ParseType.forward, item_scope: top, item_position: top.items.length } }
+                        const s: Scope = { type: x, needed: 1, items: [], op: { type: ParseType.forward, item_scope: top, item_position: top.items.length }, has_forward_ref: true }
                         s.op.forward = s
                         scope_push(s)
                         collapse_scope(read(ds))

@@ -68,7 +68,21 @@ export const run = (b: BufferSource): BufferSource => {
     }
     else {
         const res = exec(p)
-        write_scope({ type: non_text_sym, items: res.returns }, es)
+        const it = []
+        for (let x of res.returns) {
+            if (typeof x == 'number') {
+                it.push(x)
+            }
+            else {
+                if (x.has_forward_ref) {
+                    throw 'not implemented'
+                }
+                else {
+                    it.push(x)
+                }
+            }
+        }
+        write_scope({ type: non_text_sym, items: it }, es)
     }
     finishWrite(es)
     return concat(es.buffers)
