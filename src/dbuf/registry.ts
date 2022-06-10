@@ -139,7 +139,6 @@ export const enum r {
     parse_block_size,
     parse_bit_size,
     parse_none,
-    parse_back_reference,
 
     text_plain,
     text_rich,

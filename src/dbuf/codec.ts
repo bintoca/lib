@@ -154,10 +154,10 @@ export const bits_sym = Symbol.for('https://bintoca.com/symbol/bits')
 export type Scope = { type: r | symbol, needed?: number, items: Item[], result?, inText?: boolean, richText?: boolean, op?: ParseOp, ops?: ParseOp[], parseIndex?: number, start?: ParsePosition, end?: ParsePosition, parent?: Scope, has_shared?: boolean }
 export type Slot = Scope | number
 export type Item = Slot | Uint8Array
-export const enum ParseType { varint, item, block_size, block_variable, bit_size, bit_variable, text_plain, text_rich, collection, collection_stream, choice, struct, varint_plus_block, none, back, back_ref }
+export const enum ParseType { varint, item, block_size, block_variable, bit_size, bit_variable, text_plain, text_rich, collection, collection_stream, choice, struct, varint_plus_block, none, back_ref }
 export type ParseOp = { type: ParseType, size?: number, ops?: ParseOp[], item?: Item, capture?: boolean, item_scope?: Scope, item_position?: number }
 export type ParsePlan = { ops: ParseOp[], index: number }
-export type ParseState = { root: Scope, scope_stack: Scope[], decoder: DecoderState, shared: Slot[] }
+export type ParseState = { root: Scope, scope_stack: Scope[], decoder: DecoderState, shared: Slot[][] }
 export type ParsePosition = { dvOffset: number, tempIndex: number, partialBlockRemaining: number }
 export const createError = (er: r | Scope): Scope => { return { type: r.bind, items: [r.error, er] } }
 export const isError = (x) => x.type == r.bind && Array.isArray(x.items) && x.items[0] == r.error
@@ -201,6 +201,16 @@ export const back_ref = (s: ParseState, n: number) => {
             }
             back -= s.items.length
         }
+    }
+}
+export const shared_ref = (s: ParseState, n: number) => {
+    let back = n + 1
+    for (let l = s.shared.length - 1; l >= 0; l--) {
+        const sp = s.shared[l]
+        if (sp.length >= back) {
+            return { ref: sp[sp.length - back], capture: l < s.shared.length - 1 }
+        }
+        back -= sp.length
     }
 }
 export const resolveRef = (st: ParseState, c: Item): { returnError?: r, ref?: Item, forward_parent?: Scope } => {
@@ -276,8 +286,6 @@ export const resolveItemOp = (x: Item) => {
                 return { type: ParseType.text_plain }
             case r.text_rich:
                 return { type: ParseType.text_rich }
-            case r.parse_back_reference:
-                return { type: ParseType.back }
         }
     }
     return { type: ParseType.item }
@@ -305,10 +313,9 @@ export const resolveScopeOp = (c: Scope) => {
 export const isInvalidText = (n: number) => n > 0x10FFFF + 5
 export const isInvalidRegistry = (n: number) => n > r.magic_number || (n < r.magic_number && n > 600) || (n < 512 && n > 200)
 export const createPosition = (s: DecoderState): ParsePosition => { return { dvOffset: s.dvOffset, tempIndex: s.tempCount ? s.tempIndex : undefined, partialBlockRemaining: s.partialBlockRemaining ? s.partialBlockRemaining : undefined } }
-
 export const parse = (b: BufferSource): Scope => {
     const root = { type: non_text_sym, items: [] }
-    const st: ParseState = { root, scope_stack: [root], decoder: createDecoder(b), shared: [] }
+    const st: ParseState = { root, scope_stack: [root], decoder: createDecoder(b), shared: [[]] }
     try {
         const scope_top = () => st.scope_stack[st.scope_stack.length - 1]
         const scope_push = (s: Scope) => {
@@ -342,8 +349,8 @@ export const parse = (b: BufferSource): Scope => {
                     t.op.item = i
                 }
                 else if (t.type == non_text_sym || t.type == r.function) {
-                    if (st.shared.length) {
-                        st.shared = []
+                    if (st.shared[st.shared.length - 1].length) {
+                        st.shared[st.shared.length - 1] = []
                     }
                 }
                 if (t.items.length == t.needed) {
@@ -450,17 +457,6 @@ export const parse = (b: BufferSource): Scope => {
                         collapse_scope(op.item)
                         break
                     }
-                    case ParseType.back: {
-                        const d = read(ds)
-                        const br = back_ref(st, d)
-                        if (br === undefined) {
-                            return parseError(st, r.error_invalid_back_reference)
-                        }
-                        const s: Scope = { type: r.back_reference, needed: 1, items: [], op: { type: ParseType.back_ref, item: br.ref, capture: br.capture, item_scope: br.scope, item_position: br.position } }
-                        scope_push(s)
-                        collapse_scope(d)
-                        break
-                    }
                     default:
                         throw { message: 'not implemented ParseType: ' + op.type, st }
                 }
@@ -527,6 +523,9 @@ export const parse = (b: BufferSource): Scope => {
                     case r.type_collection:
                     case r.type_collection_stream:
                     case r.type_stream_merge: {
+                        if (x == r.function) {
+                            st.shared.push([])
+                        }
                         scope_push({ type: x, items: [] })
                         break
                     }
@@ -539,6 +538,9 @@ export const parse = (b: BufferSource): Scope => {
                         }
                         top.end = createPosition(ds)
                         resolveScopeOp(top)
+                        if (top.type == r.function) {
+                            st.shared.pop()
+                        }
                         const t = st.scope_stack.pop()
                         if (st.scope_stack.length == 0) {
                             break loop
@@ -559,11 +561,11 @@ export const parse = (b: BufferSource): Scope => {
                     }
                     case r.shared_reference: {
                         const d = read(ds)
-                        const sr = st.shared[st.shared.length - 1 - d]
+                        const sr = shared_ref(st, d)
                         if (sr === undefined) {
                             return parseError(st, r.error_invalid_shared_reference)
                         }
-                        const s: Scope = { type: x, needed: 1, items: [], op: { type: ParseType.back_ref, item: sr } }
+                        const s: Scope = { type: x, needed: 1, items: [], op: { type: ParseType.back_ref, item: sr.ref, capture: sr.capture } }
                         scope_push(s)
                         collapse_scope(d)
                         break
@@ -591,7 +593,7 @@ export const parse = (b: BufferSource): Scope => {
                     }
                     case r.shared: {
                         const s: Scope = { type: x, needed: 1, items: [], op: { type: ParseType.back_ref } }
-                        st.shared.push(s)
+                        st.shared[st.shared.length - 1].push(s)
                         st.root.has_shared = true
                         scope_push(s)
                         break

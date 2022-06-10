@@ -281,7 +281,7 @@ test.each([
     [[r.back_reference, 0], r.error_invalid_back_reference],
     [[r.shared_reference, 0], r.error_invalid_shared_reference],
     [[r.shared, r.IPv4, r.shared_reference, 0], r.error_invalid_shared_reference],
-    [[r.bind, r.parse_back_reference, 0], r.error_invalid_back_reference],
+    [[r.shared, r.function, r.shared, r.IPv4, r.shared_reference, 1, r.end_scope], r.error_invalid_shared_reference],
     [[r.bind, r.shared, r.shared_reference, 0, 3], r.error_bind_operation_cycle],
     [[r.bind, r.text_plain, u.non_text, u.end_scope], r.error_text_rich_in_plain],
     [[r.bind, r.text_rich, u.non_text, r.IPv4, u.non_text, r.bind, r.text_plain, u.back_reference, 0, u.end_scope, u.end_scope], r.error_text_rich_in_plain],
