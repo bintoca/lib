@@ -151,13 +151,13 @@ export const non_text_sym = Symbol.for('https://bintoca.com/symbol/nontext')
 export const collection_sym = Symbol.for('https://bintoca.com/symbol/collection')
 export const rle_sym = Symbol.for('https://bintoca.com/symbol/rle')
 export const bits_sym = Symbol.for('https://bintoca.com/symbol/bits')
-export type Scope = { type: r | symbol, needed?: number, items: Item[], result?, inText?: boolean, richText?: boolean, op?: ParseOp, ops?: ParseOp[], parseIndex?: number, start?: ParsePosition, end?: ParsePosition, parent?: Scope, has_forward_ref?: boolean }
+export type Scope = { type: r | symbol, needed?: number, items: Item[], result?, inText?: boolean, richText?: boolean, op?: ParseOp, ops?: ParseOp[], parseIndex?: number, start?: ParsePosition, end?: ParsePosition, parent?: Scope, has_shared?: boolean }
 export type Slot = Scope | number
 export type Item = Slot | Uint8Array
-export const enum ParseType { varint, item, block_size, block_variable, bit_size, bit_variable, text_plain, text_rich, collection, collection_stream, choice, struct, varint_plus_block, none, back, forward, back_ref }
-export type ParseOp = { type: ParseType, size?: number, ops?: ParseOp[], forward?: Scope, item?: Item, capture?: boolean, item_scope?: Scope, item_position?: number }
+export const enum ParseType { varint, item, block_size, block_variable, bit_size, bit_variable, text_plain, text_rich, collection, collection_stream, choice, struct, varint_plus_block, none, back, back_ref }
+export type ParseOp = { type: ParseType, size?: number, ops?: ParseOp[], item?: Item, capture?: boolean, item_scope?: Scope, item_position?: number }
 export type ParsePlan = { ops: ParseOp[], index: number }
-export type ParseState = { root: Scope, scope_stack: Scope[], decoder: DecoderState }
+export type ParseState = { root: Scope, scope_stack: Scope[], decoder: DecoderState, shared: Slot[] }
 export type ParsePosition = { dvOffset: number, tempIndex: number, partialBlockRemaining: number }
 export const createError = (er: r | Scope): Scope => { return { type: r.bind, items: [r.error, er] } }
 export const isError = (x) => x.type == r.bind && Array.isArray(x.items) && x.items[0] == r.error
@@ -178,7 +178,7 @@ export const parseErrorPos = (pos: ParsePosition, regError: r) => {
     return createError(createStruct(fields, values))
 }
 export const back_ref = (s: ParseState, n: number) => {
-    const scopeItems = s.scope_stack.filter(x => x.inText || x.type == non_text_sym || x.type == r.function)
+    const scopeItems = s.scope_stack.filter(x => x.inText || x.type == r.function)
     let back = n + 1
     let funcs = 0
     for (let l = scopeItems.length - 1; l >= 0; l--) {
@@ -203,33 +203,22 @@ export const back_ref = (s: ParseState, n: number) => {
         }
     }
 }
-export const forward_ref = (fr: Scope): Item => fr.op.item_scope.items[forward_ref_position(fr)]
-export const forward_ref_position = (fr: Scope): number => {
-    const t = fr.op.forward.items
-    return fr.op.item_position + (t[0] as number) + 1
-}
 export const resolveRef = (st: ParseState, c: Item): { returnError?: r, ref?: Item, forward_parent?: Scope } => {
-    let i = 0
     let x: Item = c
     let forward_parent: Scope
+    const ws = new WeakSet()
     while (true) {
-        if (i >= 1000) {
-            return { returnError: r.error_max_forward_depth }
-        }
         if (typeof x == 'object') {
+            if (ws.has(x)) {
+                return { returnError: r.error_bind_operation_cycle }
+            }
+            ws.add(x)
             const xs = x as Scope
-            if (xs.type == r.back_reference) {
+            if (xs.type == r.back_reference || xs.type == r.shared_reference) {
                 x = xs.op.item
             }
-            else if (xs.type == r.forward_reference) {
-                if (st.scope_stack.length >= 1000) {
-                    return { returnError: r.error_max_forward_depth }
-                }
-                forward_parent = xs.parent
-                x = forward_ref(xs)
-                if (x === undefined) {
-                    return { returnError: r.error_invalid_forward_reference }
-                }
+            else if (xs.type == r.shared) {
+                x = xs.items[0]
             }
             else {
                 return { ref: x, forward_parent }
@@ -238,7 +227,6 @@ export const resolveRef = (st: ParseState, c: Item): { returnError?: r, ref?: It
         else {
             return { ref: x, forward_parent }
         }
-        i++
     }
 }
 export const resolveItemOp = (x: Item) => {
@@ -320,7 +308,7 @@ export const createPosition = (s: DecoderState): ParsePosition => { return { dvO
 
 export const parse = (b: BufferSource): Scope => {
     const root = { type: non_text_sym, items: [] }
-    const st: ParseState = { root, scope_stack: [root], decoder: createDecoder(b) }
+    const st: ParseState = { root, scope_stack: [root], decoder: createDecoder(b), shared: [] }
     try {
         const scope_top = () => st.scope_stack[st.scope_stack.length - 1]
         const scope_push = (s: Scope) => {
@@ -350,6 +338,14 @@ export const parse = (b: BufferSource): Scope => {
                 else if (t.type == r.parse_none) {
                     t.op = { type: ParseType.none, item: t.items[0] }
                 }
+                else if (t.type == r.shared) {
+                    t.op.item = i
+                }
+                else if (t.type == non_text_sym || t.type == r.function) {
+                    if (st.shared.length) {
+                        st.shared = []
+                    }
+                }
                 if (t.items.length == t.needed) {
                     t.end = createPosition(ds)
                     i = st.scope_stack.pop()
@@ -357,15 +353,6 @@ export const parse = (b: BufferSource): Scope => {
                 else {
                     loop = false
                 }
-            }
-        }
-        const forward_parent = (s: Scope, end: Scope) => {
-            while (true) {
-                if (s == end) {
-                    break
-                }
-                s.has_forward_ref = true
-                s = s.parent
             }
         }
         let position: ParsePosition
@@ -471,10 +458,6 @@ export const parse = (b: BufferSource): Scope => {
                         }
                         const s: Scope = { type: r.back_reference, needed: 1, items: [], op: { type: ParseType.back_ref, item: br.ref, capture: br.capture, item_scope: br.scope, item_position: br.position } }
                         scope_push(s)
-                        const rr = resolveRef(st, s)
-                        if (rr.forward_parent) {
-                            forward_parent(s, rr.forward_parent)
-                        }
                         collapse_scope(d)
                         break
                     }
@@ -506,16 +489,12 @@ export const parse = (b: BufferSource): Scope => {
                         }
                         const s: Scope = { type: r.back_reference, needed: 1, items: [], op: { type: ParseType.back_ref, item: br.ref, capture: br.capture, item_scope: br.scope, item_position: br.position } }
                         scope_push(s)
-                        const rr = resolveRef(st, s)
-                        if (rr.forward_parent) {
-                            forward_parent(s, rr.forward_parent)
-                        }
                         collapse_scope(d)
                         break
                     }
                     case u.non_text: {
                         if (top.richText) {
-                            scope_push({ type: non_text_sym, items: [] })
+                            scope_push({ type: non_text_sym, needed: 1, items: [] })
                         }
                         else {
                             return parseError(st, r.error_text_rich_in_plain)
@@ -575,21 +554,18 @@ export const parse = (b: BufferSource): Scope => {
                         }
                         const s: Scope = { type: x, needed: 1, items: [], op: { type: ParseType.back_ref, item: br.ref, capture: br.capture, item_scope: br.scope, item_position: br.position } }
                         scope_push(s)
-                        const rr = resolveRef(st, s)
-                        if (rr.forward_parent) {
-                            forward_parent(s, rr.forward_parent)
-                        }
                         collapse_scope(d)
                         break
                     }
-                    case r.forward_reference: {
-                        if (top.type != non_text_sym && top.type != r.function) {
-                            return parseError(st, r.error_invalid_forward_reference)
+                    case r.shared_reference: {
+                        const d = read(ds)
+                        const sr = st.shared[st.shared.length - 1 - d]
+                        if (sr === undefined) {
+                            return parseError(st, r.error_invalid_shared_reference)
                         }
-                        const s: Scope = { type: x, needed: 1, items: [], op: { type: ParseType.forward, item_scope: top, item_position: top.items.length }, has_forward_ref: true }
-                        s.op.forward = s
+                        const s: Scope = { type: x, needed: 1, items: [], op: { type: ParseType.back_ref, item: sr } }
                         scope_push(s)
-                        collapse_scope(read(ds))
+                        collapse_scope(d)
                         break
                     }
                     case r.parse_bit_size: {
@@ -611,6 +587,13 @@ export const parse = (b: BufferSource): Scope => {
                     }
                     case r.bind: {
                         scope_push({ type: x, needed: 2, items: [] })
+                        break
+                    }
+                    case r.shared: {
+                        const s: Scope = { type: x, needed: 1, items: [], op: { type: ParseType.back_ref } }
+                        st.shared.push(s)
+                        st.root.has_shared = true
+                        scope_push(s)
                         break
                     }
                     case r.parse_none: {

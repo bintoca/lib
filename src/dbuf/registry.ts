@@ -156,7 +156,8 @@ export const enum r {
 
     next_singular,
     
-    forward_reference = 64,
+    shared = 64,
+    shared_reference,
     type_collection_stream,
     type_stream_merge,
     parse_varint,
@@ -170,7 +171,6 @@ export const enum r {
     exponent_base2,
     exponent_base10,
     fixed_point_decimal_places,
-    execute_early,
 
     IPv4,
     IPv6,
@@ -192,8 +192,8 @@ export const enum r {
     block_bits_remaining,
     error_internal,
     error_invalid_back_reference,
-    error_max_forward_depth,
-    error_invalid_forward_reference,
+    error_bind_operation_cycle,
+    error_invalid_shared_reference,
     error_invalid_choice_index,
     error_text_rich_in_plain,
     error_empty_scope,

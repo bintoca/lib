@@ -1,8 +1,8 @@
-import { parse, Scope, Item, Slot, isError, createEncoder, write_scope, finishWrite, createError, non_text_sym, forward_ref, forward_ref_position } from '@bintoca/dbuf/codec'
+import { parse, Scope, Item, Slot, isError, createEncoder, write_scope, finishWrite, createError, non_text_sym } from '@bintoca/dbuf/codec'
 import { r } from '@bintoca/dbuf/registry'
 import { concat, log } from '@bintoca/dbuf/util'
 
-export type ExecutionState = { stack: { scope: Scope, index: number }[], returns: Slot[] }
+export type ExecutionState = { stack: { scope: Scope, index: number }[], returns: Slot[], has_shared: boolean }
 export const execError = (s: ExecutionState, er: Scope | r): Scope => {
     return createError(er)
 }
@@ -22,32 +22,12 @@ export const exec_item = (s: ExecutionState, sc: Scope, index: number): Slot => 
     else if (i.type == r.back_reference) {
         res = exec_item(s, i.op.item_scope, i.op.item_position)
     }
-    else if (i.type == r.forward_reference) {
-        const f = forward_ref(i)
-        if (f === undefined) {
-            res = execError(s, r.error_invalid_forward_reference)
-        }
-        else {
-            res = exec_item(s, i.op.forward, forward_ref_position(i))
-        }
-    }
     s.stack.pop()
     return res
 }
 export const exec = (root: Scope): ExecutionState => {
-    const st: ExecutionState = { stack: [], returns: [] }
+    const st: ExecutionState = { stack: [], returns: [], has_shared: root.has_shared }
     try {
-        let i = 0
-        for (let x of root.items) {
-            if (typeof x == 'object' && (x as Scope).type == r.bind && (x as Scope).items[0] == r.execute_early) {
-                const e = exec_item(st, root, i)
-                if (isError(e)) {
-                    st.returns.push(e)
-                    return st
-                }
-            }
-            i++
-        }
         st.returns.push(exec_item(st, root, root.items.length - 1))
         return st
     }
@@ -74,7 +54,7 @@ export const run = (b: BufferSource): BufferSource => {
                 it.push(x)
             }
             else {
-                if (x.has_forward_ref) {
+                if (res.has_shared) {
                     throw 'not implemented'
                 }
                 else {
