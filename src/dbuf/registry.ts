@@ -155,8 +155,8 @@ export const enum r {
 
     next_singular,
     
-    shared = 64,
-    shared_reference,
+    _open1 = 64,
+    _open2,
     type_collection_stream,
     type_stream_merge,
     parse_varint,
@@ -192,7 +192,7 @@ export const enum r {
     error_internal,
     error_invalid_back_reference,
     error_bind_operation_cycle,
-    error_invalid_shared_reference,
+    _open3,
     error_invalid_choice_index,
     error_text_rich_in_plain,
     error_empty_scope,

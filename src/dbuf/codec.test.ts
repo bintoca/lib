@@ -255,8 +255,7 @@ test.each([
 })
 test.each([
     [[r.bind, r.bind, r.IEEE_754_binary, u8, r.IPv4], r.IPv4],
-    [[r.bind, r.shared, r.type_wrap, r.integer_unsigned, r.end_scope, 2], 2],
-    [[r.bind, r.shared, r.type_choice, r.blocks_read, r.shared_reference, 0, r.end_scope, 1, 1, 0, 2], { type: choice_sym, items: [1, { type: choice_sym, items: [1, { type: choice_sym, items: [0, 2] }] }] }],
+    [[r.bind, r.type_wrap, r.integer_unsigned, r.end_scope, 2], 2],
     [[r.bind, r.type_choice, r.IEEE_754_binary, r.type_choice, r.integer_unsigned, r.integer_signed, r.end_scope, r.end_scope, 1, 1, 2], { type: choice_sym, items: [1, { type: choice_sym, items: [1, 2] }] }],
     [[r.bind, r.type_collection, r.type_struct, r.IEEE_754_binary, r.type_choice, r.integer_unsigned, r.integer_signed, r.end_scope, r.end_scope, r.end_scope, 0, u8, 1, 2], { type: collection_sym, items: [{ type: struct_sym, items: [u8, { type: choice_sym, items: [1, 2] }] }] }],
     [[r.bind, r.type_struct, r.IEEE_754_binary, r.type_collection, r.type_choice, r.integer_unsigned, r.integer_signed, r.end_scope, r.end_scope, r.end_scope, u8, 0, 1, 2], { type: struct_sym, items: [u8, { type: collection_sym, items: [{ type: choice_sym, items: [1, 2] }] }] }],
@@ -279,10 +278,6 @@ test.each([
     [[r.function, r.end_scope], r.error_empty_scope],
     [[r.end_scope], r.error_empty_scope],
     [[r.back_reference, 0], r.error_invalid_back_reference],
-    [[r.shared_reference, 0], r.error_invalid_shared_reference],
-    [[r.shared, r.IPv4, r.shared_reference, 0], r.error_invalid_shared_reference],
-    [[r.shared, r.function, r.shared, r.IPv4, r.shared_reference, 1, r.end_scope], r.error_invalid_shared_reference],
-    [[r.bind, r.shared, r.shared_reference, 0, 3], r.error_bind_operation_cycle],
     [[r.bind, r.text_plain, u.non_text, u.end_scope], r.error_text_rich_in_plain],
     [[r.bind, r.text_rich, u.non_text, r.IPv4, u.non_text, r.bind, r.text_plain, u.back_reference, 0, u.end_scope, u.end_scope], r.error_text_rich_in_plain],
     [[r.bind, r.type_choice, r.integer_unsigned, r.end_scope, 3], r.error_invalid_choice_index],
