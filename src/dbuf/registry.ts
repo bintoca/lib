@@ -29,6 +29,9 @@ export const enum under_consideration {
     all_data,
     location,
 
+    stream_props,
+    session_props,
+
     back_ref_hint,
     TAI_epoch_shift,
 

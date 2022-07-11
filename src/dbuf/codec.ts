@@ -151,7 +151,7 @@ export const non_text_sym = Symbol.for('https://bintoca.com/symbol/nontext')
 export const collection_sym = Symbol.for('https://bintoca.com/symbol/collection')
 export const rle_sym = Symbol.for('https://bintoca.com/symbol/rle')
 export const bits_sym = Symbol.for('https://bintoca.com/symbol/bits')
-export type Scope = { type: r | symbol, needed?: number, items: Item[], result?, inText?: boolean, richText?: boolean, op?: ParseOp, ops?: ParseOp[], parseIndex?: number, start?: ParsePosition, end?: ParsePosition, parent?: Scope, has_shared?: boolean }
+export type Scope = { type: r | symbol, needed?: number, items: Item[], result?, inText?: boolean, richText?: boolean, op?: ParseOp, ops?: ParseOp[], parseIndex?: number, start?: ParsePosition, end?: ParsePosition, parent?: Scope, parentIndex?: number }
 export type Slot = Scope | number
 export type Item = Slot | Uint8Array
 export const enum ParseType { varint, item, block_size, block_variable, bit_size, bit_variable, text_plain, text_rich, collection, collection_stream, choice, struct, varint_plus_block, none, back_ref }
@@ -177,52 +177,28 @@ export const parseErrorPos = (pos: ParsePosition, regError: r) => {
     }
     return createError(createStruct(fields, values))
 }
-export const back_ref = (s: ParseState, n: number) => {
-    const scopeItems = s.scope_stack.filter(x => x.inText || x.type == r.function)
-    let back = n + 1
+export const back_ref = (s: Scope, distance: number, parentIndex: number) => {
+    let back = distance + 1
     let funcs = 0
-    for (let l = scopeItems.length - 1; l >= 0; l--) {
-        const s = scopeItems[l]
-        if (s.type == r.function) {
-            funcs++
-        }
+    while (s) {
         if (s.inText) {
-            const scopes = s.items.filter(x => typeof x == 'object')
+            const scopes = s.items.filter((x, i) => typeof x == 'object' && i < parentIndex)
             if (scopes.length >= back) {
                 const position = scopes.length - back
                 return { ref: scopes[position], capture: false, scope: s, position }
             }
             back -= scopes.length
         }
-        else {
-            if (s.items.length >= back) {
-                const position = s.items.length - back
+        else if (s.type == r.function) {
+            funcs++
+            if (parentIndex >= back) {
+                const position = parentIndex - back
                 return { ref: s.items[position], capture: s.type == r.function && funcs > 1, scope: s, position }
             }
-            back -= s.items.length
+            back -= parentIndex
         }
-    }
-}
-export const resolveRef = (c: Item): { returnError?: r, ref?: Item } => {
-    let x: Item = c
-    const ws = new WeakSet()
-    while (true) {
-        if (typeof x == 'object') {
-            if (ws.has(x)) {
-                return { returnError: r.error_bind_operation_cycle }
-            }
-            ws.add(x)
-            const xs = x as Scope
-            if (xs.type == r.back_reference) {
-                x = xs.op.item
-            }
-            else {
-                return { ref: x }
-            }
-        }
-        else {
-            return { ref: x }
-        }
+        parentIndex = s.parentIndex
+        s = s.parent
     }
 }
 export const resolveItemOp = (x: Item) => {
@@ -307,6 +283,7 @@ export const parse = (b: BufferSource): Scope => {
         const scope_push = (s: Scope) => {
             s.start = position
             s.parent = scope_top()
+            s.parentIndex = s.parent.items.length
             st.scope_stack.push(s)
         }
         const collapse_scope = (x: Item) => {
@@ -347,13 +324,6 @@ export const parse = (b: BufferSource): Scope => {
             const top = scope_top()
             position = createPosition(ds)
             let op = top.ops ? top.ops[top.parseIndex] : top.op
-            if (op?.type == ParseType.back_ref) {
-                const b = resolveRef(op.item)
-                if (b.returnError) {
-                    return parseError(st, b.returnError)
-                }
-                op = resolveItemOp(b.ref)
-            }
             if (op?.type == ParseType.choice) {
                 const c = read(ds)
                 if (op.ops.length <= c) {
@@ -363,14 +333,6 @@ export const parse = (b: BufferSource): Scope => {
                 if (op.type == ParseType.none) {
                     scope_push({ type: choice_sym, needed: 1, items: [] })
                     collapse_scope(c)
-                    continue
-                }
-                else if (op.type == ParseType.back_ref) {
-                    const b = resolveRef(op.item)
-                    if (b.returnError) {
-                        return parseError(st, b.returnError)
-                    }
-                    scope_push({ type: choice_sym, needed: 2, items: [c], op: resolveItemOp(b.ref) })
                     continue
                 }
                 else if (op.type == ParseType.choice) {
@@ -453,7 +415,7 @@ export const parse = (b: BufferSource): Scope => {
                     }
                     case u.back_reference: {
                         const d = read(ds)
-                        const br = back_ref(st, d)
+                        const br = back_ref(top, d, top.items.length)
                         if (br === undefined) {
                             return parseError(st, r.error_invalid_back_reference)
                         }
@@ -522,7 +484,7 @@ export const parse = (b: BufferSource): Scope => {
                     }
                     case r.back_reference: {
                         const d = read(ds)
-                        const br = back_ref(st, d)
+                        const br = back_ref(top, d, top.items.length)
                         if (br === undefined) {
                             return parseError(st, r.error_invalid_back_reference)
                         }
@@ -564,7 +526,7 @@ export const parse = (b: BufferSource): Scope => {
                 }
             }
         }
-        if (st.root.items[st.root.items.length - 1] === r.placeholder) {
+        if (st.root.items.length > 1 && st.root.items[st.root.items.length - 1] === r.placeholder) {
             st.root.items.pop()
         }
         if (st.scope_stack.length > 1) {
