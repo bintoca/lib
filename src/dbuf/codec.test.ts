@@ -103,10 +103,10 @@ test('stringText', () => {
         expect(textToUnicode(unicodeToText(i))).toBe(i)
     }
     const a = []
-    for (let x of ' aeot\n!,-.?ABCXYZabcxyz\0~') {
+    for (let x of ' aeinot\n!"\',-.?ABCXYZabcxyz\0~') {
         a.push(unicodeToText(x.codePointAt(0)))
     }
-    expect(a).toEqual([3, 4, 5, 6, 7, 10, 11, 12, 13, 14, 15, 16, 17, 18, 39, 40, 41, 4, 42, 43, 61, 62, 63, 64, 131])
+    expect(a).toEqual([1, 2, 3, 4, 5, 6, 7, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 41, 42, 43, 2, 44, 45, 61, 62, 63, 64, 131])
 })
 test('magicNumber', () => {
     const dv = new DataView(new ArrayBuffer(4))
@@ -143,8 +143,6 @@ const opt = op1(ParseType.text_plain)
 const bind_uint_in = [r.bind, r.integer_unsigned, 2]
 const bind_uint_out = { type: r.bind, needed: 2, items: [r.integer_unsigned, 2], op: op1(ParseType.item) }
 const u8 = new Uint8Array([1, 2, 3, 4])
-const text_e_in = [u.text, u.e, u.end_scope]
-const text_e_out = { type: text_sym, inText: true, items: [u.e] }
 const bind = (t: Slot, v: Item): Scope => { return { type: r.bind, needed: 2, items: [t, v], op: op1(ParseType.item) } }
 const bindO = (t: r, items: Item[], p: ParseOp, v: Item | Item[]): Scope => {
     if (Array.isArray(v)) {
@@ -206,7 +204,7 @@ const bText = (items: Item[]) => bind(r.text_plain, sTex(items))
 const brText = (items: Item[]) => bind(r.text_rich, srTex(items))
 test.each([
     [[r.IPv4, ...bind_uint_in], [r.IPv4, bind_uint_out]],
-    [[r.bind, r.text_plain, u.a, ...text_e_in, u.back_reference, 0, u.end_scope, r.bind, r.text_rich, u.a, u.non_text, ...bind_uint_in, u.end_scope], [bText([u.a, text_e_out, needN(r.back_reference, [0], op1(ParseType.back_ref))]), brText([u.a, needN(non_text_sym, [bind_uint_out])])]],
+    [[r.bind, r.text_plain, u.a, u.end_scope, r.bind, r.text_rich, u.a, u.non_text, ...bind_uint_in, u.end_scope], [bText([u.a]), brText([u.a, needN(non_text_sym, [bind_uint_out])])]],
     [[r.bind, r.IEEE_754_binary, u8], [bind(r.IEEE_754_binary, u8)]],
     [[r.bind, r.bind, r.IEEE_754_binary, u8], [bind(bind(r.IEEE_754_binary, u8), r.placeholder)]],
     [[r.bind, r.parse_none, r.bind, r.IEEE_754_binary, u8], [bind(needN(r.parse_none, [bind(r.IEEE_754_binary, u8)], op1(ParseType.none)), bind(r.IEEE_754_binary, u8))]],
@@ -237,9 +235,6 @@ test.each([
                 const d: Scope = { type: x.type, items: x.items.map(y => strip(y)), needed: x.needed, op: x.op, ops: x.ops, parseIndex: x.parseIndex, inText: x.inText, richText: x.richText }
                 if (d.op?.item) {
                     d.op.item = undefined
-                    d.op.capture = undefined
-                    d.op.item_scope = undefined
-                    d.op.item_position = undefined
                 }
                 return d
             }
@@ -277,9 +272,7 @@ test.each([
     [[r.bind, r.end_scope], r.error_invalid_end_scope],
     [[r.function, r.end_scope], r.error_empty_scope],
     [[r.end_scope], r.error_empty_scope],
-    [[r.back_reference, 0], r.error_invalid_back_reference],
     [[r.bind, r.text_plain, u.non_text, u.end_scope], r.error_text_rich_in_plain],
-    [[r.bind, r.text_rich, u.non_text, r.IPv4, u.non_text, r.bind, r.text_plain, u.back_reference, 0, u.end_scope, u.end_scope], r.error_text_rich_in_plain],
     [[r.bind, r.type_choice, r.integer_unsigned, r.end_scope, 3], r.error_invalid_choice_index],
     [[r.bind, r.type_choice, r.integer_unsigned,], r.error_unfinished_parse_stack],
     [[r.bind, r.text_plain, 0xFFFFFF], r.error_invalid_text_value],

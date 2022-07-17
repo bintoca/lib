@@ -1,4 +1,4 @@
-import { parse, Scope, Item, Slot, isError, createEncoder, write_scope, finishWrite, createError, non_text_sym, back_ref } from '@bintoca/dbuf/codec'
+import { parse, Scope, Item, Slot, isError, createEncoder, write_scope, finishWrite, createError, non_text_sym } from '@bintoca/dbuf/codec'
 import { r } from '@bintoca/dbuf/registry'
 import { concat, log } from '@bintoca/dbuf/util'
 
@@ -35,9 +35,7 @@ export const exec_item = (s: ExecutionState, sc: Scope, index: number): Slot => 
     }
     else {
         switch (i.type) {
-            case r.back_reference: {
-                const br = back_ref(i, i.items[0] as number, i.parentIndex)
-                res = exec_item(s, br.scope, br.position)
+            case r.call: {
                 break
             }
         }

@@ -154,8 +154,8 @@ export const bits_sym = Symbol.for('https://bintoca.com/symbol/bits')
 export type Scope = { type: r | symbol, needed?: number, items: Item[], result?, inText?: boolean, richText?: boolean, op?: ParseOp, ops?: ParseOp[], parseIndex?: number, start?: ParsePosition, end?: ParsePosition, parent?: Scope, parentIndex?: number }
 export type Slot = Scope | number
 export type Item = Slot | Uint8Array
-export const enum ParseType { varint, item, block_size, block_variable, bit_size, bit_variable, text_plain, text_rich, collection, collection_stream, choice, struct, varint_plus_block, none, back_ref }
-export type ParseOp = { type: ParseType, size?: number, ops?: ParseOp[], item?: Item, capture?: boolean, item_scope?: Scope, item_position?: number }
+export const enum ParseType { varint, item, block_size, block_variable, bit_size, bit_variable, text_plain, text_rich, collection, collection_stream, choice, struct, varint_plus_block, none }
+export type ParseOp = { type: ParseType, size?: number, ops?: ParseOp[], item?: Item }
 export type ParsePlan = { ops: ParseOp[], index: number }
 export type ParseState = { root: Scope, scope_stack: Scope[], decoder: DecoderState }
 export type ParsePosition = { dvOffset: number, tempIndex: number, partialBlockRemaining: number }
@@ -176,30 +176,6 @@ export const parseErrorPos = (pos: ParsePosition, regError: r) => {
         values.push(pos.partialBlockRemaining)
     }
     return createError(createStruct(fields, values))
-}
-export const back_ref = (s: Scope, distance: number, parentIndex: number) => {
-    let back = distance + 1
-    let funcs = 0
-    while (s) {
-        if (s.inText) {
-            const scopes = s.items.filter((x, i) => typeof x == 'object' && i < parentIndex)
-            if (scopes.length >= back) {
-                const position = scopes.length - back
-                return { ref: scopes[position], capture: false, scope: s, position }
-            }
-            back -= scopes.length
-        }
-        else if (s.type == r.function) {
-            funcs++
-            if (parentIndex >= back) {
-                const position = parentIndex - back
-                return { ref: s.items[position], capture: s.type == r.function && funcs > 1, scope: s, position }
-            }
-            back -= parentIndex
-        }
-        parentIndex = s.parentIndex
-        s = s.parent
-    }
 }
 export const resolveItemOp = (x: Item) => {
     if (typeof x == 'object') {
@@ -404,28 +380,9 @@ export const parse = (b: BufferSource): Scope => {
             else if (top.inText) {
                 const x = read(ds)
                 switch (x) {
-                    case u.text: {
-                        scope_push({ type: text_sym, items: [], inText: true })
-                        break
-                    }
                     case u.repeat_n: {
-                        scope_push({ type: rle_sym, needed: 1, items: [], inText: true })
+                        scope_push({ type: rle_sym, needed: 1, items: [] })
                         collapse_scope(read(ds))
-                        break
-                    }
-                    case u.back_reference: {
-                        const d = read(ds)
-                        const br = back_ref(top, d, top.items.length)
-                        if (br === undefined) {
-                            return parseError(st, r.error_invalid_back_reference)
-                        }
-                        const bt = br.ref as Slot
-                        if (!top.richText && (typeof bt == 'number' || bt.richText || !bt.inText)) {
-                            return parseError(st, r.error_text_rich_in_plain)
-                        }
-                        const s: Scope = { type: r.back_reference, needed: 1, items: [], op: { type: ParseType.back_ref, item: br.ref, capture: br.capture, item_scope: br.scope, item_position: br.position } }
-                        scope_push(s)
-                        collapse_scope(d)
                         break
                     }
                     case u.non_text: {
@@ -480,17 +437,6 @@ export const parse = (b: BufferSource): Scope => {
                             break loop
                         }
                         collapse_scope(t)
-                        break
-                    }
-                    case r.back_reference: {
-                        const d = read(ds)
-                        const br = back_ref(top, d, top.items.length)
-                        if (br === undefined) {
-                            return parseError(st, r.error_invalid_back_reference)
-                        }
-                        const s: Scope = { type: x, needed: 1, items: [], op: { type: ParseType.back_ref, item: br.ref, capture: br.capture, item_scope: br.scope, item_position: br.position } }
-                        scope_push(s)
-                        collapse_scope(d)
                         break
                     }
                     case r.parse_bit_size: {

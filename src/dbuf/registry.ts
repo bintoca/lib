@@ -132,7 +132,7 @@ export const enum under_consideration {
 export const enum r {
     placeholder,
     end_scope,
-    back_reference,
+    _open0,
     type_wrap,
     type_choice,
     type_struct,
@@ -193,7 +193,7 @@ export const enum r {
     block_varint_index,
     block_bits_remaining,
     error_internal,
-    error_invalid_back_reference,
+    _open4,
     error_bind_operation_cycle,
     _open3,
     error_invalid_choice_index,
@@ -208,12 +208,12 @@ export const enum r {
     magic_number = 4473429
 }
 export const enum u {
-    text,
     end_scope,
-    back_reference,
     space,
     a,
     e,
+    i,
+    n,
     o,
     t,
 
@@ -221,6 +221,8 @@ export const enum u {
     non_text,
     line_feed,
     exclamation,
+    double_quote,
+    single_quote,
     comma,
     hyphen,
     period,

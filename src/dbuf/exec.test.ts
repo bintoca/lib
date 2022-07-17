@@ -4,12 +4,10 @@ import { r, u } from '@bintoca/dbuf/registry'
 import { concat, strip } from '@bintoca/dbuf/util'
 
 const sc = (type: r | symbol, items: Item[]) => { return { type, items } }
-const br = (n: number): Scope => sc(r.back_reference, [n])
 const bi = (x: Item, y: Item): Scope => sc(r.bind, [x, y])
 const perr = (er: r, blocksRead: number, index?: number, bits?: number) => parseErrorPos({ dvOffset: blocksRead * 4, tempIndex: index, partialBlockRemaining: bits }, er)
 test.each([
-    [br(0), perr(r.error_invalid_back_reference, 1, 2)],
-    //[[r.IPv4, r.placeholder], r.placeholder],
+    [[r.IPv4, r.placeholder], bi(r.error, r.error_internal)],
 ])('run(%#)', (i, o) => {
     const es = createEncoder()
     write_scope({ type: non_text_sym, items: Array.isArray(i) ? i : [i] }, es)
