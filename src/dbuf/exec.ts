@@ -68,7 +68,7 @@ export const exec = (root: Scope): ExecutionState => {
         if (isError(e)) {
             return e
         }
-        log(e, st)
+        //log(e, st)
         st.returns.push(execError(st, r.error_internal))
         return st
     }

@@ -132,12 +132,12 @@ export const enum under_consideration {
 export const enum r {
     placeholder,
     end_scope,
-    _open0,
+    bind,
     type_wrap,
     type_choice,
+    type_choice_index,
     type_struct,
     type_collection,
-    bind,
 
     parse_block_size,
     parse_bit_size,
@@ -194,7 +194,7 @@ export const enum r {
     block_bits_remaining,
     error_internal,
     _open4,
-    error_bind_operation_cycle,
+    _open5,
     _open3,
     error_invalid_choice_index,
     error_text_rich_in_plain,
