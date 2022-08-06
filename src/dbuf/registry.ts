@@ -144,7 +144,7 @@ export const enum r {
     parse_none,
 
     text_plain,
-    text_rich,
+    text_uri,
     text_dns,
     integer_unsigned,
     integer_signed,
@@ -158,9 +158,7 @@ export const enum r {
 
     next_singular,
     
-    _open1 = 64,
-    _open2,
-    type_collection_stream,
+    type_collection_stream = 64,
     type_stream_merge,
     parse_varint,
     parse_item,
@@ -193,17 +191,12 @@ export const enum r {
     block_varint_index,
     block_bits_remaining,
     error_internal,
-    _open4,
-    _open5,
-    _open3,
     error_invalid_choice_index,
-    error_text_rich_in_plain,
     error_empty_scope,
     error_invalid_end_scope,
     error_unfinished_parse_stack,
     error_invalid_text_value,
     error_invalid_registry_value,
-    error_max_execution_stack,
 
     magic_number = 4473429
 }
@@ -217,8 +210,6 @@ export const enum u {
     o,
     t,
 
-    repeat_n,
-    non_text,
     line_feed,
     exclamation,
     double_quote,
@@ -226,6 +217,8 @@ export const enum u {
     comma,
     hyphen,
     period,
+    forward_slash,
+    colon,
     question,
     //remaining A-Z,a-z
     null = 64,

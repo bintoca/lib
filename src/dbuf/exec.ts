@@ -21,9 +21,6 @@ export const clone = (x: Item, parent: Scope, parentIndex: number): Item => {
     return i
 }
 export const exec_item = (s: ExecutionState, sc: Scope, index: number): Slot => {
-    if (s.stack.length >= 1000) {
-        throw execError(s, r.error_max_execution_stack)
-    }
     s.stack.push({ scope: sc, index })
     const i = sc.items[index]
     let res: Slot

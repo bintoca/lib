@@ -151,10 +151,10 @@ export const non_text_sym = Symbol.for('https://bintoca.com/symbol/nontext')
 export const collection_sym = Symbol.for('https://bintoca.com/symbol/collection')
 export const rle_sym = Symbol.for('https://bintoca.com/symbol/rle')
 export const bits_sym = Symbol.for('https://bintoca.com/symbol/bits')
-export type Scope = { type: r | symbol, needed?: number, items: Item[], result?, inText?: boolean, richText?: boolean, op?: ParseOp, ops?: ParseOp[], parseIndex?: number, start?: ParsePosition, end?: ParsePosition, parent?: Scope, parentIndex?: number, popChoiceStack?: boolean }
+export type Scope = { type: r | symbol, needed?: number, items: Item[], result?, inText?: boolean, op?: ParseOp, ops?: ParseOp[], parseIndex?: number, start?: ParsePosition, end?: ParsePosition, parent?: Scope, parentIndex?: number, popChoiceStack?: boolean }
 export type Slot = Scope | number
 export type Item = Slot | Uint8Array
-export const enum ParseType { varint, item, block_size, block_variable, bit_size, bit_variable, text_plain, text_rich, collection, collection_stream, choice, choice_index, struct, varint_plus_block, none }
+export const enum ParseType { varint, item, block_size, block_variable, bit_size, bit_variable, text_plain, collection, collection_stream, choice, choice_index, struct, varint_plus_block, none }
 export type ParseOp = { type: ParseType, size?: number, ops?: ParseOp[], item?: Item }
 export type ParsePlan = { ops: ParseOp[], index: number }
 export type ParseState = { root: Scope, scope_stack: Scope[], decoder: DecoderState, choice_stack: ParseOp[] }
@@ -221,9 +221,8 @@ export const resolveItemOp = (x: Item) => {
                 return { type: ParseType.varint_plus_block }
             case r.text_plain:
             case r.text_dns:
+            case r.text_uri:
                 return { type: ParseType.text_plain }
-            case r.text_rich:
-                return { type: ParseType.text_rich }
         }
     }
     return { type: ParseType.item }
@@ -248,7 +247,7 @@ export const resolveScopeOp = (c: Scope) => {
             break
     }
 }
-export const isInvalidText = (n: number) => n > 0x10FFFF + 5
+export const isInvalidText = (n: number) => n > 0x10FFFF + 1
 export const isInvalidRegistry = (n: number) => n > r.magic_number || (n < r.magic_number && n > 600) || (n < 512 && n > 200)
 export const createPosition = (s: DecoderState): ParsePosition => { return { dvOffset: s.dvOffset, tempIndex: s.tempCount ? s.tempIndex : undefined, partialBlockRemaining: s.partialBlockRemaining ? s.partialBlockRemaining : undefined } }
 export const parse = (b: BufferSource): Scope => {
@@ -378,10 +377,6 @@ export const parse = (b: BufferSource): Scope => {
                         scope_push({ type: r.text_plain, items: [], inText: true })
                         break
                     }
-                    case ParseType.text_rich: {
-                        scope_push({ type: r.text_rich, items: [], inText: true, richText: true })
-                        break
-                    }
                     case ParseType.collection: {
                         scope_push({ type: collection_sym, needed: read(ds) + 1, items: [], ops: op.ops, parseIndex: 0 })
                         break
@@ -401,20 +396,6 @@ export const parse = (b: BufferSource): Scope => {
             else if (top.inText) {
                 const x = read(ds)
                 switch (x) {
-                    case u.repeat_n: {
-                        scope_push({ type: rle_sym, needed: 1, items: [] })
-                        collapse_scope(read(ds))
-                        break
-                    }
-                    case u.non_text: {
-                        if (top.richText) {
-                            scope_push({ type: non_text_sym, needed: 1, items: [] })
-                        }
-                        else {
-                            return parseError(st, r.error_text_rich_in_plain)
-                        }
-                        break
-                    }
                     case u.end_scope: {
                         if (top.items.length == 0) {
                             return parseError(st, r.error_empty_scope)
