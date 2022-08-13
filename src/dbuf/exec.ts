@@ -1,4 +1,4 @@
-import { parse, Scope, Item, Slot, isError, createEncoder, write_scope, finishWrite, createError, non_text_sym } from '@bintoca/dbuf/codec'
+import { parse, Scope, Item, Slot, isError, createEncoder, finishWrite, createError } from '@bintoca/dbuf/codec'
 import { r } from '@bintoca/dbuf/registry'
 import { concat, log } from '@bintoca/dbuf/util'
 
@@ -74,10 +74,10 @@ export const run = (b: BufferSource): BufferSource => {
     const p = parse(b)
     const es = createEncoder()
     if (isError(p)) {
-        write_scope({ type: non_text_sym, items: [p] }, es)
+        //write_scope({ type: non_text_sym, items: [p] }, es)
     }
     else {
-        write_scope({ type: non_text_sym, items: exec(p).returns }, es)
+        //write_scope({ type: non_text_sym, items: exec(p).returns }, es)
     }
     finishWrite(es)
     return concat(es.buffers)

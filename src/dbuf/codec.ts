@@ -30,16 +30,24 @@ export const shiftMap = [
     [0, 11, 32], [0, 11, 31, 35], [0, 11, 30, 33, 35], [0, 11, 30, 34], [0, 12, 34], [0, 12, 33, 35], [0, 13, 35], [0, 14]
 ]
 export const shiftLookup = shiftMap.map(x => x.map(y => shiftInit[y]))
-export type DecoderState = { partial: number, partialBit: number, temp: number[], tempCount: number, tempIndex: number, dv: DataView, dvOffset: number, partialBlock: number, partialBlockRemaining: number, tempChoice?: number }
+export type DecoderState = { partial: number, temp: number[], tempCount: number, tempIndex: number, dv: DataView, dvOffset: number, partialBlock: number, partialBlockRemaining: number, tempChoice?: number }
 export const decodeVarintBlock = (s: DecoderState, x: number) => {
     let mesh = x >>> 24
-    const nextPartialBit = mesh & 1
-    const continueBit = mesh >>> 7
-    if (continueBit) {
+    const newBit = mesh >>> 7
+    if (newBit) {
         mesh = mesh ^ 255
     }
     const a = shiftLookup[mesh]
-    if (continueBit == s.partialBit) {
+    if (newBit) {
+        s.temp[0] = s.partial
+        s.tempCount = a.length
+        for (let i = 0; i < a.length - 1; i++) {
+            s.temp[i + 1] = (x << a[i][0]) >>> a[i][1]
+        }
+        const an = a[a.length - 1]
+        s.partial = (x << an[0]) >>> an[1]
+    }
+    else {
         if (a.length == 1) {
             s.tempCount = 0
             s.partial = ((s.partial << 24) >>> 0) + (x & 0xFFFFFF)
@@ -54,23 +62,13 @@ export const decodeVarintBlock = (s: DecoderState, x: number) => {
             s.partial = (x << an[0]) >>> an[1]
         }
     }
-    else {
-        s.temp[0] = s.partial
-        s.tempCount = a.length
-        for (let i = 0; i < a.length - 1; i++) {
-            s.temp[i + 1] = (x << a[i][0]) >>> a[i][1]
-        }
-        const an = a[a.length - 1]
-        s.partial = (x << an[0]) >>> an[1]
-    }
-    s.partialBit = nextPartialBit
 }
 export const createDecoder = (b: BufferSource): DecoderState => {
     if (b.byteLength == 0 || b.byteLength % 4 != 0) {
         throw new Error('data must be multiple of 4 bytes, length: ' + b.byteLength)
     }
     const dv = bufToDV(b)
-    return { partial: 0, partialBit: dv.getUint8(0) >>> 7, temp: Array(8), tempCount: 0, tempIndex: 0, dv, dvOffset: 0, partialBlock: 0, partialBlockRemaining: 0 }
+    return { partial: 0, temp: Array(8), tempCount: 0, tempIndex: 0, dv, dvOffset: 0, partialBlock: 0, partialBlockRemaining: 0 }
 }
 export const read = (s: DecoderState): number => {
     if (s.tempChoice !== undefined) {
@@ -151,10 +149,7 @@ export const read_bits = (s: DecoderState, n: number): number | Scope => {
 export const continueDecode = (s: DecoderState): boolean => s.tempCount != 0 || s.dv.byteLength != s.dvOffset || s.tempChoice !== undefined
 export const struct_sym = Symbol.for('https://bintoca.com/symbol/struct')
 export const choice_sym = Symbol.for('https://bintoca.com/symbol/choice')
-export const text_sym = Symbol.for('https://bintoca.com/symbol/text')
-export const non_text_sym = Symbol.for('https://bintoca.com/symbol/nontext')
 export const collection_sym = Symbol.for('https://bintoca.com/symbol/collection')
-export const rle_sym = Symbol.for('https://bintoca.com/symbol/rle')
 export const bits_sym = Symbol.for('https://bintoca.com/symbol/bits')
 export type Scope = { type: r | symbol, needed?: number, items: Item[], result?, inText?: boolean, op?: ParseOp, ops?: ParseOp[], parseIndex?: number, start?: ParsePosition, end?: ParsePosition, parent?: Scope, parentIndex?: number }
 export type Slot = Scope | number
@@ -235,10 +230,13 @@ export const resolveItemOp = (x: Item) => {
 export const isInvalidText = (n: number) => n > 0x10FFFF + 1
 export const isInvalidRegistry = (n: number) => n > r.magic_number || (n < r.magic_number && n > 600) || (n < 512 && n > 200)
 export const createPosition = (s: DecoderState): ParsePosition => { return { dvOffset: s.dvOffset, tempIndex: s.tempCount ? s.tempIndex : undefined, partialBlockRemaining: s.partialBlockRemaining ? s.partialBlockRemaining : undefined } }
-export const parse = (b: BufferSource): Scope => {
-    const root = { type: non_text_sym, items: [] }
+export const parse = (b: BufferSource): Item => {
+    const root = { type: collection_sym, items: [] }
     const st: ParseState = { root, scope_stack: [root], decoder: createDecoder(b), choice_stack: [] }
     try {
+        if (st.decoder.dv.getUint8(0) >>> 7) {
+            return parseError(st, r.error_stream_start_bit)
+        }
         const scope_top = () => st.scope_stack[st.scope_stack.length - 1]
         const scope_push = (s: Scope) => {
             s.start = position
@@ -282,8 +280,7 @@ export const parse = (b: BufferSource): Scope => {
         }
         let position: ParsePosition
         const ds = st.decoder
-        loop:
-        while (continueDecode(ds)) {
+        while (continueDecode(ds) && root.items.length == 0) {
             const top = scope_top()
             position = createPosition(ds)
             let op = top.ops ? top.ops[top.parseIndex] : top.op
@@ -454,9 +451,6 @@ export const parse = (b: BufferSource): Scope => {
                                 break
                         }
                         const t = st.scope_stack.pop()
-                        if (st.scope_stack.length == 0) {
-                            break loop
-                        }
                         collapse_scope(t)
                         break
                     }
@@ -481,7 +475,8 @@ export const parse = (b: BufferSource): Scope => {
                         scope_push({ type: x, needed: 2, items: [] })
                         break
                     }
-                    case r.parse_none: {
+                    case r.parse_none:
+                    case r.magic_number: {
                         scope_push({ type: x, needed: 1, items: [] })
                         break
                     }
@@ -493,13 +488,10 @@ export const parse = (b: BufferSource): Scope => {
                 }
             }
         }
-        if (st.root.items.length > 1 && st.root.items[st.root.items.length - 1] === r.placeholder) {
-            st.root.items.pop()
-        }
         if (st.scope_stack.length > 1) {
             return parseError(st, r.error_unfinished_parse_stack)
         }
-        return st.root
+        return st.root.items[0]
     }
     catch (e) {
         if (isError(e)) {
@@ -538,6 +530,7 @@ export const write = (s: EncoderState, x: number, size?: number) => {
             s.chunkSpace = 8
             s.chunk = 0
             s.mesh = 0
+            s.meshBit = false
             if (s.queue.length) {
                 for (let b of s.queue) {
                     const dv = bufToDV(b)
@@ -558,33 +551,6 @@ export const write = (s: EncoderState, x: number, size?: number) => {
         }
         if (remaining == 0) {
             s.meshBit = !s.meshBit
-            break
-        }
-    }
-}
-export const write_pad = (s: EncoderState, size: number) => {
-    let remaining = size
-    while (true) {
-        const len = s.chunkSpace > remaining ? remaining : s.chunkSpace
-        const s1 = s.chunkSpace - len
-        if (s.meshBit) {
-            s.mesh += ((1 << len) - 1) << s1
-        }
-        s.chunkSpace -= len
-        remaining -= len
-        if (s.chunkSpace == 0) {
-            if (s.dv.byteLength == s.offset) {
-                s.buffers.push(bufToU8(s.dv))
-                s.dv = new DataView(new ArrayBuffer(4096))
-                s.offset = 0
-            }
-            s.dv.setUint32(s.offset, (s.mesh << 24) + s.chunk)
-            s.offset += 4
-            s.chunkSpace = 8
-            s.chunk = 0
-            s.mesh = 0
-        }
-        if (remaining == 0) {
             break
         }
     }
@@ -611,38 +577,4 @@ export const finishWrite = (s: EncoderState) => {
         write(s, r.placeholder, s.chunkSpace)
     }
     s.buffers.push(bufToU8(s.dv, 0, s.offset))
-}
-export const write_scope = (s: Scope, e: EncoderState) => {
-    for (let x of s.items) {
-        if (x instanceof Uint8Array) {
-            writeBuffer(e, x)
-        }
-        else if (typeof x == 'object') {
-            let end = false
-            switch (x.type) {
-                case r.function:
-                case r.call:
-                case r.type_wrap:
-                case r.type_struct:
-                case r.type_choice:
-                case r.type_collection:
-                case r.type_collection_stream:
-                case r.type_stream_merge:
-                case text_sym:
-                case non_text_sym:
-                    end = true
-                    break
-            }
-            if (typeof x.type == 'number') {
-                write(e, x.type)
-            }
-            write_scope(x, e)
-            if (end) {
-                write(e, r.end_scope)
-            }
-        }
-        else {
-            write(e, x)
-        }
-    }
 }

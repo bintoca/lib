@@ -1,4 +1,4 @@
-import { parse, write, finishWrite, struct_sym, Item, createDecoder, continueDecode, read, createEncoder, writeBuffer, ParseType, write_checked, ParseOp, Scope, choice_sym, non_text_sym, Slot, collection_sym, text_sym, write_pad, bits_sym } from '@bintoca/dbuf/codec'
+import { parse, write, finishWrite, struct_sym, Item, createDecoder, continueDecode, read, createEncoder, writeBuffer, ParseType, write_checked, ParseOp, Scope, choice_sym, Slot, collection_sym, bits_sym } from '@bintoca/dbuf/codec'
 import { r, u } from '@bintoca/dbuf/registry'
 import { zigzagEncode, zigzagDecode, unicodeToText, textToUnicode, getLeap_millis, getLeap_millis_tai, strip } from '@bintoca/dbuf/util'
 const dv = new DataView(new ArrayBuffer(8))
@@ -65,22 +65,16 @@ test.each(mesh)('read/write(%#)', (i) => {
 })
 test('overflow', () => {
     const dv = new DataView(new ArrayBuffer(12))
-    dv.setUint32(0, 0xFFFFFFFF)
-    dv.setUint32(4, 0xFF000000)
-    dv.setUint32(8, 0xFE000010)
+    dv.setUint32(0, 0x00FFFFFF)
+    dv.setUint32(4, 0x00000000)
+    dv.setUint32(8, 0x01000010)
     expect(read(createDecoder(dv))).toBe(2)
 })
-test('write_pad', () => {
-    const es = createEncoder()
-    write(es, 1)
-    write_pad(es, 18)
-    write(es, 2)
-    finishWrite(es)
-    expect(es.buffers[0]).toEqual(new Uint8Array([0x7f, 0x20, 0, 0, 0xff, 0, 0, 0, 0xf0, 0, 0x20, 0]))
-    const d = createDecoder(es.buffers[0])
-    expect(read(d)).toBe(1)
-    expect(read(d)).toBe(2)
-    expect(read(d)).toBe(0)
+test('stream_start', () => {
+    const dv = new DataView(new ArrayBuffer(12))
+    dv.setUint32(0, 0x80000000)
+    const er = parse(dv)
+    expect((er as any).items[1].items[1].items[0]).toEqual(r.error_stream_start_bit)
 })
 test.each([[[-2, -1, 0, 1, 2, 2147483647, -2147483648]]])('zigzag', (i) => {
     const es = createEncoder()
@@ -124,14 +118,11 @@ test.each([[-(10 * 365) * 86400, -9], [0, -9], [(10 * 365 + 1) * 86400, -1], [(1
 test.each([[-(20 * 365) * 86400, -9], [-(6) * 86400, -1], [-1, 0], [0, 0], [(366 + 181 - 5) * 86400 + 1, 1]])('leap_reverse', (d, o) => {
     expect(getLeap_millis_tai(d * 1000)).toBe(o * 1000)
 })
-test.each([[[r.IPv4, r.end_scope], [r.IPv4]]])('early end', (i, o) => {
+test.each([[[r.IPv4, r.end_scope], r.IPv4]])('early end', (i, o) => {
     const w = writer(i)
     try {
         const s = parse(w)
-        if (s.items[s.items.length - 1] == r.placeholder) {
-            s.items.pop()
-        }
-        expect(s.items).toEqual(o)
+        expect(s).toEqual(o)
     }
     catch (e) {
         console.log(w)
@@ -204,26 +195,27 @@ const opM = (n: ParseOp[]): ParseOp => { return { type: ParseType.struct, ops: n
 const sTex = (items: Item[]): Scope => { return { type: r.text_plain, inText: true, items } }
 const bText = (items: Item[]) => bind(r.text_plain, sTex(items))
 test.each([
-    [[r.IPv4, ...bind_uint_in], [r.IPv4, bind_uint_out]],
-    [[r.bind, r.text_plain, u.a, u.end_scope], [bText([u.a])]],
-    [[r.bind, r.IEEE_754_binary, u8], [bind(r.IEEE_754_binary, u8)]],
-    [[r.bind, r.bind, r.IEEE_754_binary, u8], [bind(bind(r.IEEE_754_binary, u8), r.placeholder)]],
-    [[r.bind, r.parse_none, r.bind, r.IEEE_754_binary, u8], [bind(needN(r.parse_none, [bind(r.IEEE_754_binary, u8)], op1(ParseType.none)), bind(r.IEEE_754_binary, u8))]],
-    [[r.bind, r.parse_bit_size, 19, u8], [bind(needN(r.parse_bit_size, [20], opBi(20)), 32 + 4096)]],
-    [[r.bind, r.parse_varint_plus_block, 2, u8], [bind(r.parse_varint_plus_block, new Uint8Array([0, 0, 0, 2, 1, 2, 3, 4]))]],
-    [[r.bind, r.type_wrap, r.IEEE_754_binary, r.parse_block_size, 0, r.end_scope, u8], [bindO(r.type_wrap, [r.IEEE_754_binary, needN(r.parse_block_size, [1], opB(1))], opB(1), u8)]],
-    [[r.bind, r.type_wrap, r.IEEE_754_binary, r.parse_block_variable, r.end_scope, 0, u8], [bindO(r.type_wrap, [r.IEEE_754_binary, r.parse_block_variable], opvb, u8)]],
-    [[r.bind, r.type_wrap, r.integer_unsigned, r.end_scope, 5], [bindO(r.type_wrap, [r.integer_unsigned,], opv, 5)]],
-    [[r.bind, r.type_wrap, r.integer_unsigned, r.parse_bit_variable, r.end_scope, 8, u8], [bindO(r.type_wrap, [r.integer_unsigned, r.parse_bit_variable], opvbi, 2)]],
-    [[r.bind, r.type_wrap, r.integer_unsigned, r.parse_item, r.end_scope, ...bind_uint_in], [bindO(r.type_wrap, [r.integer_unsigned, r.parse_item], op1(ParseType.item), bind_uint_out)]],
-    [[r.bind, r.type_wrap, r.text_plain, r.end_scope, u.e, u.end_scope], [bindO(r.type_wrap, [r.text_plain], opt, sTex([u.e]))]],
-    [[r.bind, r.TAI_seconds, u8], [bind(r.TAI_seconds, u8)]],
-    [[r.bind, r.type_choice, r.blocks_read, r.IEEE_754_binary, r.end_scope, 1, u8], [bindO(r.type_choice, [r.blocks_read, r.IEEE_754_binary], opC([op1(ParseType.varint), opB(1)]), needN(choice_sym, [1, u8], opB(1)))]],
-    [[r.bind, r.type_choice, r.IEEE_754_binary, r.integer_unsigned, r.end_scope, 1], [bindO(r.type_choice, [r.IEEE_754_binary, r.integer_unsigned], opC([opB(1), opv]), needN(choice_sym, [1, 0], opv))]],
-    [[r.bind, r.type_struct, r.IEEE_754_binary, r.type_struct, r.integer_unsigned, r.integer_signed, r.end_scope, r.end_scope, u8, 1, 2], [bindO(r.type_struct, [r.IEEE_754_binary, need0(r.type_struct, [r.integer_unsigned, r.integer_signed])], opM([opB(1), opM([opv, opv])]), [u8, 1, 2])]],
-    [[r.bind, r.type_collection, r.integer_unsigned, r.end_scope, 1, 3, 4], [bindO(r.type_collection, [r.integer_unsigned], opCo(opv), [2, 3, 4])]],
-    [[r.bind, r.type_collection_stream, r.integer_unsigned, r.end_scope, 3, 1, 4, 0], [bindO(r.type_collection_stream, [r.integer_unsigned], opvCo(opv), [2, 3, 4])]],
-    [[r.bind, r.type_stream_merge, r.text_plain, r.end_scope, u.e, u.end_scope, 1, u.a, u.end_scope, 0], [bindO(r.type_stream_merge, [r.text_plain], opvCo(opt), [2, sTex([u.e]), sTex([u.a])])]],
+    [[r.IPv4], r.IPv4],
+    [[r.magic_number, r.IPv4], needN(r.magic_number, [r.IPv4])],
+    [[r.bind, r.text_plain, u.a, u.end_scope], bText([u.a])],
+    [[r.bind, r.IEEE_754_binary, u8], bind(r.IEEE_754_binary, u8)],
+    [[r.bind, r.bind, r.IEEE_754_binary, u8], bind(bind(r.IEEE_754_binary, u8), r.placeholder)],
+    [[r.bind, r.parse_none, r.bind, r.IEEE_754_binary, u8], bind(needN(r.parse_none, [bind(r.IEEE_754_binary, u8)], op1(ParseType.none)), bind(r.IEEE_754_binary, u8))],
+    [[r.bind, r.parse_bit_size, 19, u8], bind(needN(r.parse_bit_size, [20], opBi(20)), 32 + 4096)],
+    [[r.bind, r.parse_varint_plus_block, 2, u8], bind(r.parse_varint_plus_block, new Uint8Array([0, 0, 0, 2, 1, 2, 3, 4]))],
+    [[r.bind, r.type_wrap, r.IEEE_754_binary, r.parse_block_size, 0, r.end_scope, u8], bindO(r.type_wrap, [r.IEEE_754_binary, needN(r.parse_block_size, [1], opB(1))], opB(1), u8)],
+    [[r.bind, r.type_wrap, r.IEEE_754_binary, r.parse_block_variable, r.end_scope, 0, u8], bindO(r.type_wrap, [r.IEEE_754_binary, r.parse_block_variable], opvb, u8)],
+    [[r.bind, r.type_wrap, r.integer_unsigned, r.end_scope, 5], bindO(r.type_wrap, [r.integer_unsigned,], opv, 5)],
+    [[r.bind, r.type_wrap, r.integer_unsigned, r.parse_bit_variable, r.end_scope, 8, u8], bindO(r.type_wrap, [r.integer_unsigned, r.parse_bit_variable], opvbi, 2)],
+    [[r.bind, r.type_wrap, r.integer_unsigned, r.parse_item, r.end_scope, ...bind_uint_in], bindO(r.type_wrap, [r.integer_unsigned, r.parse_item], op1(ParseType.item), bind_uint_out)],
+    [[r.bind, r.type_wrap, r.text_plain, r.end_scope, u.e, u.end_scope], bindO(r.type_wrap, [r.text_plain], opt, sTex([u.e]))],
+    [[r.bind, r.TAI_seconds, u8], bind(r.TAI_seconds, u8)],
+    [[r.bind, r.type_choice, r.blocks_read, r.IEEE_754_binary, r.end_scope, 1, u8], bindO(r.type_choice, [r.blocks_read, r.IEEE_754_binary], opC([op1(ParseType.varint), opB(1)]), needN(choice_sym, [1, u8], opB(1)))],
+    [[r.bind, r.type_choice, r.IEEE_754_binary, r.integer_unsigned, r.end_scope, 1], bindO(r.type_choice, [r.IEEE_754_binary, r.integer_unsigned], opC([opB(1), opv]), needN(choice_sym, [1, 0], opv))],
+    [[r.bind, r.type_struct, r.IEEE_754_binary, r.type_struct, r.integer_unsigned, r.integer_signed, r.end_scope, r.end_scope, u8, 1, 2], bindO(r.type_struct, [r.IEEE_754_binary, need0(r.type_struct, [r.integer_unsigned, r.integer_signed])], opM([opB(1), opM([opv, opv])]), [u8, 1, 2])],
+    [[r.bind, r.type_collection, r.integer_unsigned, r.end_scope, 1, 3, 4], bindO(r.type_collection, [r.integer_unsigned], opCo(opv), [2, 3, 4])],
+    [[r.bind, r.type_collection_stream, r.integer_unsigned, r.end_scope, 3, 1, 4, 0], bindO(r.type_collection_stream, [r.integer_unsigned], opvCo(opv), [2, 3, 4])],
+    [[r.bind, r.type_stream_merge, r.text_plain, r.end_scope, u.e, u.end_scope, 1, u.a, u.end_scope, 0], bindO(r.type_stream_merge, [r.text_plain], opvCo(opt), [2, sTex([u.e]), sTex([u.a])])],
 ])('parse(%#)', (i, o) => {
     const w = writer(i)
     try {
@@ -242,7 +234,7 @@ test.each([
             return x
         }
         //console.log(s.items[0])
-        expect(s.items.map(x => strip(x))).toEqual(o)
+        expect(strip(s)).toEqual(o)
     }
     catch (e) {
         console.log(w)
@@ -264,8 +256,13 @@ test.each([
     try {
         const s = parse(w)
         //console.log((s.root as any).items[0].items[1])
-        const ou = (s.items[s.items.length - 1] as Scope).items[1]
-        expect(strip(ou)).toEqual(o)
+        if (typeof s == 'number') {
+            expect(s).toEqual(o)
+        }
+        else {
+            const ou = (s as Scope).items[1]
+            expect(strip(ou)).toEqual(o)
+        }
     }
     catch (e) {
         console.log(w)
@@ -282,10 +279,5 @@ test.each([
     [[0xFFFFFF], r.error_invalid_registry_value],
 ])('parseError(%#)', (i, o) => {
     const er = parse(writer(i))
-    if (typeof er.items[1] == 'number') {
-        expect(er.items[1]).toEqual(o)
-    }
-    else {
-        expect((er as any).items[1].items[1].items[0]).toEqual(o)
-    }
+    expect((er as any).items[1].items[1].items[0]).toEqual(o)
 })
