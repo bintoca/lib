@@ -147,9 +147,10 @@ export const read_bits = (s: DecoderState, n: number): number | Scope => {
     return r
 }
 export const continueDecode = (s: DecoderState): boolean => s.tempCount != 0 || s.dv.byteLength != s.dvOffset || s.tempChoice !== undefined
-export const struct_sym = Symbol.for('https://bintoca.com/symbol/struct')
+export const structure_sym = Symbol.for('https://bintoca.com/symbol/structure')
 export const choice_sym = Symbol.for('https://bintoca.com/symbol/choice')
 export const collection_sym = Symbol.for('https://bintoca.com/symbol/collection')
+export const collection_stream_sym = Symbol.for('https://bintoca.com/symbol/collection_stream')
 export const bits_sym = Symbol.for('https://bintoca.com/symbol/bits')
 export type Scope = { type: r | symbol, needed?: number, items: Item[], result?, inText?: boolean, op?: ParseOp, ops?: ParseOp[], parseIndex?: number, start?: ParsePosition, end?: ParsePosition, parent?: Scope, parentIndex?: number }
 export type Slot = Scope | number
@@ -161,7 +162,7 @@ export type ParseState = { root: Scope, scope_stack: Scope[], decoder: DecoderSt
 export type ParsePosition = { dvOffset: number, tempIndex: number, partialBlockRemaining: number }
 export const createError = (er: r | Scope): Scope => { return { type: r.bind, items: [r.error, er] } }
 export const isError = (x) => x.type == r.bind && Array.isArray(x.items) && x.items[0] == r.error
-export const createStruct = (fields: Slot[], values: Item[]): Scope => { return { type: r.bind, items: [{ type: r.type_struct, items: fields }, { type: struct_sym, items: values }] } }
+export const createStruct = (fields: Slot[], values: Item[]): Scope => { return { type: r.bind, items: [{ type: r.type_structure, items: fields }, { type: structure_sym, items: values }] } }
 export const createWrap = (slots: Slot[]): Scope => { return { type: r.type_wrap, items: slots } }
 export const parseError = (s: ParseState, regError: r) => parseErrorPos(createPosition(s.decoder), regError)
 export const parseErrorPos = (pos: ParsePosition, regError: r) => {
@@ -251,12 +252,7 @@ export const parse = (b: BufferSource): Item => {
                 const t = scope_top()
                 t.items.push(i)
                 if (t.ops) {
-                    if (t.type == collection_sym) {
-                        if (!t.needed && !read(ds)) {
-                            t.needed = t.items.length
-                        }
-                    }
-                    else {
+                    if (t.type == structure_sym) {
                         t.parseIndex++
                     }
                 }
@@ -265,6 +261,9 @@ export const parse = (b: BufferSource): Item => {
                 }
                 else if (t.type == r.parse_none) {
                     t.op = { type: ParseType.none, item: t.items[0] }
+                }
+                else if (t.type == r.type_collection) {
+                    t.op = { type: ParseType.collection, ops: [resolveItemOp(i)] }
                 }
                 if (t.items.length == t.needed) {
                     t.end = createPosition(ds)
@@ -367,7 +366,7 @@ export const parse = (b: BufferSource): Item => {
                         break
                     }
                     case ParseType.struct: {
-                        scope_push({ type: struct_sym, needed: op.ops.length, items: [], ops: op.ops, parseIndex: 0 })
+                        scope_push({ type: structure_sym, needed: op.ops.length, items: [], ops: op.ops, parseIndex: 0 })
                         break
                     }
                     case ParseType.text_plain: {
@@ -375,11 +374,24 @@ export const parse = (b: BufferSource): Item => {
                         break
                     }
                     case ParseType.collection: {
-                        scope_push({ type: collection_sym, needed: read(ds) + 1, items: [], ops: op.ops, parseIndex: 0 })
+                        const l = read(ds)
+                        if (l) {
+                            scope_push({ type: collection_sym, needed: l, items: [], ops: op.ops, parseIndex: 0 })
+                        }
+                        else {
+                            scope_push({ type: collection_stream_sym, items: [], op: { type: ParseType.collection_stream, ops: op.ops } })
+                        }
                         break
                     }
                     case ParseType.collection_stream: {
-                        scope_push({ type: collection_sym, items: [], ops: op.ops, parseIndex: 0 })
+                        const l = read(ds)
+                        if (l) {
+                            scope_push({ type: collection_sym, needed: l, items: [], ops: op.ops, parseIndex: 0 })
+                        }
+                        else {
+                            top.end = createPosition(ds)
+                            collapse_scope(st.scope_stack.pop())
+                        }
                         break
                     }
                     case ParseType.none: {
@@ -394,9 +406,6 @@ export const parse = (b: BufferSource): Item => {
                 const x = read(ds)
                 switch (x) {
                     case u.end_scope: {
-                        if (top.items.length == 0) {
-                            return parseError(st, r.error_empty_scope)
-                        }
                         top.end = createPosition(ds)
                         collapse_scope(st.scope_stack.pop())
                         break
@@ -412,11 +421,8 @@ export const parse = (b: BufferSource): Item => {
                 const x = read(ds)
                 switch (x) {
                     case r.type_wrap:
-                    case r.type_struct:
-                    case r.type_choice:
-                    case r.type_collection:
-                    case r.type_collection_stream:
-                    case r.type_stream_merge: {
+                    case r.type_structure:
+                    case r.type_choice: {
                         scope_push({ type: x, items: [] })
                         break
                     }
@@ -428,25 +434,15 @@ export const parse = (b: BufferSource): Item => {
                         if (top.needed) {
                             return parseError(st, r.error_invalid_end_scope)
                         }
-                        if (top.items.length == 0) {
-                            return parseError(st, r.error_empty_scope)
-                        }
                         top.end = createPosition(ds)
                         switch (top.type) {
-                            case r.type_collection:
-                                top.op = { type: ParseType.collection, ops: [resolveItemOp(top.items[top.items.length - 1])] }
-                                break
-                            case r.type_collection_stream:
-                            case r.type_stream_merge:
-                                top.op = { type: ParseType.collection_stream, ops: [resolveItemOp(top.items[top.items.length - 1])] }
-                                break
                             case r.type_wrap:
                                 top.op = resolveItemOp(top.items[top.items.length - 1])
                                 break
                             case r.type_choice:
                                 top.op = { type: ParseType.choice, ops: top.items.map(x => resolveItemOp(x)) }
                                 break
-                            case r.type_struct:
+                            case r.type_structure:
                                 top.op = { type: ParseType.struct, ops: top.items.map(x => resolveItemOp(x)) }
                                 break
                         }
@@ -475,6 +471,7 @@ export const parse = (b: BufferSource): Item => {
                         scope_push({ type: x, needed: 2, items: [] })
                         break
                     }
+                    case r.type_collection:
                     case r.parse_none:
                     case r.magic_number: {
                         scope_push({ type: x, needed: 1, items: [] })
@@ -574,7 +571,7 @@ export const writeBuffer = (st: EncoderState, x: BufferSource) => {
 }
 export const finishWrite = (s: EncoderState) => {
     if (s.chunkSpace != 8 || s.queue.length) {
-        write(s, r.placeholder, s.chunkSpace)
+        write(s, 0, s.chunkSpace)
     }
     s.buffers.push(bufToU8(s.dv, 0, s.offset))
 }

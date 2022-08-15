@@ -130,13 +130,13 @@ export const enum under_consideration {
     //TODO language tags BCP47
 }
 export const enum r {
-    placeholder,
     end_scope,
+    placeholder,
     bind,
     type_wrap,
     type_choice,
     type_choice_index,
-    type_struct,
+    type_structure,
     type_collection,
 
     parse_block_size,
@@ -158,9 +158,7 @@ export const enum r {
 
     next_singular,
     
-    type_collection_stream = 64,
-    type_stream_merge,
-    parse_varint,
+    parse_varint = 64,
     parse_item,
     parse_varint_plus_block,
     parse_block_variable,
@@ -192,7 +190,6 @@ export const enum r {
     block_bits_remaining,
     error_internal,
     error_invalid_choice_index,
-    error_empty_scope,
     error_invalid_end_scope,
     error_unfinished_parse_stack,
     error_invalid_text_value,

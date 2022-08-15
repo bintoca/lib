@@ -1,4 +1,4 @@
-import { parse, write, finishWrite, struct_sym, Item, createDecoder, continueDecode, read, createEncoder, writeBuffer, ParseType, write_checked, ParseOp, Scope, choice_sym, Slot, collection_sym, bits_sym } from '@bintoca/dbuf/codec'
+import { parse, write, finishWrite, structure_sym, Item, createDecoder, continueDecode, read, createEncoder, writeBuffer, ParseType, write_checked, ParseOp, Scope, choice_sym, Slot, collection_sym, collection_stream_sym, bits_sym } from '@bintoca/dbuf/codec'
 import { r, u } from '@bintoca/dbuf/registry'
 import { zigzagEncode, zigzagDecode, unicodeToText, textToUnicode, getLeap_millis, getLeap_millis_tai, strip } from '@bintoca/dbuf/util'
 const dv = new DataView(new ArrayBuffer(8))
@@ -58,7 +58,7 @@ test.each(mesh)('read/write(%#)', (i) => {
     while (continueDecode(ds)) {
         o.push(read(ds))
     }
-    if (o[o.length - 1] == r.placeholder) {
+    if (o[o.length - 1] == 0) {
         o.pop()
     }
     expect(o).toEqual(i)
@@ -87,7 +87,7 @@ test.each([[[-2, -1, 0, 1, 2, 2147483647, -2147483648]]])('zigzag', (i) => {
     while (continueDecode(ds)) {
         o.push(zigzagDecode(read(ds)))
     }
-    if (o[o.length - 1] == r.placeholder) {
+    if (o[o.length - 1] == 0) {
         o.pop()
     }
     expect(o).toEqual(i)
@@ -178,7 +178,7 @@ const bindO = (t: r, items: Item[], p: ParseOp, v: Item | Item[]): Scope => {
                 }
                 j++
             }
-            return { type: struct_sym, needed: op.ops.length, items: it, ops: op.ops, parseIndex: op.ops.length }
+            return { type: structure_sym, needed: op.ops.length, items: it, ops: op.ops, parseIndex: op.ops.length }
         }
         v = rr(p, items)
     }
@@ -199,7 +199,7 @@ test.each([
     [[r.magic_number, r.IPv4], needN(r.magic_number, [r.IPv4])],
     [[r.bind, r.text_plain, u.a, u.end_scope], bText([u.a])],
     [[r.bind, r.IEEE_754_binary, u8], bind(r.IEEE_754_binary, u8)],
-    [[r.bind, r.bind, r.IEEE_754_binary, u8], bind(bind(r.IEEE_754_binary, u8), r.placeholder)],
+    [[r.bind, r.bind, r.IEEE_754_binary, u8, r.IPv4], bind(bind(r.IEEE_754_binary, u8), r.IPv4)],
     [[r.bind, r.parse_none, r.bind, r.IEEE_754_binary, u8], bind(needN(r.parse_none, [bind(r.IEEE_754_binary, u8)], op1(ParseType.none)), bind(r.IEEE_754_binary, u8))],
     [[r.bind, r.parse_bit_size, 19, u8], bind(needN(r.parse_bit_size, [20], opBi(20)), 32 + 4096)],
     [[r.bind, r.parse_varint_plus_block, 2, u8], bind(r.parse_varint_plus_block, new Uint8Array([0, 0, 0, 2, 1, 2, 3, 4]))],
@@ -212,10 +212,7 @@ test.each([
     [[r.bind, r.TAI_seconds, u8], bind(r.TAI_seconds, u8)],
     [[r.bind, r.type_choice, r.blocks_read, r.IEEE_754_binary, r.end_scope, 1, u8], bindO(r.type_choice, [r.blocks_read, r.IEEE_754_binary], opC([op1(ParseType.varint), opB(1)]), needN(choice_sym, [1, u8], opB(1)))],
     [[r.bind, r.type_choice, r.IEEE_754_binary, r.integer_unsigned, r.end_scope, 1], bindO(r.type_choice, [r.IEEE_754_binary, r.integer_unsigned], opC([opB(1), opv]), needN(choice_sym, [1, 0], opv))],
-    [[r.bind, r.type_struct, r.IEEE_754_binary, r.type_struct, r.integer_unsigned, r.integer_signed, r.end_scope, r.end_scope, u8, 1, 2], bindO(r.type_struct, [r.IEEE_754_binary, need0(r.type_struct, [r.integer_unsigned, r.integer_signed])], opM([opB(1), opM([opv, opv])]), [u8, 1, 2])],
-    [[r.bind, r.type_collection, r.integer_unsigned, r.end_scope, 1, 3, 4], bindO(r.type_collection, [r.integer_unsigned], opCo(opv), [2, 3, 4])],
-    [[r.bind, r.type_collection_stream, r.integer_unsigned, r.end_scope, 3, 1, 4, 0], bindO(r.type_collection_stream, [r.integer_unsigned], opvCo(opv), [2, 3, 4])],
-    [[r.bind, r.type_stream_merge, r.text_plain, r.end_scope, u.e, u.end_scope, 1, u.a, u.end_scope, 0], bindO(r.type_stream_merge, [r.text_plain], opvCo(opt), [2, sTex([u.e]), sTex([u.a])])],
+    [[r.bind, r.type_structure, r.IEEE_754_binary, r.type_structure, r.integer_unsigned, r.integer_signed, r.end_scope, r.end_scope, u8, 1, 2], bindO(r.type_structure, [r.IEEE_754_binary, need0(r.type_structure, [r.integer_unsigned, r.integer_signed])], opM([opB(1), opM([opv, opv])]), [u8, 1, 2])],
 ])('parse(%#)', (i, o) => {
     const w = writer(i)
     try {
@@ -246,11 +243,12 @@ test.each([
     [[r.bind, r.type_wrap, r.integer_unsigned, r.end_scope, 2], 2],
     [[r.bind, r.type_choice, r.integer_unsigned, r.type_choice_index, r.end_scope, 1, 0, 2], { type: choice_sym, items: [1, { type: choice_sym, items: [0, 2] }] }],
     [[r.bind, r.type_choice, r.integer_unsigned, r.type_choice, r.text_plain, r.type_choice_index, r.end_scope, r.end_scope, 1, 1, 0, u.a, u.end_scope], { type: choice_sym, items: [1, { type: choice_sym, items: [1, { type: choice_sym, items: [0, { type: r.text_plain, items: [u.a] }] }] }] }],
-    [[r.bind, r.type_choice, r.integer_unsigned, r.type_struct, r.type_choice, r.text_plain, r.type_choice_index, r.end_scope, r.type_choice_index, r.end_scope, r.end_scope, 1, 1, 0, u.e, u.end_scope, 0, 5], { type: choice_sym, items: [1, { type: struct_sym, items: [{ type: choice_sym, items: [1, { type: choice_sym, items: [0, { type: r.text_plain, items: [u.e] }] }] }, { type: choice_sym, items: [0, 5] }] }] }],
+    [[r.bind, r.type_choice, r.integer_unsigned, r.type_structure, r.type_choice, r.text_plain, r.type_choice_index, r.end_scope, r.type_choice_index, r.end_scope, r.end_scope, 1, 1, 0, u.e, u.end_scope, 0, 5], { type: choice_sym, items: [1, { type: structure_sym, items: [{ type: choice_sym, items: [1, { type: choice_sym, items: [0, { type: r.text_plain, items: [u.e] }] }] }, { type: choice_sym, items: [0, 5] }] }] }],
     [[r.bind, r.type_choice, r.IEEE_754_binary, r.type_choice, r.integer_unsigned, r.integer_signed, r.end_scope, r.end_scope, 1, 1], { type: choice_sym, items: [1, { type: choice_sym, items: [1, 0] }] }],
-    [[r.bind, r.type_collection, r.type_struct, r.IEEE_754_binary, r.type_choice, r.integer_unsigned, r.integer_signed, r.end_scope, r.end_scope, r.end_scope, 0, u8, 1], { type: collection_sym, items: [{ type: struct_sym, items: [u8, { type: choice_sym, items: [1, 0] }] }] }],
-    [[r.bind, r.type_struct, r.IEEE_754_binary, r.type_collection, r.type_choice, r.integer_unsigned, r.integer_signed, r.end_scope, r.end_scope, r.end_scope, u8, 0, 1], { type: struct_sym, items: [u8, { type: collection_sym, items: [{ type: choice_sym, items: [1, 0] }] }] }],
-    [[r.bind, r.type_struct, r.integer_unsigned, r.parse_bit_size, 7, r.parse_bit_size, 7, r.parse_bit_size, 23, r.parse_bit_size, 47, r.integer_unsigned, r.parse_bit_size, 7, r.end_scope, 3, u8, u8, u8, 4, u8], { type: struct_sym, items: [3, 1, 2, 0x030401, { type: bits_sym, items: [0x02030401, 0x0203, 16] }, 4, 1] }],
+    [[r.bind, r.type_collection, r.integer_unsigned, 0, 2, 3, 4, 1, 5, 0], { type: collection_stream_sym, items: [{ type: collection_sym, items: [3, 4] }, { type: collection_sym, items: [5] }] }],
+    [[r.bind, r.type_collection, r.type_structure, r.IEEE_754_binary, r.type_choice, r.integer_unsigned, r.integer_signed, r.end_scope, r.end_scope, 1, u8, 1], { type: collection_sym, items: [{ type: structure_sym, items: [u8, { type: choice_sym, items: [1, 0] }] }] }],
+    [[r.bind, r.type_structure, r.IEEE_754_binary, r.type_collection, r.type_choice, r.integer_unsigned, r.integer_signed, r.end_scope, r.end_scope, u8, 1, 1], { type: structure_sym, items: [u8, { type: collection_sym, items: [{ type: choice_sym, items: [1, 0] }] }] }],
+    [[r.bind, r.type_structure, r.integer_unsigned, r.parse_bit_size, 7, r.parse_bit_size, 7, r.parse_bit_size, 23, r.parse_bit_size, 47, r.integer_unsigned, r.parse_bit_size, 7, r.end_scope, 3, u8, u8, u8, 4, u8], { type: structure_sym, items: [3, 1, 2, 0x030401, { type: bits_sym, items: [0x02030401, 0x0203, 16] }, 4, 1] }],
 ])('parse_strip(%#)', (i, o) => {
     const w = writer(i)
     try {
@@ -271,8 +269,6 @@ test.each([
 })
 test.each([
     [[r.bind, r.end_scope], r.error_invalid_end_scope],
-    [[r.type_wrap, r.end_scope], r.error_empty_scope],
-    [[r.end_scope], r.error_empty_scope],
     [[r.bind, r.type_choice, r.IEEE_754_binary, r.end_scope, 3], r.error_invalid_choice_index],
     [[r.bind, r.type_choice, r.integer_unsigned,], r.error_unfinished_parse_stack],
     [[r.bind, r.text_plain, 0xFFFFFF], r.error_invalid_text_value],
