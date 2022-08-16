@@ -79,7 +79,6 @@ export const read = (s: DecoderState): number => {
     while (s.tempCount == 0) {
         decodeVarintBlock(s, s.dv.getUint32(s.dvOffset))
         s.dvOffset += 4
-        check_end(s)
     }
     const v = s.temp[s.tempIndex]
     s.tempIndex++
@@ -94,14 +93,7 @@ export const read_blocks = (s: DecoderState, n: number) => {
     const v = bufToU8(s.dv, s.dvOffset, l)
     s.dvOffset += l
     s.partialBlockRemaining = 0
-    check_end(s)
     return v
-}
-export const check_end = (s: DecoderState) => {
-    if (s.dv.byteLength == s.dvOffset) {
-        s.temp[s.tempCount] = s.partial
-        s.tempCount++
-    }
 }
 export const read_bits = (s: DecoderState, n: number): number | Scope => {
     function rb(s: DecoderState, n: number) {
@@ -139,14 +131,11 @@ export const read_bits = (s: DecoderState, n: number): number | Scope => {
                 break
             }
         }
-        check_end(s)
         return sc
     }
     const r = rb(s, n)
-    check_end(s)
     return r
 }
-export const continueDecode = (s: DecoderState): boolean => s.tempCount != 0 || s.dv.byteLength != s.dvOffset || s.tempChoice !== undefined
 export const structure_sym = Symbol.for('https://bintoca.com/symbol/structure')
 export const choice_sym = Symbol.for('https://bintoca.com/symbol/choice')
 export const collection_sym = Symbol.for('https://bintoca.com/symbol/collection')
@@ -279,7 +268,7 @@ export const parse = (b: BufferSource): Item => {
         }
         let position: ParsePosition
         const ds = st.decoder
-        while (continueDecode(ds) && root.items.length == 0) {
+        while (root.items.length == 0) {
             const top = scope_top()
             position = createPosition(ds)
             let op = top.ops ? top.ops[top.parseIndex] : top.op
@@ -494,6 +483,9 @@ export const parse = (b: BufferSource): Item => {
         if (isError(e)) {
             return e
         }
+        if (st.decoder.dvOffset == st.decoder.dv.byteLength) {
+            return parseError(st, r.error_unfinished_parse_stack)
+        }
         log(e, st)
         return parseError(st, r.error_internal)
     }
@@ -570,8 +562,6 @@ export const writeBuffer = (st: EncoderState, x: BufferSource) => {
     st.queue.push(x)
 }
 export const finishWrite = (s: EncoderState) => {
-    if (s.chunkSpace != 8 || s.queue.length) {
-        write(s, 0, s.chunkSpace)
-    }
+    write(s, 0, s.chunkSpace)
     s.buffers.push(bufToU8(s.dv, 0, s.offset))
 }

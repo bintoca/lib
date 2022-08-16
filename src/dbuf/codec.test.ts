@@ -1,4 +1,4 @@
-import { parse, write, finishWrite, structure_sym, Item, createDecoder, continueDecode, read, createEncoder, writeBuffer, ParseType, write_checked, ParseOp, Scope, choice_sym, Slot, collection_sym, collection_stream_sym, bits_sym } from '@bintoca/dbuf/codec'
+import { parse, write, finishWrite, structure_sym, Item, createDecoder, read, createEncoder, writeBuffer, ParseType, write_checked, ParseOp, Scope, choice_sym, Slot, collection_sym, collection_stream_sym, bits_sym } from '@bintoca/dbuf/codec'
 import { r, u } from '@bintoca/dbuf/registry'
 import { zigzagEncode, zigzagDecode, unicodeToText, textToUnicode, getLeap_millis, getLeap_millis_tai, strip } from '@bintoca/dbuf/util'
 const dv = new DataView(new ArrayBuffer(8))
@@ -55,11 +55,8 @@ test.each(mesh)('read/write(%#)', (i) => {
     finishWrite(es)
     const ds = createDecoder(es.buffers[0])
     const o = []
-    while (continueDecode(ds)) {
+    while (o.length < i.length) {
         o.push(read(ds))
-    }
-    if (o[o.length - 1] == 0) {
-        o.pop()
     }
     expect(o).toEqual(i)
 })
@@ -84,11 +81,8 @@ test.each([[[-2, -1, 0, 1, 2, 2147483647, -2147483648]]])('zigzag', (i) => {
     finishWrite(es)
     const ds = createDecoder(es.buffers[0])
     const o = []
-    while (continueDecode(ds)) {
+    while (o.length < i.length) {
         o.push(zigzagDecode(read(ds)))
-    }
-    if (o[o.length - 1] == 0) {
-        o.pop()
     }
     expect(o).toEqual(i)
 })
@@ -200,7 +194,7 @@ test.each([
     [[r.bind, r.text_plain, u.a, u.end_scope], bText([u.a])],
     [[r.bind, r.IEEE_754_binary, u8], bind(r.IEEE_754_binary, u8)],
     [[r.bind, r.bind, r.IEEE_754_binary, u8, r.IPv4], bind(bind(r.IEEE_754_binary, u8), r.IPv4)],
-    [[r.bind, r.parse_none, r.bind, r.IEEE_754_binary, u8], bind(needN(r.parse_none, [bind(r.IEEE_754_binary, u8)], op1(ParseType.none)), bind(r.IEEE_754_binary, u8))],
+    //[[r.bind, r.parse_none, r.bind, r.IEEE_754_binary, u8], bind(needN(r.parse_none, [bind(r.IEEE_754_binary, u8)], op1(ParseType.none)), bind(r.IEEE_754_binary, u8))],
     [[r.bind, r.parse_bit_size, 19, u8], bind(needN(r.parse_bit_size, [20], opBi(20)), 32 + 4096)],
     [[r.bind, r.parse_varint_plus_block, 2, u8], bind(r.parse_varint_plus_block, new Uint8Array([0, 0, 0, 2, 1, 2, 3, 4]))],
     [[r.bind, r.type_wrap, r.IEEE_754_binary, r.parse_block_size, 0, r.end_scope, u8], bindO(r.type_wrap, [r.IEEE_754_binary, needN(r.parse_block_size, [1], opB(1))], opB(1), u8)],
@@ -270,7 +264,7 @@ test.each([
 test.each([
     [[r.bind, r.end_scope], r.error_invalid_end_scope],
     [[r.bind, r.type_choice, r.IEEE_754_binary, r.end_scope, 3], r.error_invalid_choice_index],
-    [[r.bind, r.type_choice, r.integer_unsigned,], r.error_unfinished_parse_stack],
+    [[r.bind, r.type_choice, r.integer_unsigned], r.error_unfinished_parse_stack],
     [[r.bind, r.text_plain, 0xFFFFFF], r.error_invalid_text_value],
     [[0xFFFFFF], r.error_invalid_registry_value],
 ])('parseError(%#)', (i, o) => {
