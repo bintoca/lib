@@ -168,6 +168,7 @@ export const enum r {
     denominator,
     exponent_base2,
     exponent_base10,
+    fixed_point_binary_places,
     fixed_point_decimal_places,
 
     IPv4,

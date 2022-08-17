@@ -154,7 +154,7 @@ const bindO = (t: r, items: Item[], p: ParseOp, v: Item | Item[]): Scope => {
                 if (typeof z == 'object' && !(z instanceof Uint8Array)) {
                     z.op = x
                 }
-                return { type: collection_sym, needed: it.length, items: it, ops: op.ops, parseIndex: 0 }
+                return { type: collection_sym, needed: it.length, items: it, ops: op.ops }
             }
             const it = []
             let j = 0
@@ -172,7 +172,7 @@ const bindO = (t: r, items: Item[], p: ParseOp, v: Item | Item[]): Scope => {
                 }
                 j++
             }
-            return { type: structure_sym, needed: op.ops.length, items: it, ops: op.ops, parseIndex: op.ops.length }
+            return { type: structure_sym, needed: op.ops.length, items: it, ops: op.ops }
         }
         v = rr(p, items)
     }
@@ -216,7 +216,7 @@ test.each([
                 if (x instanceof Uint8Array) {
                     return x
                 }
-                const d: Scope = { type: x.type, items: x.items.map(y => strip(y)), needed: x.needed, op: x.op, ops: x.ops, parseIndex: x.parseIndex, inText: x.inText }
+                const d: Scope = { type: x.type, items: x.items.map(y => strip(y)), needed: x.needed, op: x.op, ops: x.ops, inText: x.inText }
                 if (d.op?.item) {
                     d.op.item = undefined
                 }
@@ -265,6 +265,7 @@ test.each([
     [[r.bind, r.end_scope], r.error_invalid_end_scope],
     [[r.bind, r.type_choice, r.IEEE_754_binary, r.end_scope, 3], r.error_invalid_choice_index],
     [[r.bind, r.type_choice, r.integer_unsigned], r.error_unfinished_parse_stack],
+    [[r.bind, r.IEEE_754_binary], r.error_unfinished_parse_stack],
     [[r.bind, r.text_plain, 0xFFFFFF], r.error_invalid_text_value],
     [[0xFFFFFF], r.error_invalid_registry_value],
 ])('parseError(%#)', (i, o) => {

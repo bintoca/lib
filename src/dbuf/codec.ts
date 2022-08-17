@@ -90,10 +90,15 @@ export const read = (s: DecoderState): number => {
 }
 export const read_blocks = (s: DecoderState, n: number) => {
     const l = n * 4
-    const v = bufToU8(s.dv, s.dvOffset, l)
-    s.dvOffset += l
+    let o = 0
+    const d = new DataView(new ArrayBuffer(l))
+    while (o < l) {
+        d.setUint32(o, s.dv.getUint32(s.dvOffset))
+        s.dvOffset += 4
+        o += 4
+    }
     s.partialBlockRemaining = 0
-    return v
+    return bufToU8(d)
 }
 export const read_bits = (s: DecoderState, n: number): number | Scope => {
     function rb(s: DecoderState, n: number) {
@@ -141,11 +146,11 @@ export const choice_sym = Symbol.for('https://bintoca.com/symbol/choice')
 export const collection_sym = Symbol.for('https://bintoca.com/symbol/collection')
 export const collection_stream_sym = Symbol.for('https://bintoca.com/symbol/collection_stream')
 export const bits_sym = Symbol.for('https://bintoca.com/symbol/bits')
-export type Scope = { type: r | symbol, needed?: number, items: Item[], result?, inText?: boolean, op?: ParseOp, ops?: ParseOp[], parseIndex?: number, start?: ParsePosition, end?: ParsePosition, parent?: Scope, parentIndex?: number }
+export type Scope = { type: r | symbol, needed?: number, items: Item[], result?, inText?: boolean, op?: ParseOp, ops?: ParseOp[], start?: ParsePosition, end?: ParsePosition, parent?: Scope, parentIndex?: number }
 export type Slot = Scope | number
 export type Item = Slot | Uint8Array
 export const enum ParseType { varint, item, block_size, block_variable, bit_size, bit_variable, text_plain, collection, collection_stream, choice, choice_index, struct, varint_plus_block, none }
-export type ParseOp = { type: ParseType, size?: number, ops?: ParseOp[], item?: Item, choiceRest?: boolean }
+export type ParseOp = { type: ParseType, size?: number, ops?: ParseOp[], op?: ParseOp, item?: Item, choiceRest?: boolean }
 export type ParsePlan = { ops: ParseOp[], index: number }
 export type ParseState = { root: Scope, scope_stack: Scope[], decoder: DecoderState, choice_stack: ParseOp[] }
 export type ParsePosition = { dvOffset: number, tempIndex: number, partialBlockRemaining: number }
@@ -240,11 +245,6 @@ export const parse = (b: BufferSource): Item => {
             while (loop) {
                 const t = scope_top()
                 t.items.push(i)
-                if (t.ops) {
-                    if (t.type == structure_sym) {
-                        t.parseIndex++
-                    }
-                }
                 if (t.type == r.bind) {
                     t.op = t.items.length == 1 ? resolveItemOp(i) : { type: ParseType.item }
                 }
@@ -252,11 +252,14 @@ export const parse = (b: BufferSource): Item => {
                     t.op = { type: ParseType.none, item: t.items[0] }
                 }
                 else if (t.type == r.type_collection) {
-                    t.op = { type: ParseType.collection, ops: [resolveItemOp(i)] }
+                    t.op = { type: ParseType.collection, op: resolveItemOp(i) }
                 }
                 if (t.items.length == t.needed) {
                     t.end = createPosition(ds)
-                    if (t.type == choice_sym) {
+                    if (t.type == r.type_wrap) {
+                        //t.op = resolveItemOp(i)
+                    }
+                    else if (t.type == choice_sym) {
                         st.choice_stack.pop()
                     }
                     i = st.scope_stack.pop()
@@ -271,7 +274,7 @@ export const parse = (b: BufferSource): Item => {
         while (root.items.length == 0) {
             const top = scope_top()
             position = createPosition(ds)
-            let op = top.ops ? top.ops[top.parseIndex] : top.op
+            let op = top.ops ? top.ops[top.items.length] : top.op
             if (op?.type == ParseType.choice_index) {
                 if (st.choice_stack.length == 0) {
                     return parseError(st, r.error_invalid_choice_index)
@@ -355,7 +358,7 @@ export const parse = (b: BufferSource): Item => {
                         break
                     }
                     case ParseType.struct: {
-                        scope_push({ type: structure_sym, needed: op.ops.length, items: [], ops: op.ops, parseIndex: 0 })
+                        scope_push({ type: structure_sym, needed: op.ops.length, items: [], ops: op.ops })
                         break
                     }
                     case ParseType.text_plain: {
@@ -365,17 +368,17 @@ export const parse = (b: BufferSource): Item => {
                     case ParseType.collection: {
                         const l = read(ds)
                         if (l) {
-                            scope_push({ type: collection_sym, needed: l, items: [], ops: op.ops, parseIndex: 0 })
+                            scope_push({ type: collection_sym, needed: l, items: [], op: op.op })
                         }
                         else {
-                            scope_push({ type: collection_stream_sym, items: [], op: { type: ParseType.collection_stream, ops: op.ops } })
+                            scope_push({ type: collection_stream_sym, items: [], op: { type: ParseType.collection_stream, op: op.op } })
                         }
                         break
                     }
                     case ParseType.collection_stream: {
                         const l = read(ds)
                         if (l) {
-                            scope_push({ type: collection_sym, needed: l, items: [], ops: op.ops, parseIndex: 0 })
+                            scope_push({ type: collection_sym, needed: l, items: [], op: op.op })
                         }
                         else {
                             top.end = createPosition(ds)
@@ -474,16 +477,13 @@ export const parse = (b: BufferSource): Item => {
                 }
             }
         }
-        if (st.scope_stack.length > 1) {
-            return parseError(st, r.error_unfinished_parse_stack)
-        }
         return st.root.items[0]
     }
     catch (e) {
         if (isError(e)) {
             return e
         }
-        if (st.decoder.dvOffset == st.decoder.dv.byteLength) {
+        if (e instanceof RangeError && e.message == 'Offset is outside the bounds of the DataView') {
             return parseError(st, r.error_unfinished_parse_stack)
         }
         log(e, st)
@@ -563,5 +563,11 @@ export const writeBuffer = (st: EncoderState, x: BufferSource) => {
 }
 export const finishWrite = (s: EncoderState) => {
     write(s, 0, s.chunkSpace)
+    s.buffers.push(bufToU8(s.dv, 0, s.offset))
+}
+export const flushWrite = (s: EncoderState) => {
+    if (s.chunkSpace != 8 || s.queue.length) {
+        write(s, 0, s.chunkSpace)
+    }
     s.buffers.push(bufToU8(s.dv, 0, s.offset))
 }
