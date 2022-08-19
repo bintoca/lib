@@ -149,7 +149,7 @@ export const bits_sym = Symbol.for('https://bintoca.com/symbol/bits')
 export type Scope = { type: r | symbol, needed?: number, items: Item[], result?, inText?: boolean, op?: ParseOp, ops?: ParseOp[], start?: ParsePosition, end?: ParsePosition, parent?: Scope, parentIndex?: number }
 export type Slot = Scope | number
 export type Item = Slot | Uint8Array
-export const enum ParseType { varint, item, block_size, block_variable, bit_size, bit_variable, text_plain, collection, collection_stream, choice, choice_index, struct, varint_plus_block, none }
+export const enum ParseType { varint, item, block_size, block_variable, bit_size, bit_variable, text_plain, collection, collection_stream, choice, choice_index, choice_bit_size, struct, varint_plus_block, none }
 export type ParseOp = { type: ParseType, size?: number, ops?: ParseOp[], op?: ParseOp, item?: Item, choiceRest?: boolean }
 export type ParsePlan = { ops: ParseOp[], index: number }
 export type ParseState = { root: Scope, scope_stack: Scope[], decoder: DecoderState, choice_stack: ParseOp[] }
@@ -281,6 +281,15 @@ export const parse = (b: BufferSource): Item => {
                 }
                 op = st.choice_stack[st.choice_stack.length - 1]
             }
+            if (op?.type == ParseType.choice_bit_size) {
+                const c = read_bits(ds, op.item as number) as number
+                if (op.ops.length <= c) {
+                    return parseError(st, r.error_invalid_choice_index)
+                }
+                op = op.ops[c]
+                scope_push({ type: choice_sym, needed: 2, items: [c], op })
+                continue
+            }
             if (op?.type == ParseType.choice) {
                 st.choice_stack.push(op)
                 const lop = op.ops[op.ops.length - 1]
@@ -308,7 +317,6 @@ export const parse = (b: BufferSource): Item => {
                         if (op.ops.length - 1 <= c) {
                             ds.tempChoice = c - (op.ops.length - 1)
                             op = lop
-                            //throw 'sss'
                         }
                         else {
                             op = op.ops[c]
@@ -427,16 +435,22 @@ export const parse = (b: BufferSource): Item => {
                             return parseError(st, r.error_invalid_end_scope)
                         }
                         top.end = createPosition(ds)
-                        switch (top.type) {
-                            case r.type_wrap:
-                                top.op = resolveItemOp(top.items[top.items.length - 1])
-                                break
-                            case r.type_choice:
-                                top.op = { type: ParseType.choice, ops: top.items.map(x => resolveItemOp(x)) }
-                                break
-                            case r.type_structure:
-                                top.op = { type: ParseType.struct, ops: top.items.map(x => resolveItemOp(x)) }
-                                break
+                        if (top.items.length) {
+                            switch (top.type) {
+                                case r.type_wrap:
+                                    top.op = resolveItemOp(top.items[top.items.length - 1])
+                                    break
+                                case r.type_choice:
+                                    const ops = top.items.map(x => resolveItemOp(x))
+                                    top.op = ops.every(x => x.type == ParseType.bit_size) ? { type: ParseType.choice_bit_size, ops, item: Math.ceil(Math.log2(ops.length)) || 1 } : { type: ParseType.choice, ops }
+                                    break
+                                case r.type_structure:
+                                    top.op = { type: ParseType.struct, ops: top.items.map(x => resolveItemOp(x)) }
+                                    break
+                            }
+                        }
+                        else {
+                            top.op = { type: ParseType.none, item: r.placeholder }
                         }
                         const t = st.scope_stack.pop()
                         collapse_scope(t)
