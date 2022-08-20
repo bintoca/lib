@@ -1,4 +1,4 @@
-import { parse, write, finishWrite, structure_sym, Item, createDecoder, read, createEncoder, writeBuffer, write_checked, Scope, choice_sym, collection_sym, collection_stream_sym, bits_sym } from '@bintoca/dbuf/codec'
+import { parse, write, finishWrite, structure_sym, Item, createDecoder, read, createEncoder, writeBuffer, write_checked, Scope, choice_sym, collection_sym, collection_stream_sym, bits_sym, isError } from '@bintoca/dbuf/codec'
 import { r, u } from '@bintoca/dbuf/registry'
 import { zigzagEncode, zigzagDecode, unicodeToText, textToUnicode, getLeap_millis, getLeap_millis_tai, strip } from '@bintoca/dbuf/util'
 const dv = new DataView(new ArrayBuffer(8))
@@ -160,18 +160,19 @@ test.each([
 })
 type NumOrBuf = number | Uint8Array | NumOrBuf[]
 const b = (a: NumOrBuf, ...b: NumOrBuf[]) => [r.bind, a, ...b]
-const tw = (...a: NumOrBuf[]) => [r.type_wrap, ...a, r.end_scope]
 const tc = (...a: NumOrBuf[]) => [r.type_choice, ...a, r.end_scope]
 const ts = (...a: NumOrBuf[]) => [r.type_structure, ...a, r.end_scope]
-const cs = (a: number, b: Item) => { return { type: choice_sym, items: [a, b] } }
+const cs = (a: number, b?: Item) => { return { type: choice_sym, items: b === undefined ? [a] : [a, b] } }
 const tp = (...a: number[]) => { return { type: r.text_plain, items: [...a] } }
 const ss = (...a: Item[]) => { return { type: structure_sym, items: [...a] } }
 const cos = (...a: Item[]) => { return { type: collection_sym, items: [...a] } }
 const css = (...a: Item[]) => { return { type: collection_stream_sym, items: [...a] } }
+const bo = (...a: Item[]) => { return { type: r.bind, items: [...a] } }
+const so = (...a: Item[]) => { return { type: r.type_structure, items: [...a] } }
+const co = (...a: Item[]) => { return { type: r.type_collection, items: [...a] } }
 const bs = (...a: number[]) => { return { type: bits_sym, items: [...a] } }
 test.each([
     [b(b(r.IEEE_754_binary, u8), r.IPv4), r.IPv4],
-    [b(tw(r.integer_unsigned), 2), 2],
     [b(r.parse_block_size, 0, u8), u8],
     [b(r.parse_block_variable, 0, u8), u8],
     [b(r.parse_bit_variable, 8, u8), 2],
@@ -180,7 +181,19 @@ test.each([
     [b(r.TAI_seconds, u8), u8],
     [b(tc()), r.placeholder],
     [b(ts()), r.placeholder],
-    [b(r.parse_none, b(r.IEEE_754_binary, u8)), { type: r.bind, items: [r.IEEE_754_binary, u8] }],
+    [b(tc(r.numerator, r.denominator), 1), cs(1, r.denominator)],
+    [b(ts(r.numerator), r.denominator), ss(r.denominator)],
+    [b(ts(r.numerator, tc(r.denominator)), r.IPv4, 0, r.IPv6), ss(r.IPv4, cs(0, r.IPv6))],
+    [b(ts(b(r.numerator, r.integer_unsigned)), 2), ss(2)],
+    [b(ts(b(r.numerator, b(r.denominator, r.integer_unsigned))), 2), ss(2)],
+    [b(tc(r.numerator, b(r.denominator, r.denominator)), 1), cs(1, bo(r.denominator, r.denominator))],
+    [b(ts(b(r.denominator, r.denominator)), r.IPv4), ss(r.IPv4)],
+    [b(ts(b(r.text_plain, u.a, u.end_scope)), r.IPv4), ss(r.IPv4)],
+    [b(tc(r.numerator, b(r.text_plain, u.a, u.end_scope)), 1), cs(1, bo(r.text_plain, tp(u.a)))],
+    [b(tc(r.numerator, b(ts(r.text_plain), u.a, u.end_scope)), 1), cs(1, bo(so(r.text_plain), ss(tp(u.a))))],
+    [b(tc(r.numerator, b(r.type_collection, r.text_plain), 1, u.a, u.end_scope), 1), cs(1, bo(co(r.text_plain), cos(tp(u.a))))],
+    [b(tc(r.numerator, b(r.type_collection, r.text_plain), 0, 1, u.a, u.end_scope, 0), 1), cs(1, bo(co(r.text_plain), css(cos(tp(u.a)))))],
+    [b(r.parse_none, b(r.IEEE_754_binary, u8)), bo(r.IEEE_754_binary, u8)],
     [b(tc(r.integer_unsigned, r.type_choice_index), 1, 0, 2), cs(1, cs(0, 2))],
     [b(tc(r.integer_unsigned, tc(r.text_plain, r.type_choice_index)), 1, 1, 0, u.a, u.end_scope), cs(1, cs(1, cs(0, tp(u.a))))],
     [b(tc(r.integer_unsigned, ts(tc(r.text_plain, r.type_choice_index), r.type_choice_index)), 1, 1, 0, u.e, u.end_scope, 0, 5), cs(1, ss(cs(1, cs(0, tp(u.e))), cs(0, 5)))],
@@ -194,9 +207,11 @@ test.each([
     const w = writer(i)
     try {
         const s = parse(w)
-        //console.log((s.root as any).items[0].items[1])
         if (typeof s == 'number') {
             expect(s).toEqual(o)
+        }
+        else if (isError(s)) {
+            expect('error ' + (s as any).items[1].items[1].items).toEqual(o)
         }
         else {
             const ou = (s as Scope).items[1]

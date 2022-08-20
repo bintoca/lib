@@ -133,7 +133,6 @@ export const enum r {
     end_scope,
     placeholder,
     bind,
-    type_wrap,
     type_choice,
     type_choice_index,
     type_structure,
