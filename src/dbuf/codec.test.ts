@@ -1,4 +1,4 @@
-import { parse, write, finishWrite, structure_sym, Item, createDecoder, read, createEncoder, writeBuffer, write_checked, Scope, choice_sym, collection_sym, collection_stream_sym, bits_sym, isError } from '@bintoca/dbuf/codec'
+import { parse, write, finishWrite, structure_sym, Item, createDecoder, read, createEncoder, writeBuffer, write_checked, Scope, choice_sym, collection_sym, collection_stream_sym, bits_sym, isError, ParseType } from '@bintoca/dbuf/codec'
 import { r, u } from '@bintoca/dbuf/registry'
 import { zigzagEncode, zigzagDecode, unicodeToText, textToUnicode, getLeap_millis, getLeap_millis_tai, strip } from '@bintoca/dbuf/util'
 const dv = new DataView(new ArrayBuffer(8))
@@ -142,7 +142,7 @@ test.each([
                 if (x instanceof Uint8Array) {
                     return x
                 }
-                const d: Scope = { type: x.type, items: x.items.map(y => strip(y)), needed: x.needed, op: x.op, ops: x.ops, inText: x.inText }
+                const d: Scope = { type: x.type, items: x.items.map(y => strip(y)), needed: x.needed, op: undefined }
                 if (d.op?.item) {
                     d.op.item = undefined
                 }
@@ -162,15 +162,40 @@ type NumOrBuf = number | Uint8Array | NumOrBuf[]
 const b = (a: NumOrBuf, ...b: NumOrBuf[]) => [r.bind, a, ...b]
 const tc = (...a: NumOrBuf[]) => [r.type_choice, ...a, r.end_scope]
 const ts = (...a: NumOrBuf[]) => [r.type_structure, ...a, r.end_scope]
-const cs = (a: number, b?: Item) => { return { type: choice_sym, items: b === undefined ? [a] : [a, b] } }
-const tp = (...a: number[]) => { return { type: r.text_plain, items: [...a] } }
-const ss = (...a: Item[]) => { return { type: structure_sym, items: [...a] } }
-const cos = (...a: Item[]) => { return { type: collection_sym, items: [...a] } }
-const css = (...a: Item[]) => { return { type: collection_stream_sym, items: [...a] } }
-const bo = (...a: Item[]) => { return { type: r.bind, items: [...a] } }
-const so = (...a: Item[]) => { return { type: r.type_structure, items: [...a] } }
-const co = (...a: Item[]) => { return { type: r.type_collection, items: [...a] } }
-const bs = (...a: number[]) => { return { type: bits_sym, items: [...a] } }
+const cs = (a: Item, b?: Item) => { return { type: choice_sym, items: b === undefined ? [a] : [a, b], op: undefined } }
+const tp = (...a: number[]) => { return { type: r.text_plain, items: [...a], op: undefined } }
+const ss = (...a: Item[]) => { return { type: structure_sym, items: [...a], op: undefined } }
+const cos = (...a: Item[]) => { return { type: collection_sym, items: [...a], op: undefined } }
+const css = (...a: Item[]) => { return { type: collection_stream_sym, items: [...a], op: undefined } }
+const bo = (...a: Item[]) => { return { type: r.bind, items: [...a], op: undefined } }
+const so = (...a: Item[]) => { return { type: r.type_structure, items: [...a], op: undefined } }
+const co = (...a: Item[]) => { return { type: r.type_collection, items: [...a], op: undefined } }
+const ci = (...a: Item[]) => { return { type: r.type_choice_index, items: [...a], op: undefined } }
+const bs = (...a: number[]) => { return { type: bits_sym, items: [...a], op: undefined } }
+test.each([
+    [[r.bind, r.end_scope], r.error_invalid_end_scope],
+    [[r.bind, r.type_choice, r.IEEE_754_binary, r.end_scope, 3], r.error_invalid_choice_index],
+    [[r.bind, r.type_choice, r.integer_unsigned], r.error_unfinished_parse_stack],
+    [[r.bind, r.IEEE_754_binary], r.error_unfinished_parse_stack],
+    [[r.bind, r.text_plain, 0xFFFFFF], r.error_invalid_text_value],
+    [[0xFFFFFF], r.error_invalid_registry_value],
+])('parseError(%#)', (i, o) => {
+    const er = parse(writer(i))
+    expect((er as any).items[1].items[1].items[0]).toEqual(o)
+})
+{
+
+
+
+
+
+
+
+
+
+
+
+}
 test.each([
     [b(b(r.IEEE_754_binary, u8), r.IPv4), r.IPv4],
     [b(r.parse_block_size, 0, u8), u8],
@@ -194,15 +219,17 @@ test.each([
     [b(tc(r.numerator, b(r.type_collection, r.text_plain), 1, u.a, u.end_scope), 1), cs(1, bo(co(r.text_plain), cos(tp(u.a))))],
     [b(tc(r.numerator, b(r.type_collection, r.text_plain), 0, 1, u.a, u.end_scope, 0), 1), cs(1, bo(co(r.text_plain), css(cos(tp(u.a)))))],
     [b(r.parse_none, b(r.IEEE_754_binary, u8)), bo(r.IEEE_754_binary, u8)],
-    [b(tc(r.integer_unsigned, r.type_choice_index), 1, 0, 2), cs(1, cs(0, 2))],
-    [b(tc(r.integer_unsigned, tc(r.text_plain, r.type_choice_index)), 1, 1, 0, u.a, u.end_scope), cs(1, cs(1, cs(0, tp(u.a))))],
-    [b(tc(r.integer_unsigned, ts(tc(r.text_plain, r.type_choice_index), r.type_choice_index)), 1, 1, 0, u.e, u.end_scope, 0, 5), cs(1, ss(cs(1, cs(0, tp(u.e))), cs(0, 5)))],
+    [b(tc(r.integer_unsigned, r.type_choice_index), 1, 0, 2), cs(1, ci(cs(0, 2)))],
+    [b(tc(r.integer_unsigned, tc(r.text_plain, r.type_choice_index)), 1, 1, 0, u.a, u.end_scope), cs(1, cs(1, ci(cs(0, tp(u.a)))))],
+    [b(tc(r.integer_unsigned, ts(tc(r.text_plain, r.type_choice_index), r.type_choice_index)), 1, 1, 0, u.e, u.end_scope, 0, 5), cs(1, ss(cs(1, ci(cs(0, tp(u.e)))), ci(cs(0, 5))))],
     [b(tc(r.IEEE_754_binary, tc(r.integer_unsigned, r.integer_signed)), 1, 1), cs(1, cs(1, 0))],
     [b(r.type_collection, r.integer_unsigned, 0, 2, 3, 4, 1, 5, 0), css(cos(3, 4), cos(5))],
     [b(r.type_collection, ts(r.IEEE_754_binary, tc(r.integer_unsigned, r.integer_signed)), 1, u8, 1), cos(ss(u8, cs(1, 0)))],
     [b(ts(r.IEEE_754_binary, r.type_collection, tc(r.integer_unsigned, r.integer_signed)), u8, 1, 1), ss(u8, cos(cs(1, 0)))],
     [b(ts(r.integer_unsigned, r.parse_bit_size, 7, r.parse_bit_size, 7, r.parse_bit_size, 23, r.parse_bit_size, 47, r.integer_unsigned, r.parse_bit_size, 7), 3, u8, u8, u8, 4, u8), ss(3, 1, 2, 0x030401, bs(0x02030401, 0x0203, 16), 4, 1)],
-    [b(tc(r.parse_bit_size, 7, r.parse_bit_size, 5), u8), cs(0, 2)]
+    [b(tc(r.parse_bit_size, 7, r.parse_bit_size, 5), u8), cs(0, 2)],
+    [b(ts(b(r.integer_unsigned, 14)), b(r.integer_unsigned, 2)), ss(bo(r.integer_unsigned, 2))],
+    [b(ts(b(r.numerator, r.parse_none, b(r.text_plain, u.a, u.end_scope)))), ss(bo(r.text_plain, tp(u.a)))],
 ])('parse_strip(%#)', (i, o) => {
     const w = writer(i)
     try {
@@ -211,26 +238,15 @@ test.each([
             expect(s).toEqual(o)
         }
         else if (isError(s)) {
-            expect('error ' + (s as any).items[1].items[1].items).toEqual(o)
+            expect('error ' + (s as any).items[1].items[1].items).toEqual(strip(o))
         }
         else {
             const ou = (s as Scope).items[1]
-            expect(strip(ou)).toEqual(o)
+            expect(strip(ou)).toEqual(strip(o))
         }
     }
     catch (e) {
         console.log(w)
         throw e
     }
-})
-test.each([
-    [[r.bind, r.end_scope], r.error_invalid_end_scope],
-    [[r.bind, r.type_choice, r.IEEE_754_binary, r.end_scope, 3], r.error_invalid_choice_index],
-    [[r.bind, r.type_choice, r.integer_unsigned], r.error_unfinished_parse_stack],
-    [[r.bind, r.IEEE_754_binary], r.error_unfinished_parse_stack],
-    [[r.bind, r.text_plain, 0xFFFFFF], r.error_invalid_text_value],
-    [[0xFFFFFF], r.error_invalid_registry_value],
-])('parseError(%#)', (i, o) => {
-    const er = parse(writer(i))
-    expect((er as any).items[1].items[1].items[0]).toEqual(o)
 })
