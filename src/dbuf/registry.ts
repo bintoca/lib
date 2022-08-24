@@ -134,7 +134,7 @@ export const enum r {
     placeholder,
     bind,
     type_choice,
-    type_choice_index,
+    type_choice_indexer,
     type_structure,
     type_collection,
 
@@ -190,6 +190,7 @@ export const enum r {
     block_bits_remaining,
     error_internal,
     error_invalid_choice_index,
+    error_invalid_choice_indexer,
     error_invalid_end_scope,
     error_unfinished_parse_stack,
     error_invalid_text_value,

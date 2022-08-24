@@ -256,7 +256,7 @@ export const parse = (b: BufferSource): Item => {
                         else {
                             t.op = { type: ParseType.item_or_none }
                         }
-                        if (t.op.type != ParseType.none) {
+                        if (t.op.type == ParseType.item_or_none) {
                             t.op.item = t
                         }
                     }
@@ -291,9 +291,9 @@ export const parse = (b: BufferSource): Item => {
             switch (op.type) {
                 case ParseType.choice_index: {
                     if (st.choice_stack.length == 0) {
-                        return parseError(st, r.error_invalid_choice_index)
+                        return parseError(st, r.error_invalid_choice_indexer)
                     }
-                    scope_push({ type: r.type_choice_index, needed: 1, items: [], op: st.choice_stack[st.choice_stack.length - 1] })
+                    scope_push({ type: r.type_choice_indexer, needed: 1, items: [], op: st.choice_stack[st.choice_stack.length - 1] })
                     break
                 }
                 case ParseType.choice_bit_size: {
@@ -435,7 +435,7 @@ export const parse = (b: BufferSource): Item => {
                             scope_push({ type: x, items: [], op: { type: ParseType.item } })
                             break
                         }
-                        case r.type_choice_index: {
+                        case r.type_choice_indexer: {
                             collapse_scope({ type: x, items: [], op: { type: ParseType.choice_index } })
                             break
                         }

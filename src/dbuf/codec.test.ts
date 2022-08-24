@@ -170,11 +170,12 @@ const css = (...a: Item[]) => { return { type: collection_stream_sym, items: [..
 const bo = (...a: Item[]) => { return { type: r.bind, items: [...a], op: undefined } }
 const so = (...a: Item[]) => { return { type: r.type_structure, items: [...a], op: undefined } }
 const co = (...a: Item[]) => { return { type: r.type_collection, items: [...a], op: undefined } }
-const ci = (...a: Item[]) => { return { type: r.type_choice_index, items: [...a], op: undefined } }
+const ci = (...a: Item[]) => { return { type: r.type_choice_indexer, items: [...a], op: undefined } }
 const bs = (...a: number[]) => { return { type: bits_sym, items: [...a], op: undefined } }
 test.each([
     [[r.bind, r.end_scope], r.error_invalid_end_scope],
     [[r.bind, r.type_choice, r.IEEE_754_binary, r.end_scope, 3], r.error_invalid_choice_index],
+    [[r.bind, r.type_choice_indexer, 0], r.error_invalid_choice_indexer],
     [[r.bind, r.type_choice, r.integer_unsigned], r.error_unfinished_parse_stack],
     [[r.bind, r.IEEE_754_binary], r.error_unfinished_parse_stack],
     [[r.bind, r.text_plain, 0xFFFFFF], r.error_invalid_text_value],
@@ -219,9 +220,9 @@ test.each([
     [b(tc(r.numerator, b(r.type_collection, r.text_plain), 1, u.a, u.end_scope), 1), cs(1, bo(co(r.text_plain), cos(tp(u.a))))],
     [b(tc(r.numerator, b(r.type_collection, r.text_plain), 0, 1, u.a, u.end_scope, 0), 1), cs(1, bo(co(r.text_plain), css(cos(tp(u.a)))))],
     [b(r.parse_none, b(r.IEEE_754_binary, u8)), bo(r.IEEE_754_binary, u8)],
-    [b(tc(r.integer_unsigned, r.type_choice_index), 1, 0, 2), cs(1, ci(cs(0, 2)))],
-    [b(tc(r.integer_unsigned, tc(r.text_plain, r.type_choice_index)), 1, 1, 0, u.a, u.end_scope), cs(1, cs(1, ci(cs(0, tp(u.a)))))],
-    [b(tc(r.integer_unsigned, ts(tc(r.text_plain, r.type_choice_index), r.type_choice_index)), 1, 1, 0, u.e, u.end_scope, 0, 5), cs(1, ss(cs(1, ci(cs(0, tp(u.e)))), ci(cs(0, 5))))],
+    [b(tc(r.integer_unsigned, r.type_choice_indexer), 1, 0, 2), cs(1, ci(cs(0, 2)))],
+    [b(tc(r.integer_unsigned, tc(r.text_plain, r.type_choice_indexer)), 1, 1, 0, u.a, u.end_scope), cs(1, cs(1, ci(cs(0, tp(u.a)))))],
+    [b(tc(r.integer_unsigned, ts(tc(r.text_plain, r.type_choice_indexer), r.type_choice_indexer)), 1, 1, 0, u.e, u.end_scope, 0, 5), cs(1, ss(cs(1, ci(cs(0, tp(u.e)))), ci(cs(0, 5))))],
     [b(tc(r.IEEE_754_binary, tc(r.integer_unsigned, r.integer_signed)), 1, 1), cs(1, cs(1, 0))],
     [b(r.type_collection, r.integer_unsigned, 0, 2, 3, 4, 1, 5, 0), css(cos(3, 4), cos(5))],
     [b(r.type_collection, ts(r.IEEE_754_binary, tc(r.integer_unsigned, r.integer_signed)), 1, u8, 1), cos(ss(u8, cs(1, 0)))],
@@ -230,6 +231,7 @@ test.each([
     [b(tc(r.parse_bit_size, 7, r.parse_bit_size, 5), u8), cs(0, 2)],
     [b(ts(b(r.integer_unsigned, 14)), b(r.integer_unsigned, 2)), ss(bo(r.integer_unsigned, 2))],
     [b(ts(b(r.numerator, r.parse_none, b(r.text_plain, u.a, u.end_scope)))), ss(bo(r.text_plain, tp(u.a)))],
+    [b(tc(r.integer_unsigned, b(r.numerator, r.type_choice_indexer)), 1, 0, 2), cs(1, ci(cs(0, 2)))],
 ])('parse_strip(%#)', (i, o) => {
     const w = writer(i)
     try {
