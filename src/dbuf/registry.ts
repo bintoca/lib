@@ -151,11 +151,7 @@ export const enum r {
     IEEE_754_decimal,
     TAI_seconds,
     error,
-    
-    function,
-    call,
-
-    next_singular,
+    quote_next,
     
     parse_varint = 64,
     parse_item,
@@ -169,6 +165,10 @@ export const enum r {
     exponent_base10,
     fixed_point_binary_places,
     fixed_point_decimal_places,
+    offset_add,
+    delta,
+    double_delta,
+    repeat_count,
 
     IPv4,
     IPv6,

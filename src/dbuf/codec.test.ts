@@ -195,7 +195,6 @@ test.each([
 
 
 
-
 }
 test.each([
     [b(b(r.IEEE_754_binary, u8), r.IPv4), r.IPv4],
@@ -226,12 +225,17 @@ test.each([
     [b(tc(r.IEEE_754_binary, tc(r.integer_unsigned, r.integer_signed)), 1, 1), cs(1, cs(1, 0))],
     [b(r.type_collection, r.integer_unsigned, 0, 2, 3, 4, 1, 5, 0), css(cos(3, 4), cos(5))],
     [b(r.type_collection, ts(r.IEEE_754_binary, tc(r.integer_unsigned, r.integer_signed)), 1, u8, 1), cos(ss(u8, cs(1, 0)))],
-    [b(ts(r.IEEE_754_binary, r.type_collection, tc(r.integer_unsigned, r.integer_signed)), u8, 1, 1), ss(u8, cos(cs(1, 0)))],
+    [b(ts(r.IEEE_754_binary, r.type_collection, tc(r.integer_unsigned, r.integer_signed)), u8, 2, 0, 5, 1), ss(u8, cos(cs(0, 5), cs(1, 0)))],
     [b(ts(r.integer_unsigned, r.parse_bit_size, 7, r.parse_bit_size, 7, r.parse_bit_size, 23, r.parse_bit_size, 47, r.integer_unsigned, r.parse_bit_size, 7), 3, u8, u8, u8, 4, u8), ss(3, 1, 2, 0x030401, bs(0x02030401, 0x0203, 16), 4, 1)],
     [b(tc(r.parse_bit_size, 7, r.parse_bit_size, 5), u8), cs(0, 2)],
     [b(ts(b(r.integer_unsigned, 14)), b(r.integer_unsigned, 2)), ss(bo(r.integer_unsigned, 2))],
     [b(ts(b(r.numerator, r.parse_none, b(r.text_plain, u.a, u.end_scope)))), ss(bo(r.text_plain, tp(u.a)))],
     [b(tc(r.integer_unsigned, b(r.numerator, r.type_choice_indexer)), 1, 0, 2), cs(1, ci(cs(0, 2)))],
+    [b(r.type_collection, r.placeholder, 1, r.IPv4), cos(r.IPv4)],
+    [b(b(r.quote_next, r.TAI_seconds, r.parse_varint), 3), 3],
+    [b(b(r.quote_next, r.TAI_seconds, r.parse_item), r.IPv4), r.IPv4],
+    [b(b(b(r.offset_add, b(r.integer_unsigned, 5)), r.TAI_seconds), u8), u8],
+    [b(r.type_collection, tc(r.integer_unsigned, b(r.delta, r.integer_unsigned), b(r.delta, r.integer_negative), r.repeat_count), 4, 0, 5, 1, 2, 2, 1, 5), cos(cs(0, 5), cs(1, 2), cs(2, 1), cs(5, 2))],
 ])('parse_strip(%#)', (i, o) => {
     const w = writer(i)
     try {

@@ -180,6 +180,7 @@ export const resolveItemOp = (x: Item): ParseOp => {
     else {
         switch (x) {
             case r.parse_varint:
+            case r.fixed_point_binary_places:
             case r.fixed_point_decimal_places:
             case r.years:
             case r.months:
@@ -192,9 +193,11 @@ export const resolveItemOp = (x: Item): ParseOp => {
             case r.IP_port:
             case r.integer_unsigned:
             case r.integer_signed:
+            case r.integer_negative:
             case r.blocks_read:
             case r.block_varint_index:
             case r.block_bits_remaining:
+            case r.repeat_count:
                 return { type: ParseType.varint }
             case r.parse_bit_variable:
                 return { type: ParseType.bit_variable }
@@ -346,7 +349,7 @@ export const parse = (b: BufferSource): Item => {
                     break
                 }
                 case ParseType.item_or_none: {
-                    op.type = top.type == r.bind || top.type == structure_sym || (top.parent.type == structure_sym && top.type == choice_sym) ? ParseType.item : ParseType.none
+                    op.type = top.type == r.bind || top.type == collection_sym || top.type == structure_sym || (top.parent.type == structure_sym && top.type == choice_sym) ? ParseType.item : ParseType.none
                     ds.tempChoice = undefined
                     break
                 }
@@ -474,7 +477,7 @@ export const parse = (b: BufferSource): Item => {
                             collapse_scope(s)
                             break
                         }
-                        case r.next_singular: {
+                        case r.quote_next: {
                             scope_push({ type: x, needed: 1, items: [], op: { type: ParseType.item } })
                             collapse_scope(read(ds))
                             break
