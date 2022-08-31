@@ -135,8 +135,8 @@ export const enum r {
     bind,
     type_choice,
     type_choice_indexer,
-    type_structure,
-    type_collection,
+    type_map,
+    type_array,
 
     parse_block_size,
     parse_bit_size,
