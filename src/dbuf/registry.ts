@@ -137,11 +137,11 @@ export const enum r {
     type_choice_indexer,
     type_map,
     type_array,
+    id,
 
     parse_block_size,
     parse_bit_size,
     parse_none,
-
     text_plain,
     text_uri,
     text_dns,
@@ -152,6 +152,7 @@ export const enum r {
     TAI_seconds,
     error,
     quote_next,
+    sub_authority,
     
     parse_varint = 64,
     parse_item,
