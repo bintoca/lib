@@ -130,21 +130,21 @@ export const enum under_consideration {
     //TODO language tags BCP47
 }
 export const enum r {
-    end_scope,
     placeholder,
+    id,
     bind,
     type_choice,
     type_choice_indexer,
     type_map,
     type_array,
-    id,
+    end_scope,
 
     parse_block_size,
     parse_bit_size,
     parse_none,
     text_plain,
-    text_uri,
-    text_dns,
+    text_iri,
+    text_idna,
     integer_unsigned,
     integer_signed,
     IEEE_754_binary,
@@ -153,6 +153,10 @@ export const enum r {
     error,
     quote_next,
     sub_authority,
+    bool,
+    bool_bit,
+    type_choice_bit,
+    offset_shift_left,
     
     parse_varint = 64,
     parse_item,
@@ -168,7 +172,7 @@ export const enum r {
     fixed_point_decimal_places,
     offset_add,
     delta,
-    double_delta,
+    delta_double,
     repeat_count,
 
     IPv4,

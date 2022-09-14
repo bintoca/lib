@@ -149,7 +149,7 @@ export const bits_sym = Symbol.for('https://bintoca.com/symbol/bits')
 export type Scope = { type: r | symbol, needed?: number, items: Item[], result?, op: ParseOp, ops?: ParseOp[], start?: ParsePosition, end?: ParsePosition, parent?: Scope, parentIndex?: number }
 export type Slot = Scope | number
 export type Item = Slot | Uint8Array
-export const enum ParseType { varint, item, item_or_none, block_size, block_variable, bit_size, bit_variable, text_plain, array, array_stream, choice, choice_index, choice_bit_size, map, varint_plus_block, text, none }
+export const enum ParseType { varint, item, item_or_none, block_size, block_variable, bit_size, bit_variable, text, array, array_stream, choice, choice_index, choice_bit_size, map, varint_plus_block, text_code_points, none }
 export type ParseOp = { type: ParseType, size?: number, ops?: ParseOp[], op?: ParseOp, item?: Item, choiceRest?: boolean }
 export type ParsePlan = { ops: ParseOp[], index: number }
 export type ParseState = { root: Scope, scope_stack: Scope[], decoder: DecoderState, choice_stack: ParseOp[] }
@@ -198,7 +198,11 @@ export const resolveItemOp = (x: Item): ParseOp => {
             case r.block_varint_index:
             case r.block_bits_remaining:
             case r.repeat_count:
+            case r.bool:
+            case r.offset_shift_left:
                 return { type: ParseType.varint }
+            case r.bool_bit:
+                return { type: ParseType.bit_size, size: 1 }
             case r.parse_bit_variable:
                 return { type: ParseType.bit_variable }
             case r.parse_block_variable:
@@ -216,9 +220,9 @@ export const resolveItemOp = (x: Item): ParseOp => {
             case r.parse_varint_plus_block:
                 return { type: ParseType.varint_plus_block }
             case r.text_plain:
-            case r.text_dns:
-            case r.text_uri:
-                return { type: ParseType.text_plain }
+            case r.text_idna:
+            case r.text_iri:
+                return { type: ParseType.text }
             case r.parse_item:
                 return { type: ParseType.item }
         }
@@ -330,8 +334,8 @@ export const parse = (b: BufferSource): Item => {
                         case ParseType.block_variable:
                         case ParseType.item:
                         case ParseType.item_or_none:
-                        case ParseType.text_plain:
                         case ParseType.text:
+                        case ParseType.text_code_points:
                         case ParseType.varint:
                         case ParseType.varint_plus_block:
                             if (op.ops.length - 1 <= c) {
@@ -385,8 +389,8 @@ export const parse = (b: BufferSource): Item => {
                     scope_push({ type: map_sym, needed: op.ops.length, items: [], op: op.ops[0], ops: op.ops })
                     break
                 }
-                case ParseType.text_plain: {
-                    scope_push({ type: r.text_plain, items: [], op: { type: ParseType.text } })
+                case ParseType.text: {
+                    scope_push({ type: r.text_plain, items: [], op: { type: ParseType.text_code_points } })
                     break
                 }
                 case ParseType.array: {
@@ -414,7 +418,7 @@ export const parse = (b: BufferSource): Item => {
                     collapse_scope(op.item)
                     break
                 }
-                case ParseType.text: {
+                case ParseType.text_code_points: {
                     const x = read(ds)
                     switch (x) {
                         case u.end_scope: {
@@ -434,7 +438,8 @@ export const parse = (b: BufferSource): Item => {
                     const x = read(ds)
                     switch (x) {
                         case r.type_map:
-                        case r.type_choice: {
+                        case r.type_choice:
+                        case r.type_choice_bit: {
                             scope_push({ type: x, items: [], op: { type: ParseType.item } })
                             break
                         }
@@ -450,8 +455,11 @@ export const parse = (b: BufferSource): Item => {
                             if (top.items.length) {
                                 switch (top.type) {
                                     case r.type_choice:
+                                        top.op = { type: ParseType.choice, ops: top.items.map(x => resolveItemOp(x)) }
+                                        break
+                                    case r.type_choice_bit:
                                         const ops = top.items.map(x => resolveItemOp(x))
-                                        top.op = ops.every(x => x.type == ParseType.bit_size) ? { type: ParseType.choice_bit_size, ops, item: Math.ceil(Math.log2(ops.length)) || 1 } : { type: ParseType.choice, ops }
+                                        top.op = { type: ParseType.choice_bit_size, ops, item: Math.ceil(Math.log2(ops.length)) || 1 }
                                         break
                                     case r.type_map:
                                         top.op = { type: ParseType.map, ops: top.items.map(x => resolveItemOp(x)) }

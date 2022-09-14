@@ -161,6 +161,7 @@ test.each([
 type NumOrBuf = number | Uint8Array | NumOrBuf[]
 const b = (a: NumOrBuf, ...b: NumOrBuf[]) => [r.bind, a, ...b]
 const tc = (...a: NumOrBuf[]) => [r.type_choice, ...a, r.end_scope]
+const tcb = (...a: NumOrBuf[]) => [r.type_choice_bit, ...a, r.end_scope]
 const tm = (...a: NumOrBuf[]) => [r.type_map, ...a, r.end_scope]
 const cs = (a: Item, b?: Item) => { return { type: choice_sym, items: b === undefined ? [a] : [a, b], op: undefined } }
 const tp = (...a: number[]) => { return { type: r.text_plain, items: [...a], op: undefined } }
@@ -204,6 +205,8 @@ test.each([
     [b(r.parse_item, r.IPv4), r.IPv4],
     [b(r.parse_varint_plus_block, 2, u8), new Uint8Array([0, 0, 0, 2, 1, 2, 3, 4])],
     [b(r.TAI_seconds, u8), u8],
+    [b(r.bool_bit, u8), 0],
+    [b(r.bool, 1), 1],
     [b(tc()), r.placeholder],
     [b(tm()), r.placeholder],
     [b(tc(r.numerator, r.denominator), 1), cs(1, r.denominator)],
@@ -227,7 +230,8 @@ test.each([
     [b(r.type_array, tm(r.IEEE_754_binary, tc(r.integer_unsigned, r.integer_signed)), 1, u8, 1), aos(ms(u8, cs(1, 0)))],
     [b(tm(r.IEEE_754_binary, r.type_array, tc(r.integer_unsigned, r.integer_signed)), u8, 2, 0, 5, 1), ms(u8, aos(cs(0, 5), cs(1, 0)))],
     [b(tm(r.integer_unsigned, r.parse_bit_size, 7, r.parse_bit_size, 7, r.parse_bit_size, 23, r.parse_bit_size, 47, r.integer_unsigned, r.parse_bit_size, 7), 3, u8, u8, u8, 4, u8), ms(3, 1, 2, 0x030401, bs(0x02030401, 0x0203, 16), 4, 1)],
-    [b(tc(r.parse_bit_size, 7, r.parse_bit_size, 5), u8), cs(0, 2)],
+    [b(tc(r.parse_bit_size, 7, r.parse_bit_size, 5), 0, u8), cs(0, 1)],
+    [b(tcb(r.parse_bit_size, 7, r.parse_bit_size, 5), u8), cs(0, 2)],
     [b(tm(b(r.integer_unsigned, 14)), b(r.integer_unsigned, 2)), ms(bo(r.integer_unsigned, 2))],
     [b(tm(b(r.numerator, r.parse_none, b(r.text_plain, u.a, u.end_scope)))), ms(bo(r.text_plain, tp(u.a)))],
     [b(tc(r.integer_unsigned, b(r.numerator, r.type_choice_indexer)), 1, 0, 2), cs(1, ci(cs(0, 2)))],
@@ -235,6 +239,7 @@ test.each([
     [b(b(r.quote_next, r.TAI_seconds, r.parse_varint), 3), 3],
     [b(b(r.quote_next, r.TAI_seconds, r.parse_item), r.IPv4), r.IPv4],
     [b(b(b(r.offset_add, b(r.integer_unsigned, 5)), r.TAI_seconds), u8), u8],
+    [b(b(b(r.offset_shift_left, 4), b(r.quote_next, r.IEEE_754_binary, r.parse_varint)), 23), 23],
     [b(r.type_array, tc(r.integer_unsigned, b(r.delta, r.integer_unsigned), b(r.delta, r.integer_negative), r.repeat_count), 4, 0, 5, 1, 2, 2, 1, 5), aos(cs(0, 5), cs(1, 2), cs(2, 1), cs(5, 2))],
 ])('parse_strip(%#)', (i, o) => {
     const w = writer(i)
