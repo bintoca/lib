@@ -156,6 +156,7 @@ export const enum r {
     bool,
     bool_bit,
     type_choice_bit,
+    type_choice_append,
     offset_shift_left,
     
     parse_varint = 64,
@@ -196,6 +197,7 @@ export const enum r {
     error_internal,
     error_invalid_choice_index,
     error_invalid_choice_indexer,
+    error_invalid_choice_append,
     error_invalid_end_scope,
     error_unfinished_parse_stack,
     error_invalid_text_value,

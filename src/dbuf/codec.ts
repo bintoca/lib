@@ -143,13 +143,14 @@ export const read_bits = (s: DecoderState, n: number): number | Scope => {
 }
 export const map_sym = Symbol.for('https://bintoca.com/symbol/map')
 export const choice_sym = Symbol.for('https://bintoca.com/symbol/choice')
+export const choice_append_sym = Symbol.for('https://bintoca.com/symbol/choice_append')
 export const array_sym = Symbol.for('https://bintoca.com/symbol/array')
 export const array_stream_sym = Symbol.for('https://bintoca.com/symbol/array_stream')
 export const bits_sym = Symbol.for('https://bintoca.com/symbol/bits')
 export type Scope = { type: r | symbol, needed?: number, items: Item[], result?, op: ParseOp, ops?: ParseOp[], start?: ParsePosition, end?: ParsePosition, parent?: Scope, parentIndex?: number }
 export type Slot = Scope | number
 export type Item = Slot | Uint8Array
-export const enum ParseType { varint, item, item_or_none, block_size, block_variable, bit_size, bit_variable, text, array, array_stream, choice, choice_index, choice_bit_size, map, varint_plus_block, text_code_points, none }
+export const enum ParseType { varint, item, item_or_none, block_size, block_variable, bit_size, bit_variable, text, array, array_stream, choice, choice_index, choice_bit_size, choice_append, map, varint_plus_block, text_code_points, none }
 export type ParseOp = { type: ParseType, size?: number, ops?: ParseOp[], op?: ParseOp, item?: Item, choiceRest?: boolean }
 export type ParsePlan = { ops: ParseOp[], index: number }
 export type ParseState = { root: Scope, scope_stack: Scope[], decoder: DecoderState, choice_stack: ParseOp[] }
@@ -277,6 +278,9 @@ export const parse = (b: BufferSource): Item => {
                 else if (t.type == map_sym) {
                     t.op = t.ops[t.items.length]
                 }
+                else if (t.type == choice_append_sym) {
+                    st.choice_stack[st.choice_stack.length - 1].ops.push(resolveItemOp(i))
+                }
                 if (t.items.length == t.needed) {
                     t.end = createPosition(ds)
                     if (t.type == choice_sym) {
@@ -303,6 +307,13 @@ export const parse = (b: BufferSource): Item => {
                     scope_push({ type: r.type_choice_indexer, needed: 1, items: [], op: st.choice_stack[st.choice_stack.length - 1] })
                     break
                 }
+                case ParseType.choice_append: {
+                    if (st.choice_stack.length == 0) {
+                        return parseError(st, r.error_invalid_choice_append)
+                    }
+                    scope_push({ type: choice_append_sym, needed: 1, items: [], op: { type: ParseType.item } })
+                    break
+                }
                 case ParseType.choice_bit_size: {
                     const c = read_bits(ds, op.item as number) as number
                     if (op.ops.length <= c) {
@@ -321,6 +332,7 @@ export const parse = (b: BufferSource): Item => {
                         case ParseType.block_size:
                         case ParseType.choice:
                         case ParseType.choice_index:
+                        case ParseType.choice_append:
                         case ParseType.array:
                         case ParseType.array_stream:
                         case ParseType.none:
@@ -445,6 +457,10 @@ export const parse = (b: BufferSource): Item => {
                         }
                         case r.type_choice_indexer: {
                             collapse_scope({ type: x, items: [], op: { type: ParseType.choice_index } })
+                            break
+                        }
+                        case r.type_choice_append: {
+                            collapse_scope({ type: x, items: [], op: { type: ParseType.choice_append } })
                             break
                         }
                         case r.end_scope: {

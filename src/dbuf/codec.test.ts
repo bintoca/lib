@@ -1,4 +1,4 @@
-import { parse, write, finishWrite, map_sym, Item, createDecoder, read, createEncoder, writeBuffer, write_checked, Scope, choice_sym, array_sym, array_stream_sym, bits_sym, isError, ParseType } from '@bintoca/dbuf/codec'
+import { parse, write, finishWrite, map_sym, Item, createDecoder, read, createEncoder, writeBuffer, write_checked, Scope, choice_sym, array_sym, array_stream_sym, bits_sym, isError, ParseType, choice_append_sym } from '@bintoca/dbuf/codec'
 import { r, u } from '@bintoca/dbuf/registry'
 import { zigzagEncode, zigzagDecode, unicodeToText, textToUnicode, getLeap_millis, getLeap_millis_tai, strip } from '@bintoca/dbuf/util'
 const dv = new DataView(new ArrayBuffer(8))
@@ -172,6 +172,7 @@ const bo = (...a: Item[]) => { return { type: r.bind, items: [...a], op: undefin
 const mo = (...a: Item[]) => { return { type: r.type_map, items: [...a], op: undefined } }
 const ao = (...a: Item[]) => { return { type: r.type_array, items: [...a], op: undefined } }
 const ci = (...a: Item[]) => { return { type: r.type_choice_indexer, items: [...a], op: undefined } }
+const ca = (...a: Item[]) => { return { type: choice_append_sym, items: [...a], op: undefined } }
 const bs = (...a: number[]) => { return { type: bits_sym, items: [...a], op: undefined } }
 test.each([
     [[r.bind, r.end_scope], r.error_invalid_end_scope],
@@ -186,8 +187,6 @@ test.each([
     expect((er as any).items[1].items[1].items[0]).toEqual(o)
 })
 {
-
-
 
 
 
@@ -241,6 +240,7 @@ test.each([
     [b(b(b(r.offset_add, b(r.integer_unsigned, 5)), r.TAI_seconds), u8), u8],
     [b(b(b(r.offset_shift_left, 4), b(r.quote_next, r.IEEE_754_binary, r.parse_varint)), 23), 23],
     [b(r.type_array, tc(r.integer_unsigned, b(r.delta, r.integer_unsigned), b(r.delta, r.integer_negative), r.repeat_count), 4, 0, 5, 1, 2, 2, 1, 5), aos(cs(0, 5), cs(1, 2), cs(2, 1), cs(5, 2))],
+    [b(r.type_array, tc(r.integer_unsigned, r.type_choice_append), 3, 1, r.IEEE_754_binary, 2, u8, 0, 4), aos(cs(1, ca(r.IEEE_754_binary)), cs(2, u8), cs(0, 4))],
 ])('parse_strip(%#)', (i, o) => {
     const w = writer(i)
     try {
