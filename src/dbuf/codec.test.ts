@@ -233,7 +233,7 @@ test.each([
     [b(tcb(r.parse_bit_size, 7, r.parse_bit_size, 5), u8), cs(0, 2)],
     [b(tm(b(r.integer_unsigned, 14)), b(r.integer_unsigned, 2)), ms(bo(r.integer_unsigned, 2))],
     [b(tm(b(r.numerator, r.parse_none, b(r.text_plain, u.a, u.end_scope)))), ms(bo(r.text_plain, tp(u.a)))],
-    [b(tm(b(r.numerator, r.type_array, r.integer_unsigned)), 2, 3, 4), ms(aos(3, 4))],
+    [b(tm(b(r.numerator, r.type_array, r.integer_unsigned), r.denominator), 2, 3, 4, r.IPv4), ms(aos(3, 4), r.IPv4)],
     [b(tc(r.integer_unsigned, b(r.numerator, r.type_choice_indexer)), 1, 0, 2), cs(1, ci(cs(0, 2)))],
     [b(r.type_array, r.placeholder, 1, r.IPv4), aos(r.IPv4)],
     [b(b(r.quote_next, r.TAI_seconds, r.parse_varint), 3), 3],
