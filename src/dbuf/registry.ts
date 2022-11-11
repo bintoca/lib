@@ -207,13 +207,13 @@ export const enum r {
     magic_number = 4473429
 }
 export const enum u {
-    end_scope,
     space,
     a,
     e,
     i,
     n,
     o,
+    s,
     t,
 
     line_feed,
@@ -225,6 +225,7 @@ export const enum u {
     period,
     forward_slash,
     colon,
+    semi_colon,
     question,
     //remaining A-Z,a-z
     null = 64,

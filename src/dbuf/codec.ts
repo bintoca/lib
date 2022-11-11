@@ -30,13 +30,14 @@ export const shiftMap = [
     [0, 11, 32], [0, 11, 31, 35], [0, 11, 30, 33, 35], [0, 11, 30, 34], [0, 12, 34], [0, 12, 33, 35], [0, 13, 35], [0, 14]
 ]
 export const shiftLookup = shiftMap.map(x => x.map(y => shiftInit[y]))
-export type DecoderState = { partial: number, temp: number[], tempCount: number, tempIndex: number, dv: DataView, dvOffset: number, partialBlock: number, partialBlockRemaining: number, tempChoice?: number }
+export type DecoderState = { partial: number, temp: number[], mesh: number, tempCount: number, tempIndex: number, dv: DataView, dvOffset: number, partialBlock: number, partialBlockRemaining: number, tempChoice?: number }
 export const decodeVarintBlock = (s: DecoderState, x: number) => {
     let mesh = x >>> 24
     const newBit = mesh >>> 7
     if (newBit) {
         mesh = mesh ^ 255
     }
+    s.mesh = mesh
     const a = shiftLookup[mesh]
     if (newBit) {
         s.temp[0] = s.partial
@@ -68,7 +69,7 @@ export const createDecoder = (b: BufferSource): DecoderState => {
         throw new Error('data must be multiple of 4 bytes, length: ' + b.byteLength)
     }
     const dv = bufToDV(b)
-    return { partial: 0, temp: Array(8), tempCount: 0, tempIndex: 0, dv, dvOffset: 0, partialBlock: 0, partialBlockRemaining: 0 }
+    return { partial: 0, temp: Array(8), mesh: 0, tempCount: 0, tempIndex: 0, dv, dvOffset: 0, partialBlock: 0, partialBlockRemaining: 0 }
 }
 export const read = (s: DecoderState): number => {
     if (s.tempChoice !== undefined) {
@@ -230,7 +231,7 @@ export const resolveItemOp = (x: Item): ParseOp => {
     }
     return { type: ParseType.item_or_none, item: x }
 }
-export const isInvalidText = (n: number) => n > 0x10FFFF + 1
+export const isInvalidText = (n: number) => n > 0x10FFFF
 export const isInvalidRegistry = (n: number) => n > r.magic_number || (n < r.magic_number && n > 600) || (n < 512 && n > 200)
 export const createPosition = (s: DecoderState): ParsePosition => { return { dvOffset: s.dvOffset, tempIndex: s.tempCount ? s.tempIndex : undefined, partialBlockRemaining: s.partialBlockRemaining ? s.partialBlockRemaining : undefined } }
 export const parse = (b: BufferSource): Item => {
@@ -402,7 +403,20 @@ export const parse = (b: BufferSource): Item => {
                     break
                 }
                 case ParseType.text: {
-                    scope_push({ type: r.text_plain, items: [], op: { type: ParseType.text_code_points } })
+                    const begin = ds.dvOffset - 4
+                    const l = read(ds)
+                    // let begin = ds.dv.getUint32(ds.dvOffset - 4)
+                    // switch (ds.tempIndex) {
+                    //     case 1:
+                    //         begin = begin
+                    //         break
+                    // }
+                    if (l) {
+                        scope_push({ type: r.text_plain, needed: l, items: [], op: { type: ParseType.text_code_points } })
+                    }
+                    else {
+                        collapse_scope({ type: r.text_plain, items: [], op: { type: ParseType.text_code_points } })
+                    }
                     break
                 }
                 case ParseType.array: {
@@ -432,18 +446,10 @@ export const parse = (b: BufferSource): Item => {
                 }
                 case ParseType.text_code_points: {
                     const x = read(ds)
-                    switch (x) {
-                        case u.end_scope: {
-                            top.end = createPosition(ds)
-                            collapse_scope(st.scope_stack.pop())
-                            break
-                        }
-                        default:
-                            if (isInvalidText(x)) {
-                                return parseError(st, r.error_invalid_text_value)
-                            }
-                            collapse_scope(x)
+                    if (isInvalidText(x)) {
+                        return parseError(st, r.error_invalid_text_value)
                     }
+                    collapse_scope(x)
                     break
                 }
                 case ParseType.item: {
