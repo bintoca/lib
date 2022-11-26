@@ -184,17 +184,13 @@ test.each([
     [[r.bind, r.type_choice_indexer, 0], r.error_invalid_choice_indexer],
     [[r.bind, r.type_choice, r.integer_unsigned], r.error_unfinished_parse_stack],
     [[r.bind, r.IEEE_754_binary], r.error_unfinished_parse_stack],
-    [[r.bind, r.text_plain, 1, 0xFFFFFF], r.error_invalid_text_value],
+    [[r.bind, r.text_plain, 8, 0xFFFFFF], r.error_invalid_text_value],
     [[0xFFFFFF], r.error_invalid_registry_value],
 ])('parseError(%#)', (i, o) => {
     const er = parse(writer(i))
     expect((er as any).items[1].items[1].items[0]).toEqual(o)
 })
 {
-
-
-
-
 
 
 
