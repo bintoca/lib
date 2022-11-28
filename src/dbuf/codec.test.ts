@@ -1,6 +1,6 @@
 import { parse, write, finishWrite, map_sym, Item, createDecoder, read, createEncoder, writeBuffer, write_checked, Scope, choice_sym, array_sym, array_stream_sym, bits_sym, isError, ParseType, choice_append_sym } from '@bintoca/dbuf/codec'
 import { r, u } from '@bintoca/dbuf/registry'
-import { zigzagEncode, zigzagDecode, unicodeToText, textToUnicode, getLeap_millis, getLeap_millis_tai, strip } from '@bintoca/dbuf/util'
+import { zigzagEncode, zigzagDecode, unicodeToText, textToUnicode, getLeap_millis, getLeap_millis_tai, strip, debug, setDebug } from '@bintoca/dbuf/util'
 const dv = new DataView(new ArrayBuffer(8))
 test('float', () => {
     dv.setFloat32(0, 1, true)
@@ -12,13 +12,21 @@ test('float', () => {
 })
 const writer = (x: NumOrBuf) => {
     const es = createEncoder()
-    function f(y) {
+    function f(y: NumOrBuf) {
         if (y instanceof Uint8Array) {
             writeBuffer(es, y)
         }
         else if (Array.isArray(y)) {
             for (let j of y) {
                 f(j)
+            }
+        }
+        else if (typeof y == 'object') {
+            if (y.debug) {
+                setDebug(y.debug)
+            }
+            else {
+                write_checked(es, y.num, y.size)
             }
         }
         else {
@@ -162,7 +170,7 @@ test.each([
         throw e
     }
 })
-type NumOrBuf = number | Uint8Array | NumOrBuf[]
+type NumOrBuf = number | Uint8Array | { num?: number, size?: number, debug?: string[] } | NumOrBuf[]
 const b = (a: NumOrBuf, ...b: NumOrBuf[]) => [r.bind, a, ...b]
 const tc = (...a: NumOrBuf[]) => [r.type_choice, ...a, r.end_scope]
 const tcb = (...a: NumOrBuf[]) => [r.type_choice_bit, ...a, r.end_scope]
@@ -178,6 +186,8 @@ const ao = (...a: Item[]) => { return { type: r.type_array, items: [...a], op: u
 const ci = (...a: Item[]) => { return { type: r.type_choice_indexer, items: [...a], op: undefined } }
 const ca = (...a: Item[]) => { return { type: choice_append_sym, items: [...a], op: undefined } }
 const bs = (...a: number[]) => { return { type: bits_sym, items: [...a], op: undefined } }
+const siz = (num: number, size: number) => { return { num, size } }
+const dg = (x: string | string[]) => { return { debug: Array.isArray(x) ? x : [x] } }
 test.each([
     [[r.bind, r.end_scope], r.error_invalid_end_scope],
     [[r.bind, r.type_choice, r.IEEE_754_binary, r.end_scope, 3], r.error_invalid_choice_index],
@@ -242,6 +252,8 @@ test.each([
     [b(b(b(r.offset_shift_left, 4), b(r.quote_next, r.IEEE_754_binary, r.parse_varint)), 23), 23],
     [b(r.type_array, tc(r.integer_unsigned, b(r.delta, r.integer_unsigned), b(r.delta, r.integer_negative), r.repeat_count), 4, 0, 5, 1, 2, 2, 1, 5), aos(cs(0, 5), cs(1, 2), cs(2, 1), cs(5, 2))],
     [b(r.type_array, tc(r.integer_unsigned, r.type_choice_append), 3, 1, r.IEEE_754_binary, 2, u8, 0, 4), aos(cs(1, ca(r.IEEE_754_binary)), cs(2, u8), cs(0, 4))],
+    [b(r.text_plain, 1, siz(u.a, 2)), tp(u.a)],
+    [b(r.text_plain, 5, u.a, u.e, u.i, u.n, u.o), tp(u.a, u.e, u.i, u.n, u.o)],
 ])('parse_strip(%#)', (i, o) => {
     const w = writer(i)
     try {
@@ -258,7 +270,7 @@ test.each([
         }
     }
     catch (e) {
-        console.log(w)
+        debug('parse_strip', w)
         throw e
     }
 })

@@ -15,6 +15,13 @@ export const concat = (buffers: BufferSource[]): Uint8Array => {
 }
 export let log = (...x) => console.log(...x)
 export const setLog = (l) => log = l
+export let debugOn = []
+export const setDebug = (x: string[]) => debugOn = x
+export let debug = (...x) => {
+    if (debugOn.some(d => d == x[0])) {
+        console.debug(...x)
+    }
+}
 export const strip = (x: Item) => {
     if (typeof x == 'object') {
         if (x instanceof Uint8Array) {

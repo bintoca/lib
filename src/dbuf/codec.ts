@@ -1,5 +1,5 @@
 import { r, u } from '@bintoca/dbuf/registry'
-import { bufToDV, bufToU8, log } from '@bintoca/dbuf/util'
+import { bufToDV, bufToU8, log, debug } from '@bintoca/dbuf/util'
 
 export const shiftInit = [
     [8, 29], [8, 26], [8, 23], [8, 20], [8, 17], [8, 14], [8, 11], [8, 8],//7
@@ -175,9 +175,8 @@ export const read_bits = (s: DecoderState, n: number): number | Scope => {
 export const read_text = (ds: DecoderState): DataView => {
     const begin = ds.dvOffset - 4
     const meshPosition = meshMap[ds.mesh][ds.tempIndex]
-    //console.log(ds.mesh, ds.tempIndex, mm?.toString(2))
     const length = read(ds)
-    const lengthBeyondThisBlock = length - (8 - meshPosition)
+    const lengthBeyondThisBlock = length - (8 - meshMap[ds.mesh][ds.tempIndex])
     const blocks = Math.ceil(lengthBeyondThisBlock / 8)
     const dv = new DataView(new ArrayBuffer(ds.dvOffset - begin + blocks * 4))
     let o = 0
@@ -197,11 +196,12 @@ export const read_text = (ds: DecoderState): DataView => {
     const endMeshPosition = lengthBeyondThisBlock < 0 ? (8 + lengthBeyondThisBlock) : lengthBeyondThisBlock % 8
     ds.dvOffset -= 4
     ds.tempCount = 0
+    debug('read_text', length, meshPosition, lengthBeyondThisBlock, blocks, endMeshPosition, ds)
     read(ds)
-    while (meshMap[ds.mesh][ds.tempIndex] <= endMeshPosition) {
+    while (meshMap[ds.mesh][ds.tempIndex] < endMeshPosition) {
         read(ds)
     }
-    //console.log(l, mem, segments, blocks, tail, ds)
+    
     return dv
 }
 export const map_sym = Symbol.for('https://bintoca.com/symbol/map')
@@ -300,8 +300,8 @@ export const parseText = (b: BufferSource, st:ParseState): Item => {
     try {
         const decoder = createDecoder(b)
         const length = read(decoder)
-        const endMeshPosition = 8 - (Math.abs(length - (8 - meshMap[decoder.mesh][decoder.tempIndex])) % 8)
-        //console.log(len, pad, dec)
+        const endMeshPosition = (meshMap[decoder.mesh][decoder.tempIndex] + length) % 8;
+        debug('parseText', length, endMeshPosition, decoder)
         const items = []
         while (true) {
             const x = read(decoder)
@@ -309,7 +309,7 @@ export const parseText = (b: BufferSource, st:ParseState): Item => {
                 return parseError(st, r.error_invalid_text_value)
             }
             items.push(x)
-            if (decoder.dvOffset == decoder.dv.byteLength && meshMap[decoder.mesh][decoder.tempIndex] == endMeshPosition) {
+            if (decoder.dvOffset == decoder.dv.byteLength && meshMap[decoder.mesh][decoder.tempIndex] >= endMeshPosition) {
                 break
             }
         }
