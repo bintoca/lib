@@ -76,16 +76,10 @@ test.each(mesh)('read/write(%#)', (i) => {
 })
 test('overflow', () => {
     const dv = new DataView(new ArrayBuffer(12))
-    dv.setUint32(0, 0x00FFFFFF)
-    dv.setUint32(4, 0x00000000)
-    dv.setUint32(8, 0x01000010)
+    dv.setUint32(0, 0x80FFFFFF)
+    dv.setUint32(4, 0x80000000)
+    dv.setUint32(8, 0x81000010)
     expect(read(createDecoder(dv))).toBe(2)
-})
-test('stream_start', () => {
-    const dv = new DataView(new ArrayBuffer(12))
-    dv.setUint32(0, 0x80000000)
-    const er = parse(dv)
-    expect((er as any).items[1].items[1].items[0]).toEqual(r.error_stream_start_bit)
 })
 test.each([[[-2, -1, 0, 1, 2, 2147483647, -2147483648]]])('zigzag', (i) => {
     const es = createEncoder()

@@ -29,7 +29,7 @@ export const shiftMap = [
     [0, 10, 29], [0, 10, 28, 35], [0, 10, 27, 33, 35], [0, 10, 27, 34], [0, 10, 26, 30, 34], [0, 10, 26, 30, 33, 35], [0, 10, 26, 31, 35], [0, 10, 26, 32],
     [0, 11, 32], [0, 11, 31, 35], [0, 11, 30, 33, 35], [0, 11, 30, 34], [0, 12, 34], [0, 12, 33, 35], [0, 13, 35], [0, 14]
 ]
-export const shiftLookup = shiftMap.map(x => x.map(y => shiftInit[y]))
+export const shiftLookup = shiftMap.map(x => x.map(y => shiftInit[y])).concat(shiftMap.map(x => x.map(y => shiftInit[y])))
 export const meshMap = []
 for (let i = 0; i < 256; i++) {
     const m = [0]
@@ -56,39 +56,18 @@ export const maskMap = [
     0b00000001000000000000000000000111,
     0b00000000000000000000000000000000,
 ]
-export type DecoderState = { partial: number, temp: number[], mesh: number, tempCount: number, tempIndex: number, dv: DataView, dvOffset: number, partialBlock: number, partialBlockRemaining: number, tempChoice?: number }
+export type DecoderState = { temp: number[], mesh: number, tempCount: number, tempIndex: number, dv: DataView, dvOffset: number, partialBlock: number, partialBlockRemaining: number, tempChoice?: number }
 export const decodeVarintBlock = (s: DecoderState, x: number) => {
     let mesh = x >>> 24
     s.mesh = mesh
-    const newBit = mesh >>> 7
-    if (newBit) {
-        mesh = mesh ^ 255
-    }
+    const continueBit = mesh >>> 7
     const a = shiftLookup[mesh]
-    if (newBit) {
-        s.temp[0] = s.partial
-        s.tempCount = a.length
-        for (let i = 0; i < a.length - 1; i++) {
-            s.temp[i + 1] = (x << a[i][0]) >>> a[i][1]
-        }
-        const an = a[a.length - 1]
-        s.partial = (x << an[0]) >>> an[1]
+    s.temp[0] = ((s.temp[s.tempIndex] << (32 - a[0][1])) >>> 0) + ((x << a[0][0]) >>> a[0][1])
+    for (let i = 1; i < a.length; i++) {
+        s.temp[i] = (x << a[i][0]) >>> a[i][1]
     }
-    else {
-        if (a.length == 1) {
-            s.tempCount = 0
-            s.partial = ((s.partial << 24) >>> 0) + (x & 0xFFFFFF)
-        }
-        else {
-            s.temp[0] = ((s.partial << (32 - a[0][1])) >>> 0) + ((x << a[0][0]) >>> a[0][1])
-            s.tempCount = a.length - 1
-            for (let i = 1; i < a.length - 1; i++) {
-                s.temp[i] = (x << a[i][0]) >>> a[i][1]
-            }
-            const an = a[a.length - 1]
-            s.partial = (x << an[0]) >>> an[1]
-        }
-    }
+    s.temp[a.length] = 0
+    s.tempCount = continueBit ? a.length - 1 : a.length
     s.tempIndex = 0
 }
 export const createDecoder = (b: BufferSource): DecoderState => {
@@ -96,7 +75,7 @@ export const createDecoder = (b: BufferSource): DecoderState => {
         throw new Error('data must be multiple of 4 bytes, length: ' + b.byteLength)
     }
     const dv = bufToDV(b)
-    return { partial: 0, temp: Array(8), mesh: 0, tempCount: 0, tempIndex: 0, dv, dvOffset: 0, partialBlock: 0, partialBlockRemaining: 0 }
+    return { temp: [0, 0, 0, 0, 0, 0, 0, 0, 0], mesh: 0, tempCount: 0, tempIndex: 0, dv, dvOffset: 0, partialBlock: 0, partialBlockRemaining: 0 }
 }
 const testDecoder = createDecoder(new ArrayBuffer(8))
 decodeVarintBlock(testDecoder, 0xaf279000)
@@ -201,7 +180,7 @@ export const read_text = (ds: DecoderState): DataView => {
     while (meshMap[ds.mesh][ds.tempIndex] < endMeshPosition) {
         read(ds)
     }
-    
+
     return dv
 }
 export const map_sym = Symbol.for('https://bintoca.com/symbol/map')
@@ -296,7 +275,7 @@ export const resolveItemOp = (x: Item): ParseOp => {
 export const isInvalidText = (n: number) => n > 0x10FFFF
 export const isInvalidRegistry = (n: number) => n > r.magic_number || (n < r.magic_number && n > 600) || (n < 512 && n > 200)
 export const createPosition = (s: DecoderState): ParsePosition => { return { dvOffset: s.dvOffset, tempIndex: s.tempCount ? s.tempIndex : undefined, partialBlockRemaining: s.partialBlockRemaining ? s.partialBlockRemaining : undefined } }
-export const parseText = (b: BufferSource, st:ParseState): Item => {
+export const parseText = (b: BufferSource, st: ParseState): Item => {
     try {
         const decoder = createDecoder(b)
         const length = read(decoder)
@@ -323,9 +302,6 @@ export const parse = (b: BufferSource): Item => {
     const root = { type: array_sym, items: [], op: { type: ParseType.item } }
     const st: ParseState = { root, scope_stack: [root], decoder: createDecoder(b), choice_stack: [] }
     try {
-        if (st.decoder.dv.getUint8(0) >>> 7) {
-            return parseError(st, r.error_stream_start_bit)
-        }
         const scope_top = () => st.scope_stack[st.scope_stack.length - 1]
         const scope_push = (s: Scope) => {
             s.start = position
@@ -639,6 +615,9 @@ export const write = (s: EncoderState, x: number, size?: number) => {
                 s.dv = new DataView(new ArrayBuffer(4096))
                 s.offset = 0
             }
+            if (remaining != 0) {
+                s.mesh += 128
+            }
             s.dv.setUint32(s.offset, (s.mesh << 24) + s.chunk)
             s.offset += 4
             s.chunkSpace = 8
@@ -663,8 +642,11 @@ export const write = (s: EncoderState, x: number, size?: number) => {
                 s.queue = []
             }
         }
-        if (remaining == 0) {
+        else if (remaining == 0) {
             s.meshBit = !s.meshBit
+            break
+        }
+        if (remaining == 0) {
             break
         }
     }
