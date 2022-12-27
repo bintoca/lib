@@ -625,23 +625,7 @@ export const write = (s: EncoderState, x: number, size?: number) => {
             s.chunk = 0
             s.mesh = 0
             s.meshBit = false
-            if (s.queue.length) {
-                for (let b of s.queue) {
-                    const dv = bufToDV(b)
-                    let off = 0
-                    while (off < dv.byteLength) {
-                        if (s.dv.byteLength == s.offset) {
-                            s.buffers.push(bufToU8(s.dv))
-                            s.dv = new DataView(new ArrayBuffer(4096))
-                            s.offset = 0
-                        }
-                        s.dv.setUint32(s.offset, dv.getUint32(off))
-                        s.offset += 4
-                        off += 4
-                    }
-                }
-                s.queue = []
-            }
+            flushQueueBuffers(s)
         }
         else if (remaining == 0) {
             s.meshBit = !s.meshBit
@@ -669,13 +653,29 @@ export const writeBuffer = (st: EncoderState, x: BufferSource) => {
     }
     st.queue.push(x)
 }
-export const finishWrite = (s: EncoderState) => {
-    write(s, 0, s.chunkSpace)
-    s.buffers.push(bufToU8(s.dv, 0, s.offset))
+export const flushQueueBuffers = (s: EncoderState) => {
+    if (s.queue.length) {
+        for (let b of s.queue) {
+            const dv = bufToDV(b)
+            let off = 0
+            while (off < dv.byteLength) {
+                if (s.dv.byteLength == s.offset) {
+                    s.buffers.push(bufToU8(s.dv))
+                    s.dv = new DataView(new ArrayBuffer(4096))
+                    s.offset = 0
+                }
+                s.dv.setUint32(s.offset, dv.getUint32(off))
+                s.offset += 4
+                off += 4
+            }
+        }
+        s.queue = []
+    }
 }
-export const flushWrite = (s: EncoderState) => {
-    if (s.chunkSpace != 8 || s.queue.length) {
+export const finishWrite = (s: EncoderState) => {
+    if (s.chunkSpace != 8) {
         write(s, 0, s.chunkSpace)
     }
+    flushQueueBuffers(s)
     s.buffers.push(bufToU8(s.dv, 0, s.offset))
 }
