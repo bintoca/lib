@@ -31,7 +31,7 @@ export const shiftMap = [
 ]
 export const shiftLookup = shiftMap.map(x => x.map(y => shiftInit[y])).concat(shiftMap.map(x => x.map(y => shiftInit[y])))
 export const meshMap = []
-for (let i = 0; i < 256; i++) {
+for (let i = 0; i < 128; i++) {
     const m = [0]
     let a = 128
     let last = false
@@ -43,18 +43,20 @@ for (let i = 0; i < 256; i++) {
         last = current
         a = a / 2
     }
+    m.push(0)
     meshMap[i] = m
+    meshMap[i + 128] = m
 }
 export const maskMap = [
     0b11111111111111111111111111111111,
-    0b01111111000111111111111111111111,
-    0b00111111000000111111111111111111,
-    0b00011111000000000111111111111111,
-    0b00001111000000000000111111111111,
-    0b00000111000000000000000111111111,
-    0b00000011000000000000000000111111,
-    0b00000001000000000000000000000111,
-    0b00000000000000000000000000000000,
+    0b11111111000111111111111111111111,
+    0b10111111000000111111111111111111,
+    0b10011111000000000111111111111111,
+    0b10001111000000000000111111111111,
+    0b10000111000000000000000111111111,
+    0b10000011000000000000000000111111,
+    0b10000001000000000000000000000111,
+    0b10000000000000000000000000000000,
 ]
 export type DecoderState = { temp: number[], mesh: number, tempCount: number, tempIndex: number, dv: DataView, dvOffset: number, partialBlock: number, partialBlockRemaining: number, tempChoice?: number }
 export const decodeVarintBlock = (s: DecoderState, x: number) => {
@@ -152,7 +154,7 @@ export const read_bits = (s: DecoderState, n: number): number | Scope => {
     return r
 }
 export const read_text = (ds: DecoderState): DataView => {
-    const begin = ds.dvOffset - 4
+    const begin = ds.tempCount == 0 ? ds.dvOffset : ds.dvOffset - 4
     const meshPosition = meshMap[ds.mesh][ds.tempIndex]
     const length = read(ds)
     const lengthBeyondThisBlock = length - (8 - meshMap[ds.mesh][ds.tempIndex])
@@ -180,7 +182,6 @@ export const read_text = (ds: DecoderState): DataView => {
     while (meshMap[ds.mesh][ds.tempIndex] < endMeshPosition) {
         read(ds)
     }
-
     return dv
 }
 export const map_sym = Symbol.for('https://bintoca.com/symbol/map')

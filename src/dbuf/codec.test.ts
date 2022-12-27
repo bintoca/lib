@@ -192,6 +192,9 @@ test.each([
     [[0xFFFFFF], r.error_invalid_registry_value],
 ])('parseError(%#)', (i, o) => {
     const er = parse(writer(i))
+    if (!isError(er)) {
+        console.log(er['items'])
+    }
     expect((er as any).items[1].items[1].items[0]).toEqual(o)
 })
 {
