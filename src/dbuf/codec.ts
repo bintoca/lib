@@ -164,7 +164,7 @@ export const read_text = (ds: DecoderState): DataView => {
     ds.dvOffset = begin
     let firstBlock = ds.dv.getUint32(ds.dvOffset)
     if (meshPosition == Math.clz32(firstBlock & maskMap[meshPosition])) {
-        firstBlock = ((firstBlock ^ 0xffffffff) & 0xff000000) | (firstBlock & 0x00ffffff)
+        firstBlock = ((firstBlock ^ 0xffffffff) & 0x7f000000) | (firstBlock & 0x80ffffff)
     }
     dv.setUint32(o, firstBlock & maskMap[meshPosition])
     ds.dvOffset += 4
@@ -464,11 +464,7 @@ export const parse = (b: BufferSource): Item => {
                     break
                 }
                 case ParseType.text: {
-                    const t = parseText(read_text(ds), st)
-                    if (isError(t)) {
-                        return t
-                    }
-                    collapse_scope(t)
+                    collapse_scope(bufToU8(read_text(ds)))
                     break
                 }
                 case ParseType.array: {
