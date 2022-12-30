@@ -251,14 +251,19 @@ export const resolveItemOp = (x: Item): ParseOp => {
                 return { type: ParseType.bit_variable }
             case r.parse_block_variable:
                 return { type: ParseType.block_variable }
-            case r.IEEE_754_decimal:
-            case r.IEEE_754_binary:
+            case r.IEEE_754_decimal32:
+            case r.IEEE_754_binary32:
             case r.IPv4:
-            case r.TAI_seconds:
                 return { type: ParseType.block_size, size: 1 }
+            case r.IEEE_754_decimal64:
+            case r.IEEE_754_binary64:
+                return { type: ParseType.block_size, size: 2 }
+            case r.IEEE_754_decimal128:
+            case r.IEEE_754_binary128:
             case r.IPv6:
             case r.UUID:
                 return { type: ParseType.block_size, size: 4 }
+            case r.IEEE_754_binary256:
             case r.SHA256:
                 return { type: ParseType.block_size, size: 8 }
             case r.parse_varint_plus_block:
