@@ -163,8 +163,8 @@ export const read_string = (ds: DecoderState): DataView => {
     let o = 0
     ds.dvOffset = begin
     let firstBlock = ds.dv.getUint32(ds.dvOffset)
-    if (meshPosition == Math.clz32(firstBlock & maskMap[meshPosition])) {
-        firstBlock = ((firstBlock ^ 0xffffffff) & 0x7f000000) | (firstBlock & 0x80ffffff)
+    if (1 << (31 - meshPosition) & firstBlock) {
+        firstBlock = firstBlock ^ 0x7f000000
     }
     dv.setUint32(o, firstBlock & maskMap[meshPosition])
     ds.dvOffset += 4
