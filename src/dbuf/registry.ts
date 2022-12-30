@@ -158,6 +158,7 @@ export const enum r {
     type_choice_bit,
     type_choice_append,
     offset_shift_left,
+    binary_string,
     
     parse_varint = 64,
     parse_item,

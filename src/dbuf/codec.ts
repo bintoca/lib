@@ -153,7 +153,7 @@ export const read_bits = (s: DecoderState, n: number): number | Scope => {
     const r = rb(s, n)
     return r
 }
-export const read_text = (ds: DecoderState): DataView => {
+export const read_string = (ds: DecoderState): DataView => {
     const begin = ds.tempCount == 0 ? ds.dvOffset : ds.dvOffset - 4
     const meshPosition = meshMap[ds.mesh][ds.tempIndex]
     const length = read(ds)
@@ -193,7 +193,7 @@ export const bits_sym = Symbol.for('https://bintoca.com/symbol/bits')
 export type Scope = { type: r | symbol, needed?: number, items: Item[], result?, op: ParseOp, ops?: ParseOp[], start?: ParsePosition, end?: ParsePosition, parent?: Scope, parentIndex?: number }
 export type Slot = Scope | number
 export type Item = Slot | Uint8Array
-export const enum ParseType { varint, item, item_or_none, block_size, block_variable, bit_size, bit_variable, text, array, array_stream, choice, choice_index, choice_bit_size, choice_append, map, varint_plus_block, none }
+export const enum ParseType { varint, item, item_or_none, block_size, block_variable, bit_size, bit_variable, string, array, array_stream, choice, choice_index, choice_bit_size, choice_append, map, varint_plus_block, none }
 export type ParseOp = { type: ParseType, size?: number, ops?: ParseOp[], op?: ParseOp, item?: Item, choiceRest?: boolean }
 export type ParsePlan = { ops: ParseOp[], index: number }
 export type ParseState = { root: Scope, scope_stack: Scope[], decoder: DecoderState, choice_stack: ParseOp[] }
@@ -266,7 +266,8 @@ export const resolveItemOp = (x: Item): ParseOp => {
             case r.text_plain:
             case r.text_idna:
             case r.text_iri:
-                return { type: ParseType.text }
+            case r.binary_string:
+                return { type: ParseType.string }
             case r.parse_item:
                 return { type: ParseType.item }
         }
@@ -293,7 +294,7 @@ export const parseText = (b: BufferSource, st: ParseState): Item => {
                 break
             }
         }
-        return { type: r.text_plain, items, op: { type: ParseType.text } }
+        return { type: r.text_plain, items, op: { type: ParseType.string } }
     }
     catch (e) {
         throw 'error parsing string: ' + e.message
@@ -409,7 +410,7 @@ export const parse = (b: BufferSource): Item => {
                         case ParseType.block_variable:
                         case ParseType.item:
                         case ParseType.item_or_none:
-                        case ParseType.text:
+                        case ParseType.string:
                         case ParseType.varint:
                         case ParseType.varint_plus_block:
                             if (op.ops.length - 1 <= c) {
@@ -463,8 +464,8 @@ export const parse = (b: BufferSource): Item => {
                     scope_push({ type: map_sym, needed: op.ops.length, items: [], op: op.ops[0], ops: op.ops })
                     break
                 }
-                case ParseType.text: {
-                    collapse_scope(bufToU8(read_text(ds)))
+                case ParseType.string: {
+                    collapse_scope(bufToU8(read_string(ds)))
                     break
                 }
                 case ParseType.array: {
