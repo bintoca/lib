@@ -437,7 +437,7 @@ export const parse = (b: BufferSource): Item => {
                     break
                 }
                 case ParseType.item_or_none: {
-                    op.type = top.type == r.bind || top.type == array_sym || top.type == map_sym || (top.parent.type == map_sym && top.type == choice_sym) ? ParseType.item : ParseType.none
+                    op.type = top.type == choice_sym && top.parent.type != map_sym ? ParseType.none : ParseType.item
                     ds.tempChoice = undefined
                     break
                 }
