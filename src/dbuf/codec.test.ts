@@ -1,4 +1,4 @@
-import { parse, write, finishWrite, map_sym, Item, createDecoder, read, createEncoder, writeBuffer, write_checked, Scope, choice_sym, array_sym, array_stream_sym, bits_sym, isError, ParseType, choice_append_sym } from '@bintoca/dbuf/codec'
+import { parse, write, finishWrite, map_sym, Item, createDecoder, read, createEncoder, writeBuffer, write_checked, Scope, choice_sym, array_sym, array_stream_sym, bits_sym, isError, ParseType, choice_append_sym, string_stream_sym } from '@bintoca/dbuf/codec'
 import { r, u } from '@bintoca/dbuf/registry'
 import { zigzagEncode, zigzagDecode, unicodeToText, textToUnicode, getLeap_millis, getLeap_millis_tai, strip, debug, setDebug } from '@bintoca/dbuf/util'
 const dv = new DataView(new ArrayBuffer(8))
@@ -171,6 +171,7 @@ const tcb = (...a: NumOrBuf[]) => [r.type_choice_bit, ...a, r.end_scope]
 const tm = (...a: NumOrBuf[]) => [r.type_map, ...a, r.end_scope]
 const cs = (a: Item, b?: Item) => { return { type: choice_sym, items: b === undefined ? [a] : [a, b], op: undefined } }
 const tp = (size: number, a: number[], ...end: number[]) => { return writer([{ num: a.length, size }, ...a, ...end]) }
+const tps = (...a: Item[]) => { return { type: string_stream_sym, items: [...a], op: undefined } }
 const ms = (...a: Item[]) => { return { type: map_sym, items: [...a], op: undefined } }
 const aos = (...a: Item[]) => { return { type: array_sym, items: [...a], op: undefined } }
 const ass = (...a: Item[]) => { return { type: array_stream_sym, items: [...a], op: undefined } }
@@ -191,11 +192,10 @@ test.each([
     [[0xFFFFFF], r.error_invalid_registry_value],
 ])('parseError(%#)', (i, o) => {
     const er = parse(writer(i))
-    if (!isError(er)) {
-        console.log(er['items'])
-    }
+    if (!isError(er)) { console.log(er['items']) }
     expect((er as any).items[1].items[1].items[0]).toEqual(o)
 })
+
 test.each([
     [b(b(r.IEEE_754_binary32, u8), r.IPv4), r.IPv4],
     [b(r.parse_block_size, 0, u8), u8],
@@ -243,6 +243,7 @@ test.each([
     [b(r.type_array, tc(r.integer_unsigned, r.type_choice_append), 3, 1, r.IEEE_754_binary32, 2, u8, 0, 4), aos(cs(1, ca(r.IEEE_754_binary32)), cs(2, u8), cs(0, 4))],
     [b(r.text_plain, 2, siz(u.a, 2)), writer([{ num: 2, size: 4 }, { num: u.a, size: 2 }])],
     [b(r.text_plain, 5, u.a, u.e, u.i, u.n, u.o), tp(4, [u.a, u.e, u.i, u.n, u.o])],
+    [b(r.text_plain, 0, 5, u.a, u.e, u.i, u.n, u.o, 3, u.a, u.n, u.o, 0), tps(tp(5, [u.a, u.e, u.i, u.n, u.o], 3, u.a, u.n, u.o, 0), tp(3, [u.a, u.n, u.o], 0))],
 ])('parse_strip(%#)', (i, o) => {
     const w = writer(i)
     try {

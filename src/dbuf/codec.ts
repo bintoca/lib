@@ -153,10 +153,13 @@ export const read_bits = (s: DecoderState, n: number): number | Scope => {
     const r = rb(s, n)
     return r
 }
-export const read_string = (ds: DecoderState): DataView => {
+export const read_string = (ds: DecoderState): Uint8Array => {
     const begin = ds.tempCount == 0 ? ds.dvOffset : ds.dvOffset - 4
     const meshPosition = meshMap[ds.mesh][ds.tempIndex]
     const length = read(ds)
+    if (length == 0) {
+        return null
+    }
     const lengthBeyondThisBlock = length - (8 - meshMap[ds.mesh][ds.tempIndex])
     const blocks = Math.ceil(lengthBeyondThisBlock / 8)
     const dv = new DataView(new ArrayBuffer(ds.dvOffset - begin + blocks * 4))
@@ -182,18 +185,19 @@ export const read_string = (ds: DecoderState): DataView => {
     while (meshMap[ds.mesh][ds.tempIndex] < endMeshPosition) {
         read(ds)
     }
-    return dv
+    return bufToU8(dv)
 }
 export const map_sym = Symbol.for('https://bintoca.com/symbol/map')
 export const choice_sym = Symbol.for('https://bintoca.com/symbol/choice')
 export const choice_append_sym = Symbol.for('https://bintoca.com/symbol/choice_append')
 export const array_sym = Symbol.for('https://bintoca.com/symbol/array')
 export const array_stream_sym = Symbol.for('https://bintoca.com/symbol/array_stream')
+export const string_stream_sym = Symbol.for('https://bintoca.com/symbol/string_stream')
 export const bits_sym = Symbol.for('https://bintoca.com/symbol/bits')
 export type Scope = { type: r | symbol, needed?: number, items: Item[], result?, op: ParseOp, ops?: ParseOp[], start?: ParsePosition, end?: ParsePosition, parent?: Scope, parentIndex?: number }
 export type Slot = Scope | number
 export type Item = Slot | Uint8Array
-export const enum ParseType { varint, item, item_or_none, block_size, block_variable, bit_size, bit_variable, string, array, array_stream, choice, choice_index, choice_bit_size, choice_append, map, varint_plus_block, none }
+export const enum ParseType { varint, item, item_or_none, block_size, block_variable, bit_size, bit_variable, string, string_stream, array, array_stream, choice, choice_index, choice_bit_size, choice_append, map, varint_plus_block, none }
 export type ParseOp = { type: ParseType, size?: number, ops?: ParseOp[], op?: ParseOp, item?: Item, choiceRest?: boolean }
 export type ParsePlan = { ops: ParseOp[], index: number }
 export type ParseState = { root: Scope, scope_stack: Scope[], decoder: DecoderState, choice_stack: ParseOp[] }
@@ -470,7 +474,24 @@ export const parse = (b: BufferSource): Item => {
                     break
                 }
                 case ParseType.string: {
-                    collapse_scope(bufToU8(read_string(ds)))
+                    const s = read_string(ds)
+                    if (s) {
+                        collapse_scope(s)
+                    }
+                    else {
+                        scope_push({ type: string_stream_sym, items: [], op: { type: ParseType.string_stream } })
+                    }
+                    break
+                }
+                case ParseType.string_stream: {
+                    const s = read_string(ds)
+                    if (s) {
+                        collapse_scope(s)
+                    }
+                    else {
+                        top.end = createPosition(ds)
+                        collapse_scope(st.scope_stack.pop())
+                    }
                     break
                 }
                 case ParseType.array: {
@@ -502,6 +523,7 @@ export const parse = (b: BufferSource): Item => {
                     const x = read(ds)
                     switch (x) {
                         case r.type_map:
+                        case r.type_parts:
                         case r.type_choice:
                         case r.type_choice_bit: {
                             scope_push({ type: x, items: [], op: { type: ParseType.item } })
@@ -530,6 +552,7 @@ export const parse = (b: BufferSource): Item => {
                                         top.op = { type: ParseType.choice_bit_size, ops, item: Math.ceil(Math.log2(ops.length)) || 1 }
                                         break
                                     case r.type_map:
+                                    case r.type_parts:
                                         top.op = { type: ParseType.map, ops: top.items.map(x => resolveItemOp(x)) }
                                         break
                                 }

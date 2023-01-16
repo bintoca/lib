@@ -158,6 +158,7 @@ export const enum r {
     bool_bit,
     type_choice_bit,
     type_choice_append,
+    type_parts,
     offset_shift_left,
     binary_string,
     
