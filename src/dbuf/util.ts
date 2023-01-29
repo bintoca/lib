@@ -49,6 +49,7 @@ export const unicodeToText = (codePoint: number) => codePoint < 123 ? unicodeToT
 export const textToUnicode = (n: number) => n < 123 ? textToUnicodeLookup[n] : n
 
 export const tai_gps_epochOffset = (10 * 365 + 7) * 86400 * 1000
+//TODO move epoch to 2020 assuming no leap seconds after that
 export const posixToTAI_millis = (posix_millis: number, leap_millis: number) => posix_millis - tai_gps_epochOffset + leap_millis
 export const taiToPosix_millis = (tai_millis: number, leap_millis: number) => tai_millis + tai_gps_epochOffset - leap_millis
 export const ietf_leap = [

@@ -170,7 +170,7 @@ const tc = (...a: NumOrBuf[]) => [r.type_choice, ...a, r.end_scope]
 const tcb = (...a: NumOrBuf[]) => [r.type_choice_bit, ...a, r.end_scope]
 const tm = (...a: NumOrBuf[]) => [r.type_map, ...a, r.end_scope]
 const cs = (a: Item, b?: Item) => { return { type: choice_sym, items: b === undefined ? [a] : [a, b], op: undefined } }
-const tp = (size: number, a: number[], ...end: number[]) => { return writer([{ num: a.length, size }, ...a, ...end]) }
+const tp = (length: number, start: number, ...a: NumOrBuf[]) => { return { type: r.binary_string, items: [length, start, writer([...a])], op: undefined } }
 const tps = (...a: Item[]) => { return { type: string_stream_sym, items: [...a], op: undefined } }
 const ms = (...a: Item[]) => { return { type: map_sym, items: [...a], op: undefined } }
 const aos = (...a: Item[]) => { return { type: array_sym, items: [...a], op: undefined } }
@@ -207,22 +207,22 @@ test.each([
     [b(r.bool, 1), 1],
     [b(tc()), r.placeholder],
     [b(tm()), r.placeholder],
-    [b(tc(r.numerator, r.denominator), 1), cs(1, r.denominator)],
-    [b(tm(r.numerator), r.denominator), ms(r.denominator)],
-    [b(tm(r.numerator, tc(r.denominator)), r.IPv4, 0, r.IPv6), ms(r.IPv4, cs(0, r.IPv6))],
-    [b(tm(b(r.numerator, r.integer_unsigned)), 2), ms(2)],
-    [b(tm(b(r.numerator, b(r.denominator, r.integer_unsigned))), 2), ms(2)],
-    [b(tc(r.numerator, b(r.denominator, r.denominator)), 1), cs(1, bo(r.denominator, r.denominator))],
+    [b(tc(r.id, r.denominator), 1), cs(1, r.denominator)],
+    [b(tm(r.id), r.denominator), ms(r.denominator)],
+    [b(tm(r.id, tc(r.denominator)), r.IPv4, 0, r.IPv6), ms(r.IPv4, cs(0, r.IPv6))],
+    [b(tm(b(r.id, r.integer_unsigned)), 2), ms(2)],
+    [b(tm(b(r.id, b(r.denominator, r.integer_unsigned))), 2), ms(2)],
+    [b(tc(r.id, b(r.denominator, r.denominator)), 1), cs(1, bo(r.denominator, r.denominator))],
     [b(tm(b(r.denominator, r.denominator)), r.IPv4), ms(r.IPv4)],
     [b(tm(b(r.text_plain, 1, u.a)), r.IPv4), ms(r.IPv4)],
-    [b(tc(r.numerator, b(r.text_plain, 1, u.a)), 1), cs(1, bo(r.text_plain, tp(1, [u.a], r.end_scope, 1)))],
-    [b(tc(r.numerator, b(tm(r.text_plain), 1, u.a)), 1), cs(1, bo(mo(r.text_plain), ms(tp(3, [u.a], r.end_scope, 1))))],
-    [b(tc(r.numerator, b(r.type_array, r.text_plain), 1, 1, u.a), 1), cs(1, bo(ao(r.text_plain), aos(tp(3, [u.a], r.end_scope, 1))))],
-    [b(tc(r.numerator, b(r.type_array, r.text_plain), 0, 1, 1, u.a, 0), 1), cs(1, bo(ao(r.text_plain), ass(aos(tp(4, [u.a], 0, r.end_scope, 1)))))],
+    [b(tc(r.id, b(r.text_plain, 1, u.a)), 1), cs(1, bo(r.text_plain, tp(1, 7, r.bind, r.type_choice, r.id, r.bind, r.text_plain, 1, u.a)))],
+    [b(tc(r.id, b(tm(r.text_plain), 1, u.a)), 1), cs(1, bo(mo(r.text_plain), ms(tp(1, 1, 1, u.a, r.end_scope, 1))))],
+    [b(tc(r.id, b(r.type_array, r.text_plain), 1, 1, u.a), 1), cs(1, bo(ao(r.text_plain), aos(tp(1, 1, 1, u.a, r.end_scope, 1))))],
+    [b(tc(r.id, b(r.type_array, r.text_plain), 0, 1, 1, u.a, 0), 1), cs(1, bo(ao(r.text_plain), ass(aos(tp(1, 2, 1, 1, u.a, 0, r.end_scope, 1)))))],
     [b(r.parse_none, b(r.IEEE_754_binary32, u8)), bo(r.IEEE_754_binary32, u8)],
     [b(tc(r.integer_unsigned, r.type_choice_indexer), 1, 0, 2), cs(1, ci(cs(0, 2)))],
-    [b(tc(r.integer_unsigned, tc(r.text_plain, r.type_choice_indexer)), 1, 1, 0, 1, u.a), cs(1, cs(1, ci(cs(0, tp(6, [u.a])))))],
-    [b(tc(r.integer_unsigned, tm(tc(r.text_plain, r.type_choice_indexer), r.type_choice_indexer)), 1, 1, 0, 1, u.e, 0, 5), cs(1, ms(cs(1, ci(cs(0, tp(1, [u.e], 0, 5)))), ci(cs(0, 5))))],
+    [b(tc(r.integer_unsigned, tc(r.text_plain, r.type_choice_indexer)), 1, 1, 0, 1, u.a), cs(1, cs(1, ci(cs(0, tp(1, 6, r.end_scope, r.end_scope, 1, 1, 0, 1, u.a)))))],
+    [b(tc(r.integer_unsigned, tm(tc(r.text_plain, r.type_choice_indexer), r.type_choice_indexer)), 1, 1, 0, 1, u.e, 0, 5), cs(1, ms(cs(1, ci(cs(0, tp(1, 1, 1, u.e, 0, 5)))), ci(cs(0, 5))))],
     [b(tc(r.IEEE_754_binary32, tc(r.integer_unsigned, r.integer_signed)), 1, 1), cs(1, cs(1, 0))],
     [b(r.type_array, r.integer_unsigned, 0, 2, 3, 4, 1, 5, 0), ass(aos(3, 4), aos(5))],
     [b(r.type_array, tm(r.IEEE_754_binary32, tc(r.integer_unsigned, r.integer_signed)), 1, u8, 1), aos(ms(u8, cs(1, 0)))],
@@ -231,19 +231,18 @@ test.each([
     [b(tc(r.parse_bit_size, 7, r.parse_bit_size, 5), 0, u8), cs(0, 1)],
     [b(tcb(r.parse_bit_size, 7, r.parse_bit_size, 5), u8), cs(0, 2)],
     [b(tm(b(r.integer_unsigned, 14)), b(r.integer_unsigned, 2)), ms(bo(r.integer_unsigned, 2))],
-    [b(tm(b(r.numerator, r.parse_none, b(r.text_plain, 1, u.a)))), ms(bo(r.text_plain, tp(4, [u.a], r.end_scope)))],
-    [b(tm(b(r.numerator, r.type_array, r.integer_unsigned), r.denominator), 2, 3, 4, r.IPv4), ms(aos(3, 4), r.IPv4)],
-    [b(tc(r.integer_unsigned, b(r.numerator, r.type_choice_indexer)), 1, 0, 2), cs(1, ci(cs(0, 2)))],
+    [b(tm(b(r.id, r.parse_none, b(r.text_plain, 1, u.a)))), ms(bo(r.text_plain, tp(1, 2, 3, 1, u.a, r.end_scope)))],
+    [b(tm(b(r.id, r.type_array, r.integer_unsigned), r.denominator), 2, 3, 4, r.IPv4), ms(aos(3, 4), r.IPv4)],
+    [b(tc(r.integer_unsigned, b(r.id, r.type_choice_indexer)), 1, 0, 2), cs(1, ci(cs(0, 2)))],
     [b(r.type_array, r.placeholder, 1, r.IPv4), aos(r.IPv4)],
     [b(b(r.quote_next, r.IEEE_754_binary32, r.parse_varint), 3), 3],
     [b(b(r.quote_next, r.IEEE_754_binary32, r.parse_item), r.IPv4), r.IPv4],
     [b(b(b(r.offset_add, b(r.integer_unsigned, 5)), r.IEEE_754_binary32), u8), u8],
-    [b(b(b(r.offset_shift_left, 4), b(r.quote_next, r.IEEE_754_binary32, r.parse_varint)), 23), 23],
     [b(r.type_array, tc(r.integer_unsigned, b(r.delta, r.integer_unsigned), b(r.delta, r.integer_negative), r.repeat_count), 4, 0, 5, 1, 2, 2, 1, 5), aos(cs(0, 5), cs(1, 2), cs(2, 1), cs(5, 2))],
     [b(r.type_array, tc(r.integer_unsigned, r.type_choice_append), 3, 1, r.IEEE_754_binary32, 2, u8, 0, 4), aos(cs(1, ca(r.IEEE_754_binary32)), cs(2, u8), cs(0, 4))],
-    [b(r.text_plain, 2, siz(u.a, 2)), writer([{ num: 2, size: 4 }, { num: u.a, size: 2 }])],
-    [b(r.text_plain, 5, u.a, u.e, u.i, u.n, u.o), tp(4, [u.a, u.e, u.i, u.n, u.o])],
-    [b(r.text_plain, 0, 5, u.a, u.e, u.i, u.n, u.o, 3, u.a, u.n, u.o, 0), tps(tp(5, [u.a, u.e, u.i, u.n, u.o], 3, u.a, u.n, u.o, 0), tp(3, [u.a, u.n, u.o], 0))],
+    [b(r.text_plain, 2, siz(u.a, 2)), tp(2, 4, writer([r.bind, r.text_plain, 2, { num: u.a, size: 2 }]))],
+    [b(r.text_plain, 5, u.a, u.e, u.i, u.n, u.o), tp(5, 4, r.bind, r.text_plain, 5, u.a, u.e, u.i, u.n, u.o)],
+    [b(r.text_plain, 0, 5, u.a, u.e, u.i, u.n, u.o, 3, u.a, u.n, u.o, 0), tps(tp(5, 5, r.bind, r.text_plain, 0, 5, u.a, u.e, u.i, u.n, u.o, 3, u.a, u.n, u.o, 0), tp(3, 3, u.n, u.o, 3, u.a, u.n, u.o, 0))],
 ])('parse_strip(%#)', (i, o) => {
     const w = writer(i)
     try {

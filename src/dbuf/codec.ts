@@ -153,39 +153,34 @@ export const read_bits = (s: DecoderState, n: number): number | Scope => {
     const r = rb(s, n)
     return r
 }
-export const read_string = (ds: DecoderState): Uint8Array => {
-    const begin = ds.tempCount == 0 ? ds.dvOffset : ds.dvOffset - 4
-    const meshPosition = meshMap[ds.mesh][ds.tempIndex]
+export const read_string = (ds: DecoderState): Scope => {
     const length = read(ds)
     if (length == 0) {
         return null
     }
-    const lengthBeyondThisBlock = length - (8 - meshMap[ds.mesh][ds.tempIndex])
-    const blocks = Math.ceil(lengthBeyondThisBlock / 8)
-    const dv = new DataView(new ArrayBuffer(ds.dvOffset - begin + blocks * 4))
+    const begin = ds.tempCount == 0 ? ds.dvOffset : ds.dvOffset - 4
+    const meshPosition = meshMap[ds.mesh][ds.tempIndex]
+    const endMeshPosition = meshPosition + length
+    const endMeshPosition2 = endMeshPosition & 7
+    const blocks = Math.ceil(endMeshPosition / 8)
+    const dv = new DataView(new ArrayBuffer(blocks * 4))
     let o = 0
     ds.dvOffset = begin
-    let firstBlock = ds.dv.getUint32(ds.dvOffset)
-    if (1 << (31 - meshPosition) & firstBlock) {
-        firstBlock = firstBlock ^ 0x7f000000
-    }
-    dv.setUint32(o, firstBlock & maskMap[meshPosition])
-    ds.dvOffset += 4
-    o += 4
     while (o < dv.byteLength) {
         dv.setUint32(o, ds.dv.getUint32(ds.dvOffset))
         ds.dvOffset += 4
         o += 4
     }
-    const endMeshPosition = lengthBeyondThisBlock < 0 ? (8 + lengthBeyondThisBlock) : lengthBeyondThisBlock % 8
-    ds.dvOffset -= 4
-    ds.tempCount = 0
-    debug('read_text', length, meshPosition, lengthBeyondThisBlock, blocks, endMeshPosition, ds)
-    read(ds)
-    while (meshMap[ds.mesh][ds.tempIndex] < endMeshPosition) {
+    if (endMeshPosition2) {
+        ds.dvOffset -= 4
+        ds.tempCount = 0
+        debug('read_text', length, meshPosition, blocks, endMeshPosition, endMeshPosition2, ds)
         read(ds)
+        while (meshMap[ds.mesh][ds.tempIndex] < endMeshPosition2) {
+            read(ds)
+        }
     }
-    return bufToU8(dv)
+    return { type: r.binary_string, items: [length, meshPosition, bufToU8(dv)], op: { type: ParseType.item } }
 }
 export const map_sym = Symbol.for('https://bintoca.com/symbol/map')
 export const choice_sym = Symbol.for('https://bintoca.com/symbol/choice')
@@ -228,8 +223,6 @@ export const resolveItemOp = (x: Item): ParseOp => {
     else {
         switch (x) {
             case r.parse_varint:
-            case r.fixed_point_binary_places:
-            case r.fixed_point_decimal_places:
             case r.years:
             case r.months:
             case r.days:
@@ -247,7 +240,6 @@ export const resolveItemOp = (x: Item): ParseOp => {
             case r.block_bits_remaining:
             case r.repeat_count:
             case r.bool:
-            case r.offset_shift_left:
                 return { type: ParseType.varint }
             case r.bool_bit:
                 return { type: ParseType.bit_size, size: 1 }
@@ -288,6 +280,11 @@ export const isInvalidRegistry = (n: number) => n > r.magic_number || (n < r.mag
 export const createPosition = (s: DecoderState): ParsePosition => { return { dvOffset: s.dvOffset, tempIndex: s.tempCount ? s.tempIndex : undefined, partialBlockRemaining: s.partialBlockRemaining ? s.partialBlockRemaining : undefined } }
 export const parseText = (b: BufferSource, st: ParseState): Item => {
     try {
+        //     let firstBlock = ds.dv.getUint32(ds.dvOffset)
+        // if (1 << (31 - meshPosition) & firstBlock) {
+        //     firstBlock = firstBlock ^ 0x7f000000
+        // }
+        // dv.setUint32(o, firstBlock & maskMap[meshPosition])
         const decoder = createDecoder(b)
         const length = read(decoder)
         const endMeshPosition = (meshMap[decoder.mesh][decoder.tempIndex] + length) % 8;
