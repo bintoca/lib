@@ -193,7 +193,7 @@ export type Scope = { type: r | symbol, needed?: number, items: Item[], result?,
 export type Slot = Scope | number
 export type Item = Slot | Uint8Array
 export const enum ParseType { varint, item, item_or_none, block_size, block_variable, bit_size, bit_variable, string, string_stream, array, array_stream, choice, choice_index, choice_bit_size, choice_append, map, varint_plus_block, none }
-export type ParseOp = { type: ParseType, size?: number, ops?: ParseOp[], op?: ParseOp, item?: Item, choiceRest?: boolean }
+export type ParseOp = { type: ParseType, size?: number, ops?: ParseOp[], op?: ParseOp, item?: Item, extendedChoice?: boolean }
 export type ParsePlan = { ops: ParseOp[], index: number }
 export type ParseState = { root: Scope, scope_stack: Scope[], decoder: DecoderState, choice_stack: ParseOp[] }
 export type ParsePosition = { dvOffset: number, tempIndex: number, partialBlockRemaining: number }
@@ -274,6 +274,30 @@ export const resolveItemOp = (x: Item): ParseOp => {
         }
     }
     return { type: ParseType.item_or_none, item: x }
+}
+export const isExtendedChoice = (t: ParseType): boolean => {
+    switch (t) {
+        case ParseType.bit_size:
+        case ParseType.block_size:
+        case ParseType.choice:
+        case ParseType.choice_index:
+        case ParseType.choice_append:
+        case ParseType.array:
+        case ParseType.array_stream:
+        case ParseType.none:
+        case ParseType.map:
+            return false
+        case ParseType.bit_variable:
+        case ParseType.block_variable:
+        case ParseType.item:
+        case ParseType.item_or_none:
+        case ParseType.string:
+        case ParseType.varint:
+        case ParseType.varint_plus_block:
+            return true
+        default:
+            throw 'not implemented ParseType: ' + t
+    }
 }
 export const isInvalidText = (n: number) => n > 0x10FFFF
 export const isInvalidRegistry = (n: number) => n > r.magic_number || (n < r.magic_number && n > 600) || (n < 512 && n > 200)
@@ -394,41 +418,22 @@ export const parse = (b: BufferSource): Item => {
                 }
                 case ParseType.choice: {
                     st.choice_stack.push(op)
-                    const lop = op.ops[op.ops.length - 1]
                     const c = read(ds)
                     let cop: ParseOp
-                    switch (lop.type) {
-                        case ParseType.bit_size:
-                        case ParseType.block_size:
-                        case ParseType.choice:
-                        case ParseType.choice_index:
-                        case ParseType.choice_append:
-                        case ParseType.array:
-                        case ParseType.array_stream:
-                        case ParseType.none:
-                        case ParseType.map:
-                            if (op.ops.length <= c) {
-                                return parseError(st, r.error_invalid_choice_index)
-                            }
+                    if (op.extendedChoice) {
+                        if (op.ops.length - 1 <= c) {
+                            ds.tempChoice = c - (op.ops.length - 1)
+                            cop = op.ops[op.ops.length - 1]
+                        }
+                        else {
                             cop = op.ops[c]
-                            break
-                        case ParseType.bit_variable:
-                        case ParseType.block_variable:
-                        case ParseType.item:
-                        case ParseType.item_or_none:
-                        case ParseType.string:
-                        case ParseType.varint:
-                        case ParseType.varint_plus_block:
-                            if (op.ops.length - 1 <= c) {
-                                ds.tempChoice = c - (op.ops.length - 1)
-                                cop = lop
-                            }
-                            else {
-                                cop = op.ops[c]
-                            }
-                            break
-                        default:
-                            throw 'not implemented ParseType: ' + lop.type
+                        }
+                    }
+                    else {
+                        if (op.ops.length <= c) {
+                            return parseError(st, r.error_invalid_choice_index)
+                        }
+                        cop = op.ops[c]
                     }
                     scope_push({ type: choice_sym, needed: 2, items: [c], op: cop })
                     break
@@ -543,6 +548,7 @@ export const parse = (b: BufferSource): Item => {
                                 switch (top.type) {
                                     case r.type_choice:
                                         top.op = { type: ParseType.choice, ops: top.items.map(x => resolveItemOp(x)) }
+                                        top.op.extendedChoice = isExtendedChoice(top.op.ops[top.op.ops.length - 1].type)
                                         break
                                     case r.type_choice_bit:
                                         const ops = top.items.map(x => resolveItemOp(x))
