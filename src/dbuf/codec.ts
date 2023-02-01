@@ -30,34 +30,7 @@ export const shiftMap = [
     [0, 11, 32], [0, 11, 31, 35], [0, 11, 30, 33, 35], [0, 11, 30, 34], [0, 12, 34], [0, 12, 33, 35], [0, 13, 35], [0, 14]
 ]
 export const shiftLookup = shiftMap.map(x => x.map(y => shiftInit[y])).concat(shiftMap.map(x => x.map(y => shiftInit[y])))
-export const meshMap = []
-for (let i = 0; i < 128; i++) {
-    const m = [0]
-    let a = 128
-    let last = false
-    for (let j = 0; j < 8; j++) {
-        const current = (a & i) > 0
-        if (current != last) {
-            m.push(j)
-        }
-        last = current
-        a = a / 2
-    }
-    m.push(0)
-    meshMap[i] = m
-    meshMap[i + 128] = m
-}
-export const maskMap = [
-    0b11111111111111111111111111111111,
-    0b11111111000111111111111111111111,
-    0b10111111000000111111111111111111,
-    0b10011111000000000111111111111111,
-    0b10001111000000000000111111111111,
-    0b10000111000000000000000111111111,
-    0b10000011000000000000000000111111,
-    0b10000001000000000000000000000111,
-    0b10000000000000000000000000000000,
-]
+
 export type DecoderState = { temp: number[], mesh: number, tempCount: number, tempIndex: number, dv: DataView, dvOffset: number, partialBlock: number, partialBlockRemaining: number, tempChoice?: number }
 export const decodeVarintBlock = (s: DecoderState, x: number) => {
     let mesh = x >>> 24
@@ -158,41 +131,25 @@ export const read_string = (ds: DecoderState): Scope => {
     if (length == 0) {
         return null
     }
-    const begin = ds.tempCount == 0 ? ds.dvOffset : ds.dvOffset - 4
-    const meshPosition = meshMap[ds.mesh][ds.tempIndex]
-    const endMeshPosition = meshPosition + length
-    const endMeshPosition2 = endMeshPosition & 7
-    const blocks = Math.ceil(endMeshPosition / 8)
-    const dv = new DataView(new ArrayBuffer(blocks * 4))
-    let o = 0
-    ds.dvOffset = begin
-    while (o < dv.byteLength) {
-        dv.setUint32(o, ds.dv.getUint32(ds.dvOffset))
-        ds.dvOffset += 4
-        o += 4
+    const items = Array(length)
+    for (let i = 0; i < length; i++) {
+        items[i] = read(ds)
     }
-    if (endMeshPosition2) {
-        ds.dvOffset -= 4
-        ds.tempCount = 0
-        debug('read_text', length, meshPosition, blocks, endMeshPosition, endMeshPosition2, ds)
-        read(ds)
-        while (meshMap[ds.mesh][ds.tempIndex] < endMeshPosition2) {
-            read(ds)
-        }
-    }
-    return { type: r.binary_string, items: [length, meshPosition, bufToU8(dv)], op: { type: ParseType.item } }
+    return { type: string_sym, needed: length, items, op: { type: ParseType.item } }
 }
 export const map_sym = Symbol.for('https://bintoca.com/symbol/map')
 export const choice_sym = Symbol.for('https://bintoca.com/symbol/choice')
 export const choice_append_sym = Symbol.for('https://bintoca.com/symbol/choice_append')
 export const array_sym = Symbol.for('https://bintoca.com/symbol/array')
 export const array_stream_sym = Symbol.for('https://bintoca.com/symbol/array_stream')
+export const string_sym = Symbol.for('https://bintoca.com/symbol/string')
 export const string_stream_sym = Symbol.for('https://bintoca.com/symbol/string_stream')
+export const block_stream_sym = Symbol.for('https://bintoca.com/symbol/block_stream')
 export const bits_sym = Symbol.for('https://bintoca.com/symbol/bits')
 export type Scope = { type: r | symbol, needed?: number, items: Item[], result?, op: ParseOp, ops?: ParseOp[], start?: ParsePosition, end?: ParsePosition, parent?: Scope, parentIndex?: number }
 export type Slot = Scope | number
 export type Item = Slot | Uint8Array
-export const enum ParseType { varint, item, item_or_none, block_size, block_variable, bit_size, bit_variable, string, string_stream, array, array_stream, choice, choice_index, choice_bit_size, choice_append, map, varint_plus_block, none }
+export const enum ParseType { varint, item, item_or_none, block_size, block_variable, bit_size, bit_variable, string, string_stream, block_stream, array, array_stream, choice, choice_index, choice_bit_size, choice_append, map, varint_plus_block, none }
 export type ParseOp = { type: ParseType, size?: number, ops?: ParseOp[], op?: ParseOp, item?: Item, extendedChoice?: boolean }
 export type ParsePlan = { ops: ParseOp[], index: number }
 export type ParseState = { root: Scope, scope_stack: Scope[], decoder: DecoderState, choice_stack: ParseOp[] }
@@ -267,7 +224,6 @@ export const resolveItemOp = (x: Item): ParseOp => {
             case r.text_plain:
             case r.text_idna:
             case r.text_iri:
-            case r.binary_string:
                 return { type: ParseType.string }
             case r.parse_item:
                 return { type: ParseType.item }
@@ -302,34 +258,6 @@ export const isExtendedChoice = (t: ParseType): boolean => {
 export const isInvalidText = (n: number) => n > 0x10FFFF
 export const isInvalidRegistry = (n: number) => n > r.magic_number || (n < r.magic_number && n > 600) || (n < 512 && n > 200)
 export const createPosition = (s: DecoderState): ParsePosition => { return { dvOffset: s.dvOffset, tempIndex: s.tempCount ? s.tempIndex : undefined, partialBlockRemaining: s.partialBlockRemaining ? s.partialBlockRemaining : undefined } }
-export const parseText = (b: BufferSource, st: ParseState): Item => {
-    try {
-        //     let firstBlock = ds.dv.getUint32(ds.dvOffset)
-        // if (1 << (31 - meshPosition) & firstBlock) {
-        //     firstBlock = firstBlock ^ 0x7f000000
-        // }
-        // dv.setUint32(o, firstBlock & maskMap[meshPosition])
-        const decoder = createDecoder(b)
-        const length = read(decoder)
-        const endMeshPosition = (meshMap[decoder.mesh][decoder.tempIndex] + length) % 8;
-        debug('parseText', length, endMeshPosition, decoder)
-        const items = []
-        while (true) {
-            const x = read(decoder)
-            if (isInvalidText(x)) {
-                return parseError(st, r.error_invalid_text_value)
-            }
-            items.push(x)
-            if (decoder.dvOffset == decoder.dv.byteLength && meshMap[decoder.mesh][decoder.tempIndex] >= endMeshPosition) {
-                break
-            }
-        }
-        return { type: r.text_plain, items, op: { type: ParseType.string } }
-    }
-    catch (e) {
-        throw 'error parsing string: ' + e.message
-    }
-}
 export const parse = (b: BufferSource): Item => {
     const root = { type: array_sym, items: [], op: { type: ParseType.item } }
     const st: ParseState = { root, scope_stack: [root], decoder: createDecoder(b), choice_stack: [] }
@@ -452,7 +380,24 @@ export const parse = (b: BufferSource): Item => {
                     break
                 }
                 case ParseType.block_variable: {
-                    collapse_scope(read_blocks(ds, read(ds) + 1))
+                    const n = read(ds)
+                    if (n) {
+                        collapse_scope(read_blocks(ds, n))
+                    }
+                    else {
+                        scope_push({ type: block_stream_sym, items: [], op: { type: ParseType.block_stream } })
+                    }
+                    break
+                }
+                case ParseType.block_stream: {
+                    const n = read(ds)
+                    if (n) {
+                        collapse_scope(read_blocks(ds, n))
+                    }
+                    else {
+                        top.end = createPosition(ds)
+                        collapse_scope(st.scope_stack.pop())
+                    }
                     break
                 }
                 case ParseType.bit_size: {

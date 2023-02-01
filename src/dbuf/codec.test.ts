@@ -1,4 +1,4 @@
-import { parse, write, finishWrite, map_sym, Item, createDecoder, read, createEncoder, writeBuffer, write_checked, Scope, choice_sym, array_sym, array_stream_sym, bits_sym, isError, ParseType, choice_append_sym, string_stream_sym } from '@bintoca/dbuf/codec'
+import { parse, write, finishWrite, map_sym, Item, createDecoder, read, createEncoder, writeBuffer, write_checked, Scope, choice_sym, array_sym, array_stream_sym, bits_sym, isError, ParseType, choice_append_sym, string_stream_sym, string_sym, block_stream_sym } from '@bintoca/dbuf/codec'
 import { r, u } from '@bintoca/dbuf/registry'
 import { zigzagEncode, zigzagDecode, unicodeToText, textToUnicode, getLeap_millis, getLeap_millis_tai, strip, debug, setDebug } from '@bintoca/dbuf/util'
 const dv = new DataView(new ArrayBuffer(8))
@@ -170,7 +170,7 @@ const tc = (...a: NumOrBuf[]) => [r.type_choice, ...a, r.end_scope]
 const tcb = (...a: NumOrBuf[]) => [r.type_choice_bit, ...a, r.end_scope]
 const tm = (...a: NumOrBuf[]) => [r.type_map, ...a, r.end_scope]
 const cs = (a: Item, b?: Item) => { return { type: choice_sym, items: b === undefined ? [a] : [a, b], op: undefined } }
-const tp = (length: number, start: number, ...a: NumOrBuf[]) => { return { type: r.binary_string, items: [length, start, writer([...a])], op: undefined } }
+const tp = (...a: number[]) => { return { type: string_sym, needed: a.length, items: a, op: undefined } }
 const tps = (...a: Item[]) => { return { type: string_stream_sym, items: [...a], op: undefined } }
 const ms = (...a: Item[]) => { return { type: map_sym, items: [...a], op: undefined } }
 const aos = (...a: Item[]) => { return { type: array_sym, items: [...a], op: undefined } }
@@ -181,7 +181,7 @@ const ao = (...a: Item[]) => { return { type: r.type_array, items: [...a], op: u
 const ci = (...a: Item[]) => { return { type: r.type_choice_indexer, items: [...a], op: undefined } }
 const ca = (...a: Item[]) => { return { type: choice_append_sym, items: [...a], op: undefined } }
 const bs = (...a: number[]) => { return { type: bits_sym, items: [...a], op: undefined } }
-const siz = (num: number, size: number) => { return { num, size } }
+const bv = (...a: Item[]) => { return { type: block_stream_sym, items: [...a], op: undefined } }
 const dg = (x: string | string[]) => { return { debug: Array.isArray(x) ? x : [x] } }
 test.each([
     [[r.bind, r.end_scope], r.error_invalid_end_scope],
@@ -199,7 +199,8 @@ test.each([
 test.each([
     [b(b(r.IEEE_754_binary32, u8), r.IPv4), r.IPv4],
     [b(r.parse_block_size, 0, u8), u8],
-    [b(r.parse_block_variable, 0, u8), u8],
+    [b(r.parse_block_variable, 1, u8), u8],
+    [b(r.parse_block_variable, 0, 1, 1, 0, u8, u8), bv(u8, u8)],
     [b(r.parse_bit_variable, 8, u8), 2],
     [b(r.parse_item, r.IPv4), r.IPv4],
     [b(r.parse_varint_plus_block, 2, u8), new Uint8Array([0, 0, 0, 2, 1, 2, 3, 4])],
@@ -215,14 +216,14 @@ test.each([
     [b(tc(r.id, b(r.denominator, r.denominator)), 1), cs(1, bo(r.denominator, r.denominator))],
     [b(tm(b(r.denominator, r.denominator)), r.IPv4), ms(r.IPv4)],
     [b(tm(b(r.text_plain, 1, u.a)), r.IPv4), ms(r.IPv4)],
-    [b(tc(r.id, b(r.text_plain, 1, u.a)), 1), cs(1, bo(r.text_plain, tp(1, 7, r.bind, r.type_choice, r.id, r.bind, r.text_plain, 1, u.a)))],
-    [b(tc(r.id, b(tm(r.text_plain), 1, u.a)), 1), cs(1, bo(mo(r.text_plain), ms(tp(1, 1, 1, u.a, r.end_scope, 1))))],
-    [b(tc(r.id, b(r.type_array, r.text_plain), 1, 1, u.a), 1), cs(1, bo(ao(r.text_plain), aos(tp(1, 1, 1, u.a, r.end_scope, 1))))],
-    [b(tc(r.id, b(r.type_array, r.text_plain), 0, 1, 1, u.a, 0), 1), cs(1, bo(ao(r.text_plain), ass(aos(tp(1, 2, 1, 1, u.a, 0, r.end_scope, 1)))))],
+    [b(tc(r.id, b(r.text_plain, 1, u.a)), 1), cs(1, bo(r.text_plain, tp(u.a)))],
+    [b(tc(r.id, b(tm(r.text_plain), 1, u.a)), 1), cs(1, bo(mo(r.text_plain), ms(tp(u.a))))],
+    [b(tc(r.id, b(r.type_array, r.text_plain), 1, 1, u.a), 1), cs(1, bo(ao(r.text_plain), aos(tp(u.a))))],
+    [b(tc(r.id, b(r.type_array, r.text_plain), 0, 1, 1, u.a, 0), 1), cs(1, bo(ao(r.text_plain), ass(aos(tp(u.a)))))],
     [b(r.parse_none, b(r.IEEE_754_binary32, u8)), bo(r.IEEE_754_binary32, u8)],
     [b(tc(r.integer_unsigned, r.type_choice_indexer), 1, 0, 2), cs(1, ci(cs(0, 2)))],
-    [b(tc(r.integer_unsigned, tc(r.text_plain, r.type_choice_indexer)), 1, 1, 0, 1, u.a), cs(1, cs(1, ci(cs(0, tp(1, 6, r.end_scope, r.end_scope, 1, 1, 0, 1, u.a)))))],
-    [b(tc(r.integer_unsigned, tm(tc(r.text_plain, r.type_choice_indexer), r.type_choice_indexer)), 1, 1, 0, 1, u.e, 0, 5), cs(1, ms(cs(1, ci(cs(0, tp(1, 1, 1, u.e, 0, 5)))), ci(cs(0, 5))))],
+    [b(tc(r.integer_unsigned, tc(r.text_plain, r.type_choice_indexer)), 1, 1, 0, 1, u.a), cs(1, cs(1, ci(cs(0, tp(u.a)))))],
+    [b(tc(r.integer_unsigned, tm(tc(r.text_plain, r.type_choice_indexer), r.type_choice_indexer)), 1, 1, 0, 1, u.e, 0, 5), cs(1, ms(cs(1, ci(cs(0, tp(u.e)))), ci(cs(0, 5))))],
     [b(tc(r.IEEE_754_binary32, tc(r.integer_unsigned, r.integer_signed)), 1, 1), cs(1, cs(1, 0))],
     [b(r.type_array, r.integer_unsigned, 0, 2, 3, 4, 1, 5, 0), ass(aos(3, 4), aos(5))],
     [b(r.type_array, tm(r.IEEE_754_binary32, tc(r.integer_unsigned, r.integer_signed)), 1, u8, 1), aos(ms(u8, cs(1, 0)))],
@@ -231,7 +232,7 @@ test.each([
     [b(tc(r.parse_bit_size, 7, r.parse_bit_size, 5), 0, u8), cs(0, 1)],
     [b(tcb(r.parse_bit_size, 7, r.parse_bit_size, 5), u8), cs(0, 2)],
     [b(tm(b(r.integer_unsigned, 14)), b(r.integer_unsigned, 2)), ms(bo(r.integer_unsigned, 2))],
-    [b(tm(b(r.id, r.parse_none, b(r.text_plain, 1, u.a)))), ms(bo(r.text_plain, tp(1, 2, 3, 1, u.a, r.end_scope)))],
+    [b(tm(b(r.id, r.parse_none, b(r.text_plain, 1, u.a)))), ms(bo(r.text_plain, tp(u.a)))],
     [b(tm(b(r.id, r.type_array, r.integer_unsigned), r.denominator), 2, 3, 4, r.IPv4), ms(aos(3, 4), r.IPv4)],
     [b(tc(r.integer_unsigned, b(r.id, r.type_choice_indexer)), 1, 0, 2), cs(1, ci(cs(0, 2)))],
     [b(r.type_array, r.placeholder, 1, r.IPv4), aos(r.IPv4)],
@@ -240,9 +241,8 @@ test.each([
     [b(b(b(r.offset_add, b(r.integer_unsigned, 5)), r.IEEE_754_binary32), u8), u8],
     [b(r.type_array, tc(r.integer_unsigned, b(r.delta, r.integer_unsigned), b(r.delta, r.integer_negative), r.repeat_count), 4, 0, 5, 1, 2, 2, 1, 5), aos(cs(0, 5), cs(1, 2), cs(2, 1), cs(5, 2))],
     [b(r.type_array, tc(r.integer_unsigned, r.type_choice_append), 3, 1, r.IEEE_754_binary32, 2, u8, 0, 4), aos(cs(1, ca(r.IEEE_754_binary32)), cs(2, u8), cs(0, 4))],
-    [b(r.text_plain, 2, siz(u.a, 2)), tp(2, 4, writer([r.bind, r.text_plain, 2, { num: u.a, size: 2 }]))],
-    [b(r.text_plain, 5, u.a, u.e, u.i, u.n, u.o), tp(5, 4, r.bind, r.text_plain, 5, u.a, u.e, u.i, u.n, u.o)],
-    [b(r.text_plain, 0, 5, u.a, u.e, u.i, u.n, u.o, 3, u.a, u.n, u.o, 0), tps(tp(5, 5, r.bind, r.text_plain, 0, 5, u.a, u.e, u.i, u.n, u.o, 3, u.a, u.n, u.o, 0), tp(3, 3, u.n, u.o, 3, u.a, u.n, u.o, 0))],
+    [b(r.text_plain, 5, u.a, u.e, u.i, u.n, u.o), tp(u.a, u.e, u.i, u.n, u.o)],
+    [b(r.text_plain, 0, 5, u.a, u.e, u.i, u.n, u.o, 3, u.a, u.n, u.o, 0), tps(tp(u.a, u.e, u.i, u.n, u.o), tp(u.a, u.n, u.o))],
 ])('parse_strip(%#)', (i, o) => {
     const w = writer(i)
     try {
