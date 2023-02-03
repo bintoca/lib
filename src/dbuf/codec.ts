@@ -160,14 +160,14 @@ export const createStruct = (fields: Slot[], values: Item[]): Scope => { return 
 export const createWrap = (slots: Slot[]): Scope => { return { type: r.bind, items: slots, op: undefined } }
 export const parseError = (s: ParseState, regError: r) => parseErrorPos(createPosition(s.decoder), regError)
 export const parseErrorPos = (pos: ParsePosition, regError: r) => {
-    const fields = [r.error, createWrap([r.blocks_read, r.integer_unsigned,])]
+    const fields = [r.error, createWrap([r.blocks_read, r.parse_varint,])]
     const values = [regError, pos.dvOffset / 4]
     if (pos.tempIndex !== undefined) {
-        fields.push(createWrap([r.block_varint_index, r.integer_unsigned,]))
+        fields.push(createWrap([r.block_varint_index, r.parse_varint,]))
         values.push(pos.tempIndex)
     }
     if (pos.partialBlockRemaining !== undefined) {
-        fields.push(createWrap([r.block_bits_remaining, r.integer_unsigned,]))
+        fields.push(createWrap([r.block_bits_remaining, r.parse_varint,]))
         values.push(pos.partialBlockRemaining)
     }
     return createError(createStruct(fields, values))
@@ -180,50 +180,46 @@ export const resolveItemOp = (x: Item): ParseOp => {
     else {
         switch (x) {
             case r.parse_varint:
-            case r.years:
-            case r.months:
-            case r.days:
-            case r.hours:
-            case r.minutes:
-            case r.seconds:
+            case r.utc_years:
+            case r.utc_months:
+            case r.utc_days:
+            case r.utc_hours:
+            case r.utc_minutes:
             case r.weeks:
             case r.week_day:
             case r.IP_port:
-            case r.integer_unsigned:
             case r.integer_signed:
             case r.integer_negative:
-            case r.blocks_read:
-            case r.block_varint_index:
-            case r.block_bits_remaining:
             case r.repeat_count:
-            case r.bool:
+            case r.exponent_base2:
+            case r.exponent_base10:
                 return { type: ParseType.varint }
             case r.bool_bit:
                 return { type: ParseType.bit_size, size: 1 }
             case r.parse_bit_variable:
                 return { type: ParseType.bit_variable }
+            case r.text_unicode_blocks:
+            case r.text_iri_no_scheme_blocks:
             case r.parse_block_variable:
                 return { type: ParseType.block_variable }
-            case r.IEEE_754_decimal32:
+            case r.IEEE_754_binary16:
+                return { type: ParseType.bit_size, size: 16 }
+            case r.parse_block:
             case r.IEEE_754_binary32:
             case r.IPv4:
                 return { type: ParseType.block_size, size: 1 }
-            case r.IEEE_754_decimal64:
             case r.IEEE_754_binary64:
                 return { type: ParseType.block_size, size: 2 }
-            case r.IEEE_754_decimal128:
-            case r.IEEE_754_binary128:
             case r.IPv6:
             case r.UUID:
                 return { type: ParseType.block_size, size: 4 }
-            case r.IEEE_754_binary256:
             case r.SHA256:
                 return { type: ParseType.block_size, size: 8 }
             case r.parse_varint_plus_block:
                 return { type: ParseType.varint_plus_block }
-            case r.text_plain:
-            case r.text_idna:
-            case r.text_iri:
+            case r.text_unicode:
+            case r.text_iri_no_scheme_blocks:
+            case r.text_iri_scheme:
                 return { type: ParseType.string }
             case r.parse_item:
                 return { type: ParseType.item }
