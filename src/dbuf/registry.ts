@@ -164,6 +164,8 @@ export const enum r {
     type_parts,
     
     parse_item = 64,
+    item_varint_plus_block,
+    parse_item_varint_plus_block,
     parse_varint_plus_block,
     parse_block_variable,
     parse_bit_variable,
@@ -210,7 +212,7 @@ export const enum r {
     error_invalid_text_value,
     error_invalid_registry_value,
 
-    magic_number = 4473429
+    magic_number = 4473429//TODO move to low range so parse item switch case is compact
 }
 export const enum u {
     space,

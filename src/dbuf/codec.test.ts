@@ -1,6 +1,6 @@
 import { parse, write, finishWrite, map_sym, Item, createDecoder, read, createEncoder, writeBuffer, write_checked, Scope, choice_sym, array_sym, array_stream_sym, bits_sym, isError, ParseType, choice_append_sym, string_stream_sym, string_sym, block_stream_sym } from '@bintoca/dbuf/codec'
 import { r, u } from '@bintoca/dbuf/registry'
-import { zigzagEncode, zigzagDecode, unicodeToText, textToUnicode, getLeap_millis, getLeap_millis_tai, strip, debug, setDebug } from '@bintoca/dbuf/util'
+import { zigzagEncode, zigzagDecode, unicodeToText, textToUnicode, getLeap_millis, getLeap_millis_tai, strip, debug, setDebug, bufToDV } from '@bintoca/dbuf/util'
 const dv = new DataView(new ArrayBuffer(8))
 test('float', () => {
     dv.setFloat32(0, 1, true)
@@ -118,6 +118,13 @@ test('magicNumber', () => {
     dv.setUint8(3, 'U'.codePointAt(0))
     expect(dv.getUint32(0)).toBe(r.magic_number)
 })
+const magicNumberTest = () => {
+    for (let i = 64; i < 128; i++) {
+        const b = writer([{ num: i, size: 4 }, { num: i, size: 4 }])
+        console.log(i, b, new TextDecoder().decode(b))
+    }
+}
+//magicNumberTest()
 test.each([[-(10 * 365) * 86400, -9], [0, -9], [(10 * 365 + 1) * 86400, -1], [(10 * 365 + 2) * 86400, 0], [(10 * 365 + 7) * 86400, 0], [(11 * 365 + 3 + 181) * 86400, 1]])('leap', (d, o) => {
     expect(getLeap_millis(d * 1000)).toBe(o * 1000)
 })
@@ -195,7 +202,100 @@ test.each([
     if (!isError(er)) { console.log(er['items']) }
     expect((er as any).items[1].items[1].items[0]).toEqual(o)
 })
+{
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+}
 test.each([
     [b(b(r.IEEE_754_binary32, u8), r.IPv4), r.IPv4],
     [b(r.parse_block_size, 0, u8), u8],

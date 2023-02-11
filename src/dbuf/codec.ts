@@ -137,6 +137,13 @@ export const read_string = (ds: DecoderState): Scope => {
     }
     return { type: string_sym, needed: length, items, op: { type: ParseType.item } }
 }
+export const read_varint_plus_block = (ds: DecoderState): Uint8Array => {
+    const dv = new DataView(new ArrayBuffer(8))
+    dv.setUint32(0, read(ds))
+    dv.setUint32(4, ds.dv.getUint32(ds.dvOffset))
+    ds.dvOffset += 4
+    return bufToU8(dv)
+}
 export const map_sym = Symbol.for('https://bintoca.com/symbol/map')
 export const choice_sym = Symbol.for('https://bintoca.com/symbol/choice')
 export const choice_append_sym = Symbol.for('https://bintoca.com/symbol/choice_append')
@@ -215,6 +222,7 @@ export const resolveItemOp = (x: Item): ParseOp => {
                 return { type: ParseType.block_size, size: 4 }
             case r.SHA256:
                 return { type: ParseType.block_size, size: 8 }
+            case r.parse_item_varint_plus_block:
             case r.parse_varint_plus_block:
                 return { type: ParseType.varint_plus_block }
             case r.text_unicode:
@@ -405,11 +413,7 @@ export const parse = (b: BufferSource): Item => {
                     break
                 }
                 case ParseType.varint_plus_block: {
-                    const dv = new DataView(new ArrayBuffer(8))
-                    dv.setUint32(0, read(ds))
-                    dv.setUint32(4, ds.dv.getUint32(ds.dvOffset))
-                    ds.dvOffset += 4
-                    collapse_scope(bufToU8(dv))
+                    collapse_scope(read_varint_plus_block(ds))
                     break
                 }
                 case ParseType.map: {
@@ -533,6 +537,10 @@ export const parse = (b: BufferSource): Item => {
                         case r.parse_none:
                         case r.magic_number: {
                             scope_push({ type: x, needed: 1, items: [], op: { type: ParseType.item } })
+                            break
+                        }
+                        case r.item_varint_plus_block: {
+                            collapse_scope(read_varint_plus_block(ds))
                             break
                         }
                         default:
