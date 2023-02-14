@@ -109,7 +109,7 @@ export const read_bits = (s: DecoderState, n: number): number | Scope => {
         }
     }
     if (n > 32) {
-        const sc: Scope = { type: bits_sym, items: [], op: { type: ParseType.bit_size } }
+        const sc: Scope = { type: ScopeType.bits, items: [], op: { type: ParseType.bit_size } }
         while (true) {
             if (n > 32) {
                 sc.items.push(rb(s, 32))
@@ -135,7 +135,7 @@ export const read_string = (ds: DecoderState): Scope => {
     for (let i = 0; i < length; i++) {
         items[i] = read(ds)
     }
-    return { type: string_sym, needed: length, items, op: { type: ParseType.item } }
+    return { type: ScopeType.string, needed: length, items, op: { type: ParseType.item } }
 }
 export const read_varint_plus_block = (ds: DecoderState): Uint8Array => {
     const dv = new DataView(new ArrayBuffer(8))
@@ -144,27 +144,22 @@ export const read_varint_plus_block = (ds: DecoderState): Uint8Array => {
     ds.dvOffset += 4
     return bufToU8(dv)
 }
-export const map_sym = Symbol.for('https://bintoca.com/symbol/map')
-export const choice_sym = Symbol.for('https://bintoca.com/symbol/choice')
-export const choice_append_sym = Symbol.for('https://bintoca.com/symbol/choice_append')
-export const array_sym = Symbol.for('https://bintoca.com/symbol/array')
-export const array_stream_sym = Symbol.for('https://bintoca.com/symbol/array_stream')
-export const string_sym = Symbol.for('https://bintoca.com/symbol/string')
-export const string_stream_sym = Symbol.for('https://bintoca.com/symbol/string_stream')
-export const block_stream_sym = Symbol.for('https://bintoca.com/symbol/block_stream')
-export const bits_sym = Symbol.for('https://bintoca.com/symbol/bits')
-export type Scope = { type: r | symbol, needed?: number, items: Item[], result?, op: ParseOp, ops?: ParseOp[], start?: ParsePosition, end?: ParsePosition, parent?: Scope, parentIndex?: number }
+export const enum ScopeType {
+    bind, type_map, map, type_array, array, array_stream, type_choice, choice, choice_append, type_choice_indexer, type_choice_bit, type_choice_append,
+    string, string_stream, block_stream, bits, type_parts, magic_number, parse_bit_size, parse_block_size, quote_next
+}
+export type Scope = { type: ScopeType, needed?: number, items: Item[], result?, op: ParseOp, ops?: ParseOp[], start?: ParsePosition, end?: ParsePosition, parent?: Scope, parentIndex?: number }
 export type Slot = Scope | number
 export type Item = Slot | Uint8Array
-export const enum ParseType { varint, item, item_or_none, block_size, block_variable, bit_size, bit_variable, string, string_stream, block_stream, array, array_stream, choice, choice_index, choice_bit_size, choice_append, map, varint_plus_block, none }
+export const enum ParseType { varint, item, block_size, block_variable, bit_size, bit_variable, string, string_stream, block_stream, array, array_stream, choice, choice_index, choice_bit_size, choice_append, map, varint_plus_block, none }
 export type ParseOp = { type: ParseType, size?: number, ops?: ParseOp[], op?: ParseOp, item?: Item, extendedChoice?: boolean }
 export type ParsePlan = { ops: ParseOp[], index: number }
-export type ParseState = { root: Scope, scope_stack: Scope[], decoder: DecoderState, choice_stack: ParseOp[] }
+export type ParseState = { root: Scope, scope_stack: Scope[], decoder: DecoderState, choice_stack: Scope[] }
 export type ParsePosition = { dvOffset: number, tempIndex: number, partialBlockRemaining: number }
-export const createError = (er: r | Scope): Scope => { return { type: r.bind, items: [r.error, er], op: undefined } }
+export const createError = (er: r | Scope): Scope => { return { type: ScopeType.bind, items: [r.error, er], op: undefined } }
 export const isError = (x) => x.type == r.bind && Array.isArray(x.items) && x.items[0] == r.error
-export const createStruct = (fields: Slot[], values: Item[]): Scope => { return { type: r.bind, items: [{ type: r.type_map, items: fields, op: undefined }, { type: map_sym, items: values, op: undefined }], op: undefined } }
-export const createWrap = (slots: Slot[]): Scope => { return { type: r.bind, items: slots, op: undefined } }
+export const createStruct = (fields: Slot[], values: Item[]): Scope => { return { type: ScopeType.bind, items: [{ type: ScopeType.type_map, items: fields, op: undefined }, { type: ScopeType.map, items: values, op: undefined }], op: undefined } }
+export const createWrap = (slots: Slot[]): Scope => { return { type: ScopeType.bind, items: slots, op: undefined } }
 export const parseError = (s: ParseState, regError: r) => parseErrorPos(createPosition(s.decoder), regError)
 export const parseErrorPos = (pos: ParsePosition, regError: r) => {
     const fields = [r.error, createWrap([r.blocks_read, r.parse_varint,])]
@@ -233,7 +228,7 @@ export const resolveItemOp = (x: Item): ParseOp => {
                 return { type: ParseType.item }
         }
     }
-    return { type: ParseType.item_or_none, item: x }
+    return { type: ParseType.none, item: x }
 }
 export const isExtendedChoice = (t: ParseType): boolean => {
     switch (t) {
@@ -250,7 +245,6 @@ export const isExtendedChoice = (t: ParseType): boolean => {
         case ParseType.bit_variable:
         case ParseType.block_variable:
         case ParseType.item:
-        case ParseType.item_or_none:
         case ParseType.string:
         case ParseType.varint:
         case ParseType.varint_plus_block:
@@ -263,7 +257,7 @@ export const isInvalidText = (n: number) => n > 0x10FFFF
 export const isInvalidRegistry = (n: number) => n > r.magic_number || (n < r.magic_number && n > 600) || (n < 512 && n > 200)
 export const createPosition = (s: DecoderState): ParsePosition => { return { dvOffset: s.dvOffset, tempIndex: s.tempCount ? s.tempIndex : undefined, partialBlockRemaining: s.partialBlockRemaining ? s.partialBlockRemaining : undefined } }
 export const parse = (b: BufferSource): Item => {
-    const root = { type: array_sym, items: [], op: { type: ParseType.item } }
+    const root = { type: ScopeType.array, items: [], op: { type: ParseType.item } }
     const st: ParseState = { root, scope_stack: [root], decoder: createDecoder(b), choice_stack: [] }
     try {
         const scope_top = () => st.scope_stack[st.scope_stack.length - 1]
@@ -274,48 +268,36 @@ export const parse = (b: BufferSource): Item => {
             st.scope_stack.push(s)
         }
         const collapse_scope = (x: Item) => {
-            let loop = true
             let i = x
-            while (loop) {
+            while (true) {
                 const t = scope_top()
                 t.items.push(i)
-                if (t.type == r.bind) {
+                if (t.type == ScopeType.bind) {
                     if (t.items.length == 1) {
                         t.op = resolveItemOp(i)
                     }
                     else {
-                        if (t.op.type == ParseType.item) {
-                            t.op = resolveItemOp(i)
-                        }
-                        else {
-                            t.op = { type: ParseType.item_or_none }
-                        }
-                        if (t.op.type == ParseType.item_or_none) {
-                            t.op.item = t
-                        }
+                        t.op = { type: ParseType.none, item: t }
                     }
                 }
-                else if (t.type == r.parse_none) {
-                    t.op = { type: ParseType.none, item: t.items[0] }
-                }
-                else if (t.type == r.type_array) {
+                else if (t.type == ScopeType.type_array) {
                     t.op = { type: ParseType.array, op: resolveItemOp(i) }
                 }
-                else if (t.type == map_sym) {
+                else if (t.type == ScopeType.map) {
                     t.op = t.ops[t.items.length]
                 }
-                else if (t.type == choice_append_sym) {
+                else if (t.type == ScopeType.choice_append) {
                     st.choice_stack[st.choice_stack.length - 1].ops.push(resolveItemOp(i))
                 }
                 if (t.items.length == t.needed) {
                     t.end = createPosition(ds)
-                    if (t.type == choice_sym) {
+                    if (t.type == ScopeType.choice) {
                         st.choice_stack.pop()
                     }
                     i = st.scope_stack.pop()
                 }
                 else {
-                    loop = false
+                    break
                 }
             }
         }
@@ -330,14 +312,14 @@ export const parse = (b: BufferSource): Item => {
                     if (st.choice_stack.length == 0) {
                         return parseError(st, r.error_invalid_choice_indexer)
                     }
-                    scope_push({ type: r.type_choice_indexer, needed: 1, items: [], op: st.choice_stack[st.choice_stack.length - 1] })
+                    scope_push({ type: ScopeType.type_choice_indexer, needed: 1, items: [], op: st.choice_stack[st.choice_stack.length - 1], })
                     break
                 }
                 case ParseType.choice_append: {
                     if (st.choice_stack.length == 0) {
                         return parseError(st, r.error_invalid_choice_append)
                     }
-                    scope_push({ type: choice_append_sym, needed: 1, items: [], op: { type: ParseType.item } })
+                    scope_push({ type: ScopeType.choice_append, needed: 1, items: [], op: { type: ParseType.item } })
                     break
                 }
                 case ParseType.choice_bit_size: {
@@ -345,11 +327,11 @@ export const parse = (b: BufferSource): Item => {
                     if (op.ops.length <= c) {
                         return parseError(st, r.error_invalid_choice_index)
                     }
-                    scope_push({ type: choice_sym, needed: 2, items: [c], op: op.ops[c] })
+                    scope_push({ type: ScopeType.choice, needed: 2, items: [c], op: op.ops[c] })
                     break
                 }
                 case ParseType.choice: {
-                    st.choice_stack.push(op)
+                    st.choice_stack.push(top)
                     const c = read(ds)
                     let cop: ParseOp
                     if (op.extendedChoice) {
@@ -367,12 +349,7 @@ export const parse = (b: BufferSource): Item => {
                         }
                         cop = op.ops[c]
                     }
-                    scope_push({ type: choice_sym, needed: 2, items: [c], op: cop })
-                    break
-                }
-                case ParseType.item_or_none: {
-                    op.type = top.type == choice_sym && top.parent.type != map_sym ? ParseType.none : ParseType.item
-                    ds.tempChoice = undefined
+                    scope_push({ type: ScopeType.choice, needed: 2, items: [c], op: cop })
                     break
                 }
                 case ParseType.varint: {
@@ -389,7 +366,7 @@ export const parse = (b: BufferSource): Item => {
                         collapse_scope(read_blocks(ds, n))
                     }
                     else {
-                        scope_push({ type: block_stream_sym, items: [], op: { type: ParseType.block_stream } })
+                        scope_push({ type: ScopeType.block_stream, items: [], op: { type: ParseType.block_stream } })
                     }
                     break
                 }
@@ -417,7 +394,7 @@ export const parse = (b: BufferSource): Item => {
                     break
                 }
                 case ParseType.map: {
-                    scope_push({ type: map_sym, needed: op.ops.length, items: [], op: op.ops[0], ops: op.ops })
+                    scope_push({ type: ScopeType.map, needed: op.ops.length, items: [], op: op.ops[0], ops: op.ops })
                     break
                 }
                 case ParseType.string: {
@@ -426,7 +403,7 @@ export const parse = (b: BufferSource): Item => {
                         collapse_scope(s)
                     }
                     else {
-                        scope_push({ type: string_stream_sym, items: [], op: { type: ParseType.string_stream } })
+                        scope_push({ type: ScopeType.string_stream, items: [], op: { type: ParseType.string_stream } })
                     }
                     break
                 }
@@ -444,17 +421,17 @@ export const parse = (b: BufferSource): Item => {
                 case ParseType.array: {
                     const l = read(ds)
                     if (l) {
-                        scope_push({ type: array_sym, needed: l, items: [], op: op.op })
+                        scope_push({ type: ScopeType.array, needed: l, items: [], op: op.op })
                     }
                     else {
-                        scope_push({ type: array_stream_sym, items: [], op: { type: ParseType.array_stream, op: op.op } })
+                        scope_push({ type: ScopeType.array_stream, items: [], op: { type: ParseType.array_stream, op: op.op } })
                     }
                     break
                 }
                 case ParseType.array_stream: {
                     const l = read(ds)
                     if (l) {
-                        scope_push({ type: array_sym, needed: l, items: [], op: op.op })
+                        scope_push({ type: ScopeType.array, needed: l, items: [], op: op.op })
                     }
                     else {
                         top.end = createPosition(ds)
@@ -469,19 +446,28 @@ export const parse = (b: BufferSource): Item => {
                 case ParseType.item: {
                     const x = read(ds)
                     switch (x) {
-                        case r.type_map:
-                        case r.type_parts:
-                        case r.type_choice:
+                        case r.type_map: {
+                            scope_push({ type: ScopeType.type_map, items: [], op: { type: ParseType.item } })
+                            break
+                        }
+                        case r.type_parts: {
+                            scope_push({ type: ScopeType.type_parts, items: [], op: { type: ParseType.item } })
+                            break
+                        }
+                        case r.type_choice: {
+                            scope_push({ type: ScopeType.type_choice, items: [], op: { type: ParseType.item } })
+                            break
+                        }
                         case r.type_choice_bit: {
-                            scope_push({ type: x, items: [], op: { type: ParseType.item } })
+                            scope_push({ type: ScopeType.type_choice_bit, items: [], op: { type: ParseType.item } })
                             break
                         }
                         case r.type_choice_indexer: {
-                            collapse_scope({ type: x, items: [], op: { type: ParseType.choice_index } })
+                            collapse_scope({ type: ScopeType.type_choice_indexer, items: [], op: { type: ParseType.choice_index } })
                             break
                         }
                         case r.type_choice_append: {
-                            collapse_scope({ type: x, items: [], op: { type: ParseType.choice_append } })
+                            collapse_scope({ type: ScopeType.type_choice_append, items: [], op: { type: ParseType.choice_append } })
                             break
                         }
                         case r.end_scope: {
@@ -491,18 +477,33 @@ export const parse = (b: BufferSource): Item => {
                             top.end = createPosition(ds)
                             if (top.items.length) {
                                 switch (top.type) {
-                                    case r.type_choice:
+                                    case ScopeType.type_choice: {
                                         top.op = { type: ParseType.choice, ops: top.items.map(x => resolveItemOp(x)) }
                                         top.op.extendedChoice = isExtendedChoice(top.op.ops[top.op.ops.length - 1].type)
                                         break
-                                    case r.type_choice_bit:
+                                    }
+                                    case ScopeType.type_choice_bit: {
                                         const ops = top.items.map(x => resolveItemOp(x))
                                         top.op = { type: ParseType.choice_bit_size, ops, item: Math.ceil(Math.log2(ops.length)) || 1 }
                                         break
-                                    case r.type_map:
-                                    case r.type_parts:
+                                    }
+                                    case ScopeType.type_map: {
+                                        const ops: ParseOp[] = []
+                                        for (let i = 0; i < top.items.length; i++) {
+                                            if (i % 2 || typeof top.items[i] == 'object') {
+                                                ops.push(resolveItemOp(top.items[i]))
+                                            }
+                                        }
+                                        if (top.items.length % 2) {
+                                            ops.push(resolveItemOp(r.parse_item))
+                                        }
+                                        top.op = { type: ParseType.map, ops }
+                                        break
+                                    }
+                                    case ScopeType.type_parts: {
                                         top.op = { type: ParseType.map, ops: top.items.map(x => resolveItemOp(x)) }
                                         break
+                                    }
                                 }
                             }
                             else {
@@ -514,29 +515,31 @@ export const parse = (b: BufferSource): Item => {
                         }
                         case r.parse_bit_size: {
                             const s = read(ds) + 1
-                            scope_push({ type: x, needed: 1, items: [], op: { type: ParseType.bit_size, size: s } })
+                            scope_push({ type: ScopeType.parse_bit_size, needed: 1, items: [], op: { type: ParseType.bit_size, size: s } })
                             collapse_scope(s)
                             break
                         }
                         case r.parse_block_size: {
                             const s = read(ds) + 1
-                            scope_push({ type: x, needed: 1, items: [], op: { type: ParseType.block_size, size: s } })
+                            scope_push({ type: ScopeType.parse_block_size, needed: 1, items: [], op: { type: ParseType.block_size, size: s } })
                             collapse_scope(s)
                             break
                         }
                         case r.quote_next: {
-                            scope_push({ type: x, needed: 1, items: [], op: { type: ParseType.item } })
+                            scope_push({ type: ScopeType.quote_next, needed: 1, items: [], op: { type: ParseType.item } })
                             collapse_scope(read(ds))
                             break
                         }
                         case r.bind: {
-                            scope_push({ type: x, needed: 2, items: [], op: { type: ParseType.item } })
+                            scope_push({ type: ScopeType.bind, needed: 2, items: [], op: { type: ParseType.item } })
                             break
                         }
-                        case r.type_array:
-                        case r.parse_none:
+                        case r.type_array: {
+                            scope_push({ type: ScopeType.type_array, needed: 1, items: [], op: { type: ParseType.item } })
+                            break
+                        }
                         case r.magic_number: {
-                            scope_push({ type: x, needed: 1, items: [], op: { type: ParseType.item } })
+                            scope_push({ type: ScopeType.magic_number, needed: 1, items: [], op: { type: ParseType.item } })
                             break
                         }
                         case r.item_varint_plus_block: {
