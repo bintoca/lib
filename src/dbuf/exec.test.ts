@@ -1,10 +1,10 @@
-import { createStruct, createWrap, createError, createEncoder, finishWrite, parse, Scope, Item, parseErrorPos } from '@bintoca/dbuf/codec'
+import { createStruct, createWrap, createError, createEncoder, finishWrite, parse, Scope, Item, parseErrorPos, ScopeType } from '@bintoca/dbuf/codec'
 import { run } from '@bintoca/dbuf/exec'
 import { r, u } from '@bintoca/dbuf/registry'
 import { concat, strip } from '@bintoca/dbuf/util'
 
-const sc = (type: r | symbol, items: Item[]) => { return { type, items, op: undefined } }
-const bi = (x: Item, y: Item): Scope => sc(r.bind, [x, y])
+const sc = (type: ScopeType, items: Item[]) => { return { type, items, op: undefined } }
+const bi = (x: Item, y: Item): Scope => sc(ScopeType.bind, [x, y])
 const perr = (er: r, blocksRead: number, index?: number, bits?: number) => parseErrorPos({ dvOffset: blocksRead * 4, tempIndex: index, partialBlockRemaining: bits }, er)
 test.each([
     [[r.IPv4], r.IPv4],
