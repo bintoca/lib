@@ -1,4 +1,4 @@
-import { createStruct, createWrap, createError, createEncoder, finishWrite, parse, Scope, Item, parseErrorPos, ScopeType } from '@bintoca/dbuf/codec'
+import { createStruct, createEncoder, finishWrite, parse, Scope, Item, parseErrorPos, ScopeType } from '@bintoca/dbuf/codec'
 import { run } from '@bintoca/dbuf/exec'
 import { r, u } from '@bintoca/dbuf/registry'
 import { concat, strip } from '@bintoca/dbuf/util'

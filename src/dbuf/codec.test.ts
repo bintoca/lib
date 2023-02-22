@@ -176,6 +176,7 @@ const b = (a: NumOrBuf, ...b: NumOrBuf[]) => [r.bind, a, ...b]
 const tc = (...a: NumOrBuf[]) => [r.type_choice, ...a, r.end_scope]
 const tcb = (...a: NumOrBuf[]) => [r.type_choice_bit, ...a, r.end_scope]
 const tm = (...a: NumOrBuf[]) => [r.type_map, ...a, r.end_scope]
+const tb = (...a: NumOrBuf[]) => [r.type_bool, ...a, r.end_scope]
 const cs = (a: Item, b?: Item) => { return { type: ScopeType.choice, items: b === undefined ? [a] : [a, b], op: undefined } }
 const tp = (...a: number[]) => { return { type: ScopeType.string, needed: a.length, items: a, op: undefined } }
 const tps = (...a: Item[]) => { return { type: ScopeType.string_stream, items: [...a], op: undefined } }
@@ -184,7 +185,6 @@ const aos = (...a: Item[]) => { return { type: ScopeType.array, items: [...a], o
 const ass = (...a: Item[]) => { return { type: ScopeType.array_stream, items: [...a], op: undefined } }
 const bo = (...a: Item[]) => { return { type: ScopeType.bind, items: [...a], op: undefined } }
 const mo = (...a: Item[]) => { return { type: ScopeType.type_map, items: [...a], op: undefined } }
-const ao = (...a: Item[]) => { return { type: ScopeType.type_array, items: [...a], op: undefined } }
 const ci = (...a: Item[]) => { return { type: ScopeType.type_choice_indexer, items: [...a], op: undefined } }
 const ca = (...a: Item[]) => { return { type: ScopeType.choice_append, items: [...a], op: undefined } }
 const bs = (...a: number[]) => { return { type: ScopeType.bits, items: [...a], op: undefined } }
@@ -202,7 +202,7 @@ test.each([
 ])('parseError(%#)', (i, o) => {
     const er = parse(writer(i))
     if (!isError(er)) { console.log(er['items']) }
-    expect((er as any).items[1].items[1].items[0]).toEqual(o)
+    expect((er as any).items[1].items[1]).toEqual(o)
 })
 {
 
@@ -300,7 +300,7 @@ test.each([
     [b(r.magic_number, r.IPv4), mn(r.IPv4)],
     [b(r.parse_block_size, 0, u8), u8],
     [b(r.parse_block_variable, 1, u8), u8],
-    [b(r.parse_block_variable, 0, 1, 1, 0, u8, u8), bv(u8, u8)],
+    [b(r.parse_block_variable, 0, 1, u8, u8, 1, 0), bv(u8, u8)],
     [b(r.parse_bit_variable, 8, u8), 2],
     [b(r.parse_item, r.IPv4), r.IPv4],
     [b(r.parse_varint_plus_block, 2, u8), new Uint8Array([0, 0, 0, 2, 1, 2, 3, 4])],
@@ -327,8 +327,9 @@ test.each([
     [b(r.type_array, tc(r.parse_varint, r.type_choice_append), 3, 1, r.IEEE_754_binary32, 2, u8, 0, 4), aos(cs(1, ca(r.IEEE_754_binary32)), cs(2, u8), cs(0, 4))],
     [b(r.text_unicode, 5, u.a, u.e, u.i, u.n, u.o), tp(u.a, u.e, u.i, u.n, u.o)],
     [b(r.text_unicode, 0, 5, u.a, u.e, u.i, u.n, u.o, 3, u.a, u.n, u.o, 0), tps(tp(u.a, u.e, u.i, u.n, u.o), tp(u.a, u.n, u.o))],
-    [b(tm(r.parse_varint, r.parse_bit_size, 7, r.parse_bit_size, 7, r.parse_bit_size, 23, r.parse_bit_size, 47, r.parse_varint, r.parse_bit_size, 7), 3, u8, u8, u8, 4), ms(3, 1, 2, 0x030401, bs(0x02030401, 0x0203, 16), 4, 4)],
+    [b(tm(r.parse_varint, r.parse_bit_size, 7, r.parse_bit_size, 7, r.parse_bit_size, 23, r.parse_bit_size, 47, r.parse_varint, r.parse_bit_size, 7), u8, u8, u8, 3, 4), ms(3, 1, 2, 0x030401, bs(0x02030401, 0x0203, 16), 4, 4)],
     [b(tm(r.parse_bit_size, 7, r.flush_bits, r.parse_bit_size, 15), u8, u8), ms(1, r.flush_bits, 0x0102)],
+    [b(tb(r.id, r.sub_authority), 2), 2]
 ])('parse_strip(%#)', (i, o) => {
     const w = writer(i)
     try {
@@ -337,7 +338,8 @@ test.each([
             expect(s).toEqual(o)
         }
         else if (isError(s)) {
-            expect('error ' + (s as any).items[1].items[1].items).toEqual(strip(o))
+            console.log(w)
+            expect('error ' + (s as any).items[1].items).toEqual(strip(o))
         }
         else {
             const ou = (s as Scope).items[1]

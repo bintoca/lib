@@ -147,7 +147,7 @@ export const flushBits = (s: DecoderState) => {
 }
 export const enum ScopeType {
     bind, type_map, map, type_array, array, array_stream, type_choice, choice, choice_append, type_choice_indexer, type_choice_bit, type_choice_append,
-    string, string_stream, block_stream, bits, type_parts, magic_number, parse_bit_size, parse_block_size, quote_next
+    string, string_stream, block_stream, bits, type_parts, magic_number, parse_bit_size, parse_block_size, quote_next, type_bool
 }
 export type Scope = { type: ScopeType, needed?: number, items: Item[], result?, op: ParseOp, ops?: ParseOp[], start?: ParsePosition, end?: ParsePosition, parent?: Scope, parentIndex?: number }
 export type Slot = Scope | number
@@ -157,23 +157,21 @@ export type ParseOp = { type: ParseType, size?: number, ops?: ParseOp[], op?: Pa
 export type ParsePlan = { ops: ParseOp[], index: number }
 export type ParseState = { root: Scope, scope_stack: Scope[], decoder: DecoderState, choice_stack: ParseOp[] }
 export type ParsePosition = { dvOffset: number, tempIndex: number, partialBlockRemaining: number }
-export const createError = (er: r | Scope): Scope => { return { type: ScopeType.bind, items: [r.error, er], op: undefined } }
-export const isError = (x) => x.type == ScopeType.bind && Array.isArray(x.items) && x.items[0] == r.error
+export const isError = (x) => x.type == ScopeType.bind && Array.isArray(x.items) && x.items[0].type == ScopeType.type_map && x.items[0].items.some(y => y == r.error)
 export const createStruct = (fields: Slot[], values: Item[]): Scope => { return { type: ScopeType.bind, items: [{ type: ScopeType.type_map, items: fields, op: undefined }, { type: ScopeType.map, items: values, op: undefined }], op: undefined } }
-export const createWrap = (slots: Slot[]): Scope => { return { type: ScopeType.bind, items: slots, op: undefined } }
 export const parseError = (s: ParseState, regError: r) => parseErrorPos(createPosition(s.decoder), regError)
-export const parseErrorPos = (pos: ParsePosition, regError: r) => {
-    const fields = [r.error, createWrap([r.blocks_read, r.parse_varint,])]
-    const values = [regError, pos.dvOffset / 4]
+export const parseErrorPos = (pos: ParsePosition, regError: r): Scope => {
+    const fields = [r.error, r.parse_item, r.blocks_read, r.parse_varint]
+    const values = [r.error, regError, r.blocks_read, pos.dvOffset / 4]
     if (pos.tempIndex !== undefined) {
-        fields.push(createWrap([r.block_varint_index, r.parse_varint,]))
-        values.push(pos.tempIndex)
+        fields.push(r.block_varint_index, r.parse_varint)
+        values.push(r.block_varint_index, pos.tempIndex)
     }
     if (pos.partialBlockRemaining !== undefined) {
-        fields.push(createWrap([r.block_bits_remaining, r.parse_varint,]))
-        values.push(pos.partialBlockRemaining)
+        fields.push(r.block_bits_remaining, r.parse_varint)
+        values.push(r.block_bits_remaining, pos.partialBlockRemaining)
     }
-    return createError(createStruct(fields, values))
+    return createStruct(fields, values)
 }
 export const resolveItemOp = (x: Item): ParseOp => {
     if (typeof x == 'object') {
@@ -463,6 +461,10 @@ export const parse = (b: BufferSource): Item => {
                             scope_push({ type: ScopeType.type_parts, items: [], op: { type: ParseType.item } })
                             break
                         }
+                        case r.type_bool: {
+                            scope_push({ type: ScopeType.type_bool, items: [], op: { type: ParseType.item } })
+                            break
+                        }
                         case r.type_choice: {
                             scope_push({ type: ScopeType.type_choice, items: [], op: { type: ParseType.item } })
                             break
@@ -499,6 +501,10 @@ export const parse = (b: BufferSource): Item => {
                                     case ScopeType.type_map:
                                     case ScopeType.type_parts: {
                                         top.op = { type: ParseType.map, ops: top.items.map(x => resolveItemOp(x)) }
+                                        break
+                                    }
+                                    case ScopeType.type_bool: {
+                                        top.op = { type: ParseType.varint }
                                         break
                                     }
                                 }
