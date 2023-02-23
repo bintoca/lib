@@ -140,13 +140,14 @@ export const enum r {
     text_unicode_blocks,
     
     bind,
+    bind_external,
     parse_block,
     parse_block_size,
     parse_bit_size,
     parse_item,
     type_choice_indexer,
     type_choice_bit,
-    type_choice_append,
+    type_map_columns,
     type_parts,
     type_bool,
     bool_bit,
@@ -163,13 +164,16 @@ export const enum r {
     error,
     sub_authority,
     id,
+    transclusion,
+    array_splice,
     
     item_varint_plus_block = 64,
     parse_item_varint_plus_block,
     parse_varint_plus_block,
+    parse_string,
+    magic_number = 68,
     parse_block_variable,
     parse_bit_variable,
-    parse_string,
     integer_negative,
     repeat_count,
     text_iri_scheme,
@@ -212,8 +216,6 @@ export const enum r {
     error_unfinished_parse_stack,
     error_invalid_text_value,
     error_invalid_registry_value,
-
-    magic_number = 4473429//TODO move to low range so parse item switch case is compact
 }
 export const enum u {
     space,

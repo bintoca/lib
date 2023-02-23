@@ -1,6 +1,6 @@
 import { parse, write, finishWrite, Item, createDecoder, read, createEncoder, writeBuffer, write_checked, Scope, isError, ScopeType } from '@bintoca/dbuf/codec'
 import { r, u } from '@bintoca/dbuf/registry'
-import { zigzagEncode, zigzagDecode, unicodeToText, textToUnicode, getLeap_millis, getLeap_millis_tai, strip, debug, setDebug } from '@bintoca/dbuf/util'
+import { zigzagEncode, zigzagDecode, unicodeToText, textToUnicode, getLeap_millis, getLeap_millis_tai, strip, debug, setDebug, unicodeOrdering, bufToU8 } from '@bintoca/dbuf/util'
 const dv = new DataView(new ArrayBuffer(8))
 test('float', () => {
     dv.setFloat32(0, 1, true)
@@ -99,7 +99,7 @@ test('stringText', () => {
         expect(textToUnicode(unicodeToText(i))).toBe(i)
     }
     const a = []
-    const s = ' aeinost\n!"\',-./:;?ABCDEFGHIJKLMNOPQRSTUVWXYZbcdfghjklmpqruvwxyz\x00\x01\x02\x03\x04\x05\x06\x07\x08\x09\x0b\x0c\x0d\x0e\x0f\x10\x11\x12\x13\x14\x15\x16\x17\x18\x19\x1a\x1b\x1c\x1d\x1e\x1f#$%&()*+0123456789<=>@[\\]^_`{|}~\x7f😀'
+    const s = unicodeOrdering + '😀'
     for (let x of s) {
         a.push(unicodeToText(x.codePointAt(0)))
     }
@@ -113,10 +113,11 @@ test('stringText', () => {
 })
 test('magicNumber', () => {
     const dv = new DataView(new ArrayBuffer(4))
-    dv.setUint8(1, 'D'.codePointAt(0))
-    dv.setUint8(2, 'B'.codePointAt(0))
-    dv.setUint8(3, 'U'.codePointAt(0))
-    expect(dv.getUint32(0)).toBe(r.magic_number)
+    dv.setUint8(0, 15)
+    dv.setUint8(1, 4)
+    dv.setUint8(2, '@'.codePointAt(0))
+    dv.setUint8(3, 'D'.codePointAt(0))
+    expect(bufToU8(dv)).toEqual(writer([{ num: r.magic_number, size: 4 }, { num: r.magic_number, size: 4 }]))
 })
 const magicNumberTest = () => {
     for (let i = 64; i < 128; i++) {
@@ -176,6 +177,7 @@ const b = (a: NumOrBuf, ...b: NumOrBuf[]) => [r.bind, a, ...b]
 const tc = (...a: NumOrBuf[]) => [r.type_choice, ...a, r.end_scope]
 const tcb = (...a: NumOrBuf[]) => [r.type_choice_bit, ...a, r.end_scope]
 const tm = (...a: NumOrBuf[]) => [r.type_map, ...a, r.end_scope]
+const tmc = (...a: NumOrBuf[]) => [r.type_map_columns, ...a, r.end_scope]
 const tb = (...a: NumOrBuf[]) => [r.type_bool, ...a, r.end_scope]
 const cs = (a: Item, b?: Item) => { return { type: ScopeType.choice, items: b === undefined ? [a] : [a, b], op: undefined } }
 const tp = (...a: number[]) => { return { type: ScopeType.string, needed: a.length, items: a, op: undefined } }
@@ -184,9 +186,7 @@ const ms = (...a: Item[]) => { return { type: ScopeType.map, items: [...a], op: 
 const aos = (...a: Item[]) => { return { type: ScopeType.array, items: [...a], op: undefined } }
 const ass = (...a: Item[]) => { return { type: ScopeType.array_stream, items: [...a], op: undefined } }
 const bo = (...a: Item[]) => { return { type: ScopeType.bind, items: [...a], op: undefined } }
-const mo = (...a: Item[]) => { return { type: ScopeType.type_map, items: [...a], op: undefined } }
 const ci = (...a: Item[]) => { return { type: ScopeType.type_choice_indexer, items: [...a], op: undefined } }
-const ca = (...a: Item[]) => { return { type: ScopeType.choice_append, items: [...a], op: undefined } }
 const bs = (...a: number[]) => { return { type: ScopeType.bits, items: [...a], op: undefined } }
 const bv = (...a: Item[]) => { return { type: ScopeType.block_stream, items: [...a], op: undefined } }
 const qn = (...a: Item[]) => { return { type: ScopeType.quote_next, items: [...a], op: undefined } }
@@ -324,12 +324,12 @@ test.each([
     [b(tcb(r.parse_bit_size, 7, r.parse_bit_size, 5), u8), cs(0, 2)],
     [b(r.type_array, r.parse_item, 1, r.IPv4), aos(r.IPv4)],
     [b(r.parse_item, r.quote_next, r.type_choice), qn(r.type_choice)],
-    [b(r.type_array, tc(r.parse_varint, r.type_choice_append), 3, 1, r.IEEE_754_binary32, 2, u8, 0, 4), aos(cs(1, ca(r.IEEE_754_binary32)), cs(2, u8), cs(0, 4))],
     [b(r.text_unicode, 5, u.a, u.e, u.i, u.n, u.o), tp(u.a, u.e, u.i, u.n, u.o)],
     [b(r.text_unicode, 0, 5, u.a, u.e, u.i, u.n, u.o, 3, u.a, u.n, u.o, 0), tps(tp(u.a, u.e, u.i, u.n, u.o), tp(u.a, u.n, u.o))],
     [b(tm(r.parse_varint, r.parse_bit_size, 7, r.parse_bit_size, 7, r.parse_bit_size, 23, r.parse_bit_size, 47, r.parse_varint, r.parse_bit_size, 7), u8, u8, u8, 3, 4), ms(3, 1, 2, 0x030401, bs(0x02030401, 0x0203, 16), 4, 4)],
     [b(tm(r.parse_bit_size, 7, r.flush_bits, r.parse_bit_size, 15), u8, u8), ms(1, r.flush_bits, 0x0102)],
-    [b(tb(r.id, r.sub_authority), 2), 2]
+    [b(tb(r.id, r.sub_authority), 2), 2],
+    [b(tmc(r.id)), ms(r.id)],
 ])('parse_strip(%#)', (i, o) => {
     const w = writer(i)
     try {

@@ -33,18 +33,13 @@ export const strip = (x: Item) => {
 }
 export const zigzagEncode = (n: number) => (n >> 31) ^ (n << 1)
 export const zigzagDecode = (n: number) => (n >>> 1) ^ -(n & 1)
-export const unicodeToTextLookup = [64, 65, 66, 67, 68, 69, 70, 71, 72, 73, 8, 74, 75, 76, 77, 78, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88, 89, 90, 91, 92, 93, 94,
-    0, 9, 10, 95, 96, 97, 98, 11, 99, 100, 101, 102, 12, 13, 14, 15, 103, 104, 105, 106, 107, 108, 109, 110, 111, 112, 16, 17, 113, 114, 115, 18,
-    116, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 117, 118, 119, 120, 121,
-    122, 1, 45, 46, 47, 2, 48, 49, 50, 3, 51, 52, 53, 54, 4, 5, 55, 56, 57, 6, 7, 58, 59, 60, 61, 62, 63
-]
-export const textToUnicodeLookup = [32, 97, 101, 105, 110, 111, 115, 116, 10, 33, 34, 39, 44, 45, 46, 47, 58, 59, 63,
-    65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88, 89, 90,
-    98, 99, 100, 102, 103, 104, 106, 107, 108, 109, 112, 113, 114, 117, 118, 119, 120, 121, 122,
-    0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31,
-    35, 36, 37, 38, 40, 41, 42, 43, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 60, 61, 62,
-    64, 91, 92, 93, 94, 95, 96
-]
+export const unicodeOrdering = ' aeinost\n!"\',-./:;?ABCDEFGHIJKLMNOPQRSTUVWXYZbcdfghjklmpqruvwxyz\x00\x01\x02\x03\x04\x05\x06\x07\x08\x09\x0b\x0c\x0d\x0e\x0f\x10\x11\x12\x13\x14\x15\x16\x17\x18\x19\x1a\x1b\x1c\x1d\x1e\x1f#$%&()*+0123456789<=>@[\\]^_`{|}~\x7f'
+export const unicodeToTextLookup = []
+export const textToUnicodeLookup = []
+for (let x of unicodeOrdering) {
+    unicodeToTextLookup[x.codePointAt(0)] = textToUnicodeLookup.length
+    textToUnicodeLookup.push(x.codePointAt(0))
+}
 export const unicodeToText = (codePoint: number) => codePoint < 123 ? unicodeToTextLookup[codePoint] : codePoint
 export const textToUnicode = (n: number) => n < 123 ? textToUnicodeLookup[n] : n
 
