@@ -186,11 +186,9 @@ export const resolveItemOp = (x: Item): ParseOp => {
             case r.utc_days:
             case r.utc_hours:
             case r.utc_minutes:
-            case r.weeks:
-            case r.week_day:
+            case r.day_of_week:
             case r.IP_port:
             case r.integer_signed:
-            case r.integer_negative:
             case r.repeat_count:
             case r.exponent_base2:
             case r.exponent_base10:
@@ -216,12 +214,10 @@ export const resolveItemOp = (x: Item): ParseOp => {
                 return { type: ParseType.block_size, size: 4 }
             case r.SHA256:
                 return { type: ParseType.block_size, size: 8 }
-            case r.parse_item_varint_plus_block:
             case r.parse_varint_plus_block:
                 return { type: ParseType.varint_plus_block }
             case r.text_unicode:
             case r.text_iri_no_scheme:
-            case r.text_iri_scheme:
                 return { type: ParseType.string }
             case r.parse_item:
                 return { type: ParseType.item }

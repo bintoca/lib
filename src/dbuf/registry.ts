@@ -166,19 +166,16 @@ export const enum r {
     id,
     transclusion,
     array_splice,
-    
-    item_varint_plus_block = 64,
-    parse_item_varint_plus_block,
-    parse_varint_plus_block,
+    quote_next,
+    item_varint_plus_block,
+
+    parse_varint_plus_block = 64,
     parse_string,
-    magic_number = 68,
     parse_block_variable,
     parse_bit_variable,
-    integer_negative,
+    magic_number = 68,
     repeat_count,
-    text_iri_scheme,
-    quote_next,
-
+    
     IPv4,
     IPv6,
     IP_port,
@@ -191,9 +188,9 @@ export const enum r {
     utc_hours,
     utc_minutes,
     utc_seconds,
-    weeks,
-    week_day,
+    day_of_week,
     
+    text_iri_scheme,
     denominator,
     offset_add,
     offset_subtract,
