@@ -308,11 +308,11 @@ test.each([
     [b(tc()), r.placeholder],
     [b(tm()), r.placeholder],
     [b(tc(r.id, r.denominator), 1), cs(1, r.denominator)],
-    [b(tm(r.id)), ms(r.id)],
-    [b(tm(r.id, r.parse_item, tc(r.denominator)), r.IPv4, 0), ms(r.id, r.IPv4, cs(0, r.denominator))],
-    [b(tm(r.id, r.parse_varint), 2), ms(r.id, 2)],
+    [b(tm(r.id)), ms()],
+    [b(tm(r.id, r.parse_item, tc(r.denominator)), r.IPv4, 0), ms(r.IPv4, cs(0, r.denominator))],
+    [b(tm(r.id, r.parse_varint), 2), ms(2)],
     [b(tc(r.id, b(r.denominator)), 1), cs(1, bo(r.denominator, r.denominator))],
-    [b(tm(b(r.text_unicode, 1, u.a))), ms(bo(r.text_unicode, tp(u.a)))],
+    [b(tm(b(r.text_unicode, 1, u.a))), ms()],
     [b(tc(r.parse_varint, r.type_choice_indexer), 1, 0, 2), cs(1, ci(cs(0, 2)))],
     [b(tc(r.parse_varint, tc(r.text_unicode, r.type_choice_indexer)), 1, 1, 0, 1, u.a), cs(1, cs(1, ci(cs(0, tp(u.a)))))],
     [b(tc(r.parse_varint, tm(tc(r.text_unicode, r.type_choice_indexer), r.type_choice_indexer)), 1, 1, 0, 1, u.e, 0, 5), cs(1, ms(cs(1, ci(cs(0, tp(u.e)))), ci(cs(0, 5))))],
@@ -329,7 +329,8 @@ test.each([
     [b(tm(r.parse_varint, r.parse_bit_size, 7, r.parse_bit_size, 7, r.parse_bit_size, 23, r.parse_bit_size, 47, r.parse_varint, r.parse_bit_size, 7), u8, u8, u8, 3, 4), ms(3, 1, 2, 0x030401, bs(0x02030401, 0x0203, 16), 4, 4)],
     [b(tm(r.parse_bit_size, 7, r.flush_bits, r.parse_bit_size, 15), u8, u8), ms(1, r.flush_bits, 0x0102)],
     [b(tb(r.id, r.sub_authority), 2), 2],
-    [b(tmc(r.id)), ms(r.id)],
+    [b(tmc(r.id)), ms()],
+    [b(r.type_array, r.id), aos()],
 ])('parse_strip(%#)', (i, o) => {
     const w = writer(i)
     try {

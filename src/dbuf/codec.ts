@@ -149,7 +149,7 @@ export const enum ScopeType {
     bind, type_map, map, type_array, array, array_stream, type_choice, choice, type_choice_indexer, type_choice_bit,
     string, string_stream, block_stream, bits, type_parts, magic_number, parse_bit_size, parse_block_size, quote_next, type_bool, bind_external, type_map_columns
 }
-export type Scope = { type: ScopeType, needed?: number, items: Item[], result?, op: ParseOp, ops?: ParseOp[], start?: ParsePosition, end?: ParsePosition, parent?: Scope, parentIndex?: number }
+export type Scope = { type: ScopeType, needed?: number, items: Item[], result?, op: ParseOp, ops?: ParseOp[], start?: ParsePosition, end?: ParsePosition, parent?: Scope, parentIndex?: number, metaScope?: Scope }
 export type Slot = Scope | number
 export type Item = Slot | Uint8Array
 export const enum ParseType { varint, item, block_size, block_variable, bit_size, bit_variable, string, string_stream, block_stream, array, array_stream, choice, choice_index, choice_bit_size, map, varint_plus_block, flush_bits, none }
@@ -192,6 +192,7 @@ export const resolveItemOp = (x: Item): ParseOp => {
             case r.repeat_count:
             case r.exponent_base2:
             case r.exponent_base10:
+            case r.array_forward_reference:
                 return { type: ParseType.varint }
             case r.bool_bit:
                 return { type: ParseType.bit_size, size: 1 }
@@ -381,7 +382,13 @@ export const parse = (b: BufferSource): Item => {
                     break
                 }
                 case ParseType.map: {
-                    scope_push({ type: ScopeType.map, needed: op.ops.length, items: [], op: op.ops[0], ops: op.ops })
+                    const s = { type: ScopeType.map, needed: op.ops.length, items: [], op: op.ops[0], ops: op.ops, metaScope: top }
+                    if (op.ops.length) {
+                        scope_push(s)
+                    }
+                    else {
+                        collapse_scope(s)
+                    }
                     break
                 }
                 case ParseType.string: {
@@ -406,12 +413,17 @@ export const parse = (b: BufferSource): Item => {
                     break
                 }
                 case ParseType.array: {
-                    const l = read(ds)
-                    if (l) {
-                        scope_push({ type: ScopeType.array, needed: l, items: [], op: op.op })
+                    if (op.op.type == ParseType.none) {
+                        collapse_scope({ type: ScopeType.array, items: [], op: op.op })
                     }
                     else {
-                        scope_push({ type: ScopeType.array_stream, items: [], op: { type: ParseType.array_stream, op: op.op } })
+                        const l = read(ds)
+                        if (l) {
+                            scope_push({ type: ScopeType.array, needed: l, items: [], op: op.op })
+                        }
+                        else {
+                            scope_push({ type: ScopeType.array_stream, items: [], op: { type: ParseType.array_stream, op: op.op } })
+                        }
                     }
                     break
                 }
@@ -486,7 +498,7 @@ export const parse = (b: BufferSource): Item => {
                                     case ScopeType.type_map:
                                     case ScopeType.type_map_columns:
                                     case ScopeType.type_parts: {
-                                        top.op = { type: ParseType.map, ops: top.items.map(x => resolveItemOp(x)) }
+                                        top.op = { type: ParseType.map, ops: top.items.map(x => resolveItemOp(x)).filter(x => x.type != ParseType.none) }
                                         break
                                     }
                                     case ScopeType.type_bool: {

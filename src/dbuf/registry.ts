@@ -168,6 +168,9 @@ export const enum r {
     array_splice,
     quote_next,
     item_varint_plus_block,
+    array_forward_reference,
+    call,
+    parameters,
 
     parse_varint_plus_block = 64,
     parse_string,
