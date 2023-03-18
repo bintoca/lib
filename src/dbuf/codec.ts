@@ -152,7 +152,7 @@ export const enum ScopeType {
 export type Scope = { type: ScopeType, needed?: number, items: Item[], result?, op: ParseOp, ops?: ParseOp[], start?: ParsePosition, end?: ParsePosition, parent?: Scope, parentIndex?: number, metaScope?: Scope }
 export type Slot = Scope | number
 export type Item = Slot | Uint8Array
-export const enum ParseType { varint, item, block_size, block_variable, bit_size, bit_variable, string, string_stream, block_stream, array, array_stream, choice, choice_index, choice_bit_size, map, varint_plus_block, flush_bits, none }
+export const enum ParseType { varint, item, block_size, block_variable, bit_size, string, string_stream, block_stream, array, array_stream, choice, choice_index, choice_bit_size, map, varint_plus_block, flush_bits, none }
 export type ParseOp = { type: ParseType, size?: number, ops?: ParseOp[], op?: ParseOp, item?: Item, extendedChoice?: boolean, arrayMultiplier?: number }
 export type ParsePlan = { ops: ParseOp[], index: number }
 export type ParseState = { root: Scope, scope_stack: Scope[], decoder: DecoderState, choice_stack: ParseOp[] }
@@ -181,45 +181,13 @@ export const resolveItemOp = (x: Item): ParseOp => {
     else {
         switch (x) {
             case r.parse_varint:
-            case r.utc_years:
-            case r.utc_months:
-            case r.utc_days:
-            case r.utc_hours:
-            case r.utc_minutes:
-            case r.day_of_week:
-            case r.IP_port:
-            case r.integer_signed:
-            case r.repeat_count:
-            case r.exponent_base2:
-            case r.exponent_base10:
-            case r.array_forward_reference:
                 return { type: ParseType.varint }
-            case r.bool_bit:
-                return { type: ParseType.bit_size, size: 1 }
-            case r.parse_bit_variable:
-                return { type: ParseType.bit_variable }
-            case r.text_unicode_blocks:
-            case r.text_iri_no_scheme_blocks:
-            case r.parse_block_variable:
-                return { type: ParseType.block_variable }
-            case r.IEEE_754_binary16:
-                return { type: ParseType.bit_size, size: 16 }
-            case r.parse_block:
-            case r.IEEE_754_binary32:
-            case r.IPv4:
-                return { type: ParseType.block_size, size: 1 }
-            case r.IEEE_754_binary64:
-                return { type: ParseType.block_size, size: 2 }
-            case r.IPv6:
-            case r.UUID:
-                return { type: ParseType.block_size, size: 4 }
-            case r.SHA256:
-                return { type: ParseType.block_size, size: 8 }
             case r.parse_varint_plus_block:
                 return { type: ParseType.varint_plus_block }
-            case r.text_unicode:
-            case r.text_iri_no_scheme:
+            case r.parse_string_varint:
                 return { type: ParseType.string }
+            case r.parse_string_block:
+                return { type: ParseType.block_variable }
             case r.parse_item:
                 return { type: ParseType.item }
             case r.type_choice_indexer:
@@ -239,7 +207,6 @@ export const isExtendedChoice = (t: ParseType): boolean => {
         case ParseType.none:
         case ParseType.map:
             return false
-        case ParseType.bit_variable:
         case ParseType.block_variable:
         case ParseType.item:
         case ParseType.string:
@@ -277,7 +244,8 @@ export const parse = (b: BufferSource): Item => {
                             break
                         }
                         case ScopeType.type_array: {
-                            t.op = { type: ParseType.array, op: resolveItemOp(i) }
+                            const op = resolveItemOp(i)
+                            t.op = op.type == ParseType.none ? { type: ParseType.none, item: r.placeholder } : { type: ParseType.array, op }
                             break
                         }
                         case ScopeType.type_choice: {
@@ -418,10 +386,6 @@ export const parse = (b: BufferSource): Item => {
                     collapse_scope(read_bits(ds, op.size))
                     break
                 }
-                case ParseType.bit_variable: {
-                    collapse_scope(read_bits(ds, read(ds) + 1))
-                    break
-                }
                 case ParseType.varint_plus_block: {
                     collapse_scope(read_varint_plus_block(ds))
                     break
@@ -458,17 +422,12 @@ export const parse = (b: BufferSource): Item => {
                     break
                 }
                 case ParseType.array: {
-                    if (op.op.type == ParseType.none) {
-                        collapse_scope({ type: ScopeType.array, items: [], op: op.op })
+                    const l = read(ds)
+                    if (l) {
+                        scope_push({ type: ScopeType.array, needed: l * (op.op.arrayMultiplier || 1), items: [], op: op.op })
                     }
                     else {
-                        const l = read(ds)
-                        if (l) {
-                            scope_push({ type: ScopeType.array, needed: l * (op.op.arrayMultiplier || 1), items: [], op: op.op })
-                        }
-                        else {
-                            scope_push({ type: ScopeType.array_stream, items: [], op: { type: ParseType.array_stream, op: op.op } })
-                        }
+                        scope_push({ type: ScopeType.array_stream, items: [], op: { type: ParseType.array_stream, op: op.op } })
                     }
                     break
                 }
@@ -537,7 +496,7 @@ export const parse = (b: BufferSource): Item => {
                             break
                         }
                         case r.bind_external: {
-                            scope_push({ type: ScopeType.bind_external, needed: 1, items: [], op: undefined })
+                            scope_push({ type: ScopeType.bind_external, needed: 1, items: [], op: { type: ParseType.item } })
                             break
                         }
                         case r.type_array: {

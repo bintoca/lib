@@ -114,13 +114,13 @@ test('stringText', () => {
 test('magicNumber', () => {
     const dv = new DataView(new ArrayBuffer(4))
     dv.setUint8(0, 15)
-    dv.setUint8(1, 4)
-    dv.setUint8(2, '@'.codePointAt(0))
-    dv.setUint8(3, 'D'.codePointAt(0))
+    dv.setUint8(1, 0)
+    dv.setUint8(2, 128)
+    dv.setUint8(3, 8)
     expect(bufToU8(dv)).toEqual(writer([{ num: r.magic_number, size: 4 }, { num: r.magic_number, size: 4 }]))
 })
 const magicNumberTest = () => {
-    for (let i = 64; i < 128; i++) {
+    for (let i = 8; i < 21; i++) {
         const b = writer([{ num: i, size: 4 }, { num: i, size: 4 }])
         console.log(i, b, new TextDecoder().decode(b))
     }
@@ -195,8 +195,7 @@ const dg = (x: string | string[]) => { return { debug: Array.isArray(x) ? x : [x
 test.each([
     [[r.bind, r.type_choice, 1, r.IEEE_754_binary32, 3], r.error_invalid_choice_index],
     [[r.bind, r.type_choice_indexer, 0], r.error_invalid_choice_indexer],
-    [[r.bind, r.type_choice, r.parse_varint], r.error_unfinished_parse_stack],
-    [[r.bind, r.IEEE_754_binary32], r.error_unfinished_parse_stack],
+    [[r.bind, r.type_choice, 3], r.error_unfinished_parse_stack],
     [[0xFFFFFF], r.error_invalid_registry_value],
 ])('parseError(%#)', (i, o) => {
     const er = parse(writer(i))
@@ -299,37 +298,31 @@ test.each([
 test.each([
     [b(r.magic_number, r.IPv4), mn(r.IPv4)],
     [b(r.parse_block_size, 0, u8), u8],
-    [b(r.parse_block_variable, 1, u8), u8],
-    [b(r.parse_block_variable, 0, 1, u8, u8, 1, 0), bv(u8, u8)],
-    [b(r.parse_bit_variable, 8, u8), 2],
+    [b(r.parse_string_varint, 0, 1, u.e, 0), tps(tp(u.e))],
+    [b(r.parse_string_block, 1, u8), u8],
+    [b(r.parse_string_block, 0, 1, u8, u8, 1, 0), bv(u8, u8)],
     [b(r.parse_item, r.IPv4), r.IPv4],
+    [b(r.parse_item, r.item_varint_plus_block, 5, u8), new Uint8Array([0, 0, 0, 5, 1, 2, 3, 4])],
+    [b(r.parse_varint, 2), 2],
     [b(r.parse_varint_plus_block, 2, u8), new Uint8Array([0, 0, 0, 2, 1, 2, 3, 4])],
-    [b(r.bool_bit, u8), 0],
+    [b(r.type_parts, 1, r.parse_varint, 2), ms(2)],
     [b(tc(0, 0)), r.placeholder],
     [b(tm(0, 0)), r.placeholder],
     [b(tc(2, r.id, r.denominator), 1), cs(1, r.denominator)],
     [b(tm(1, r.id, r.denominator)), ms()],
-    [b(tm(2, r.id, r.parse_item, tc(1, r.denominator), r.sub_authority), r.IPv4, 0), ms(r.IPv4, cs(0, r.denominator))],
-    [b(tm(1, r.id, r.parse_varint), 2), ms(2)],
     [b(tc(2, r.id, b(r.denominator)), 1), cs(1, bo(r.denominator, r.denominator))],
-    [b(tm(1, b(r.text_unicode, 1, u.a), r.id)), ms()],
+    [b(tm(1, b(r.parse_varint, 1), r.id)), ms()],
     [b(tc(2, r.parse_varint, r.type_choice_indexer), 1, 0, 2), cs(1, ci(cs(0, 2)))],
-    [b(tc(2, r.parse_varint, tc(2, r.text_unicode, r.type_choice_indexer)), 1, 1, 0, 1, u.a), cs(1, cs(1, ci(cs(0, tp(u.a)))))],
-    [b(tc(2, r.parse_varint, tm(1, tc(2, r.text_unicode, r.type_choice_indexer), r.type_choice_indexer)), 1, 1, 0, 1, u.e, 0, 5), cs(1, ms(cs(1, ci(cs(0, tp(u.e)))), ci(cs(0, 5))))],
-    [b(tc(2, r.IEEE_754_binary32, tc(2, r.parse_varint, r.integer_signed)), 1, 1), cs(1, cs(1, 0))],
+    [b(tc(2, r.parse_varint, tc(2, r.parse_string_varint, r.type_choice_indexer)), 1, 1, 0, 1, u.a), cs(1, cs(1, ci(cs(0, tp(u.a)))))],
+    [b(tc(2, r.parse_varint, tm(1, tc(2, r.parse_string_varint, r.type_choice_indexer), r.type_choice_indexer)), 1, 1, 0, 1, u.e, 0, 5), cs(1, ms(cs(1, ci(cs(0, tp(u.e)))), ci(cs(0, 5))))],
     [b(r.type_array, r.parse_varint, 0, 2, 3, 4, 1, 5, 0), ass(aos(3, 4), aos(5))],
-    [b(r.type_array, tm(1, r.IEEE_754_binary32, tc(2, r.parse_varint, r.integer_signed)), 1, u8, 1), aos(ms(u8, cs(1, 0)))],
-    [b(tm(1, r.IEEE_754_binary32, r.type_array, tc(2, r.parse_varint, r.integer_signed)), u8, 2, 0, 5, 1), ms(u8, aos(cs(0, 5), cs(1, 0)))],
     [b(tc(2, r.parse_bit_size, 7, r.parse_bit_size, 5), 0, u8), cs(0, 1)],
     [b(tcb(2, r.parse_bit_size, 7, r.parse_bit_size, 5), u8), cs(0, 2)],
-    [b(r.type_array, r.parse_item, 1, r.IPv4), aos(r.IPv4)],
     [b(r.parse_item, r.quote_next, r.type_choice), qn(r.type_choice)],
-    [b(r.text_unicode, 5, u.a, u.e, u.i, u.n, u.o), tp(u.a, u.e, u.i, u.n, u.o)],
-    [b(r.text_unicode, 0, 5, u.a, u.e, u.i, u.n, u.o, 3, u.a, u.n, u.o, 0), tps(tp(u.a, u.e, u.i, u.n, u.o), tp(u.a, u.n, u.o))],
     [b(tm(4, r.parse_varint, r.parse_bit_size, 7, r.parse_bit_size, 7, r.parse_bit_size, 23, r.parse_bit_size, 47, r.parse_varint, r.parse_bit_size, 7, r.id), 3, u8, 4, u8, u8), ms(3, 1, 2, 0x030401, bs(0x02030401, 0x0203, 16), 4, 4)],
     [b(tm(1, r.parse_bit_size, 7, r.flush_bits, r.parse_bit_size, 15), u8, u8), ms(1, fb(0x0102))],
     [b(tmc(1, r.id, r.denominator)), ms()],
-    [b(r.type_array, r.id), aos()],
+    [b(r.type_array, r.id), r.placeholder],
 ])('parse_strip(%#)', (i, o) => {
     const w = writer(i)
     try {
