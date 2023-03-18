@@ -323,7 +323,7 @@ export const parse = (b: BufferSource): Item => {
                             break
                         }
                         case ScopeType.flush_bits: {
-                            t.op = { type: ParseType.flush_bits }
+                            t.op = { type: ParseType.flush_bits, op: resolveItemOp(i) }
                             break
                         }
                     }
@@ -489,7 +489,7 @@ export const parse = (b: BufferSource): Item => {
                 }
                 case ParseType.flush_bits: {
                     flushBits(ds)
-                    scope_push({ type: ScopeType.flush_bits, needed: 1, items: [], op: { type: ParseType.item } })
+                    scope_push({ type: ScopeType.flush_bits, needed: 1, items: [], op: op.op })
                     break
                 }
                 case ParseType.item: {

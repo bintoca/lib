@@ -190,6 +190,7 @@ const bs = (...a: number[]) => { return { type: ScopeType.bits, items: [...a], o
 const bv = (...a: Item[]) => { return { type: ScopeType.block_stream, items: [...a], op: undefined } }
 const qn = (...a: Item[]) => { return { type: ScopeType.quote_next, items: [...a], op: undefined } }
 const mn = (...a: Item[]) => { return { type: ScopeType.magic_number, items: [...a], op: undefined } }
+const fb = (...a: Item[]) => { return { type: ScopeType.flush_bits, items: [...a], op: undefined } }
 const dg = (x: string | string[]) => { return { debug: Array.isArray(x) ? x : [x] } }
 test.each([
     [[r.bind, r.type_choice, 1, r.IEEE_754_binary32, 3], r.error_invalid_choice_index],
@@ -203,7 +204,6 @@ test.each([
     expect((er as any).items[1].items[1]).toEqual(o)
 })
 {
-
 
 
 
@@ -327,7 +327,7 @@ test.each([
     [b(r.text_unicode, 5, u.a, u.e, u.i, u.n, u.o), tp(u.a, u.e, u.i, u.n, u.o)],
     [b(r.text_unicode, 0, 5, u.a, u.e, u.i, u.n, u.o, 3, u.a, u.n, u.o, 0), tps(tp(u.a, u.e, u.i, u.n, u.o), tp(u.a, u.n, u.o))],
     [b(tm(4, r.parse_varint, r.parse_bit_size, 7, r.parse_bit_size, 7, r.parse_bit_size, 23, r.parse_bit_size, 47, r.parse_varint, r.parse_bit_size, 7, r.id), 3, u8, 4, u8, u8), ms(3, 1, 2, 0x030401, bs(0x02030401, 0x0203, 16), 4, 4)],
-    //[b(tm(r.parse_bit_size, 7, r.flush_bits, r.parse_bit_size, 15), u8, u8), ms(1, r.flush_bits, 0x0102)],
+    [b(tm(1, r.parse_bit_size, 7, r.flush_bits, r.parse_bit_size, 15), u8, u8), ms(1, fb(0x0102))],
     [b(tmc(1, r.id, r.denominator)), ms()],
     [b(r.type_array, r.id), aos()],
 ])('parse_strip(%#)', (i, o) => {
