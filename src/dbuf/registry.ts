@@ -139,7 +139,7 @@ export const enum r {
     parse_string_block,
     parse_block_size,
 
-    magic_number = 8,
+    flush_bits = 8,
     bind,
     bind_external,
     parse_bit_size,
@@ -151,7 +151,6 @@ export const enum r {
     type_parts,
     quote_next,
     item_varint_plus_block,
-    flush_bits,
 
     bool_none,
     bool,

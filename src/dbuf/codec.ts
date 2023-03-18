@@ -503,10 +503,6 @@ export const parse = (b: BufferSource): Item => {
                             scope_push({ type: ScopeType.type_array, needed: 1, items: [], op: { type: ParseType.item } })
                             break
                         }
-                        case r.magic_number: {
-                            scope_push({ type: ScopeType.magic_number, needed: 1, items: [], op: { type: ParseType.item } })
-                            break
-                        }
                         case r.flush_bits: {
                             scope_push({ type: ScopeType.flush_bits, needed: 1, items: [], op: { type: ParseType.item } })
                             break

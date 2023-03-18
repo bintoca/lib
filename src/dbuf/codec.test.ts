@@ -117,7 +117,7 @@ test('magicNumber', () => {
     dv.setUint8(1, 0)
     dv.setUint8(2, 128)
     dv.setUint8(3, 8)
-    expect(bufToU8(dv)).toEqual(writer([{ num: r.magic_number, size: 4 }, { num: r.magic_number, size: 4 }]))
+    expect(bufToU8(dv)).toEqual(writer([{ num: r.flush_bits, size: 4 }, { num: r.flush_bits, size: 4 }]))
 })
 const magicNumberTest = () => {
     for (let i = 8; i < 21; i++) {
@@ -146,7 +146,7 @@ test.each([[[r.IPv4, r.id], r.IPv4]])('early end', (i, o) => {
 const u8 = new Uint8Array([1, 2, 3, 4])
 test.each([
     [[r.IPv4], r.IPv4],
-    [[r.magic_number, r.IPv4], { type: ScopeType.magic_number, needed: 1, items: [r.IPv4] }],
+    [[r.flush_bits, r.IPv4], { type: ScopeType.flush_bits, needed: 1, items: [r.IPv4] }],
 ])('parse(%#)', (i, o) => {
     const w = writer(i)
     try {
@@ -204,6 +204,7 @@ test.each([
 })
 {
 
+    
 
 
 
@@ -296,7 +297,6 @@ test.each([
 
 }
 test.each([
-    [b(r.magic_number, r.IPv4), mn(r.IPv4)],
     [b(r.parse_block_size, 0, u8), u8],
     [b(r.parse_string_varint, 0, 1, u.e, 0), tps(tp(u.e))],
     [b(r.parse_string_block, 1, u8), u8],
