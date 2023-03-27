@@ -159,7 +159,7 @@ test.each([
 ])('parseError(%#)', (i, o) => {
     const er = parse(writer(i))
     if (!isError(er)) { console.log(er['items']) }
-    expect((er as any).items[1].items[1]).toEqual(o)
+    expect((er as any).items[1].items[0]).toEqual(o)
 })
 {
 
@@ -197,7 +197,7 @@ test.each([
 
 }
 test.each([
-    [a(r.parse_item, r.IPv4), r.IPv4],
+    [a(r.parse_bind, r.IPv4), bo(r.IPv4, r.IPv4)],
     [a(r.parse_varint, 2), 2],
     [a(r.type_parts, 1, r.parse_varint, 2), ms(2)],
     [a(tc(0, 0)), r.placeholder],

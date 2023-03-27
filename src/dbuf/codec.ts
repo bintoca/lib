@@ -123,7 +123,7 @@ export const enum ScopeType { bind, type_map, map, type_array, array, array_stre
 export type Scope = { type: ScopeType, needed?: number, items: Item[], op: ParseOp, ops?: ParseOp[], start?: ParsePosition, end?: ParsePosition, parent?: Scope, parentIndex?: number, metaScope?: Scope, bit_size?: number }
 export type Slot = Scope | number
 export type Item = Slot | Uint8Array
-export const enum ParseType { varint, item, bit_size, array, array_stream, choice, choice_index, map, flush_bits, none }
+export const enum ParseType { varint, item, bit_size, array, array_stream, choice, choice_index, map, flush_bits, none, bind }
 export type ParseOp = { type: ParseType, size?: number, ops?: ParseOp[], op?: ParseOp, item?: Item, extendedChoice?: boolean, arrayMultiplier?: number }
 export type ParsePlan = { ops: ParseOp[], index: number }
 export type ParseState = { root: Scope, scope_stack: Scope[], decoder: DecoderState, choice_stack: ParseOp[] }
@@ -132,15 +132,15 @@ export const isError = (x) => x.type == ScopeType.bind && Array.isArray(x.items)
 export const createStruct = (fields: Slot[], values: Item[]): Scope => { return { type: ScopeType.bind, items: [{ type: ScopeType.type_map, items: fields, op: undefined }, { type: ScopeType.map, items: values, op: undefined }], op: undefined } }
 export const parseError = (s: ParseState, regError: r) => parseErrorPos(createPosition(s.decoder), regError)
 export const parseErrorPos = (pos: ParsePosition, regError: r): Scope => {
-    const fields = [r.error, r.parse_item, r.blocks_read, r.parse_varint]
-    const values = [r.error, regError, r.blocks_read, pos.dvOffset / 4]
+    const fields = [r.error, r.parse_varint, r.blocks_read, r.parse_varint]
+    const values = [regError, pos.dvOffset / 4]
     if (pos.tempIndex !== undefined) {
         fields.push(r.block_varint_index, r.parse_varint)
-        values.push(r.block_varint_index, pos.tempIndex)
+        values.push(pos.tempIndex)
     }
     if (pos.partialBlockRemaining !== undefined) {
         fields.push(r.block_bits_remaining, r.parse_varint)
-        values.push(r.block_bits_remaining, pos.partialBlockRemaining)
+        values.push(pos.partialBlockRemaining)
     }
     return createStruct(fields, values)
 }
@@ -153,8 +153,8 @@ export const resolveItemOp = (x: Item): ParseOp => {
         switch (x) {
             case r.parse_varint:
                 return { type: ParseType.varint }
-            case r.parse_item:
-                return { type: ParseType.item }
+            case r.parse_bind:
+                return { type: ParseType.bind }
             case r.type_choice_indexer:
                 return { type: ParseType.choice_index }
         }
@@ -324,6 +324,10 @@ export const parse = (b: BufferSource): Item => {
                 case ParseType.flush_bits: {
                     flushBits(ds)
                     scope_push({ type: ScopeType.flush_bits, needed: 1, items: [], op: op.op })
+                    break
+                }
+                case ParseType.bind: {
+                    scope_push({ type: ScopeType.bind, needed: 2, items: [], op: { type: ParseType.item } })
                     break
                 }
                 case ParseType.item: {

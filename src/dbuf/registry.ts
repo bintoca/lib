@@ -144,7 +144,7 @@ export const enum r {
     type_choice_bit,
     type_map_columns,
     type_array_bit,
-    parse_item,
+    parse_bind,
 
     registry,
     bool,
