@@ -155,8 +155,6 @@ export const resolveItemOp = (x: Item): ParseOp => {
                 return { type: ParseType.varint }
             case r.parse_bind:
                 return { type: ParseType.bind }
-            case r.type_choice_indexer:
-                return { type: ParseType.choice_index }
         }
     }
     return { type: ParseType.none, item: x }
@@ -250,10 +248,11 @@ export const parse = (b: BufferSource): Item => {
             const op = top.op
             switch (op.type) {
                 case ParseType.choice_index: {
-                    if (st.choice_stack.length == 0) {
+                    const c = st.choice_stack[st.choice_stack.length - 1 - op.size]
+                    if (!c) {
                         return parseError(st, r.error_invalid_choice_indexer)
                     }
-                    scope_push({ type: ScopeType.type_choice_indexer, needed: 1, items: [], op: st.choice_stack[st.choice_stack.length - 1], })
+                    scope_push({ type: ScopeType.type_choice_indexer, needed: 1, items: [], op: c })
                     break
                 }
                 case ParseType.choice: {
@@ -352,6 +351,11 @@ export const parse = (b: BufferSource): Item => {
                         case r.type_choice_bit: {
                             const s = read(ds) + 1
                             scope_push({ type: ScopeType.type_choice, needed: 1, items: [], bit_size: s, op: { type: ParseType.array, op: { type: ParseType.item } } })
+                            break
+                        }
+                        case r.type_choice_indexer: {
+                            const s = read(ds)
+                            collapse_scope({ type: ScopeType.type_choice_indexer, items: [s], op: { type: ParseType.choice_index, size: s } })
                             break
                         }
                         case r.parse_bit_size: {
