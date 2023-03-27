@@ -30,7 +30,6 @@ export const shiftMap = [
     [0, 11, 32], [0, 11, 31, 35], [0, 11, 30, 33, 35], [0, 11, 30, 34], [0, 12, 34], [0, 12, 33, 35], [0, 13, 35], [0, 14]
 ]
 export const shiftLookup = shiftMap.map(x => x.map(y => shiftInit[y])).concat(shiftMap.map(x => x.map(y => shiftInit[y])))
-
 export type DecoderState = { temp: number[], mesh: number, tempCount: number, tempIndex: number, dv: DataView, dvOffset: number, partialBlock: number, partialBlockRemaining: number, tempChoice?: number }
 export const decodeVarintBlock = (s: DecoderState, x: number) => {
     let mesh = x >>> 24
@@ -72,19 +71,13 @@ export const read = (s: DecoderState): number => {
     }
     return v
 }
-export const read_blocks = (s: DecoderState, n: number) => {
-    const l = n * 4
-    let o = 0
-    const d = new DataView(new ArrayBuffer(l))
-    while (o < l) {
-        d.setUint32(o, s.dv.getUint32(s.dvOffset))
-        s.dvOffset += 4
-        o += 4
-    }
-    return bufToU8(d)
-}
 export const read_bits = (s: DecoderState, n: number): number | Scope => {
-    function rb(s: DecoderState, n: number) {
+    if (s.tempChoice !== undefined) {
+        const v = s.tempChoice
+        s.tempChoice = undefined
+        return v
+    }
+    function rb(s: DecoderState, n: number): number {
         if (s.partialBlockRemaining == 0) {
             s.partialBlock = s.dv.getUint32(s.dvOffset)
             s.dvOffset += 4
@@ -121,38 +114,16 @@ export const read_bits = (s: DecoderState, n: number): number | Scope => {
         }
         return sc
     }
-    const r = rb(s, n)
-    return r
-}
-export const read_string = (ds: DecoderState): Scope => {
-    const length = read(ds)
-    if (length == 0) {
-        return null
-    }
-    const items = Array(length)
-    for (let i = 0; i < length; i++) {
-        items[i] = read(ds)
-    }
-    return { type: ScopeType.string, needed: length, items, op: { type: ParseType.item } }
-}
-export const read_varint_plus_block = (ds: DecoderState): Uint8Array => {
-    const dv = new DataView(new ArrayBuffer(8))
-    dv.setUint32(0, read(ds))
-    dv.setUint32(4, ds.dv.getUint32(ds.dvOffset))
-    ds.dvOffset += 4
-    return bufToU8(dv)
+    return rb(s, n)
 }
 export const flushBits = (s: DecoderState) => {
     s.partialBlockRemaining = 0
 }
-export const enum ScopeType {
-    bind, type_map, map, type_array, array, array_stream, type_choice, choice, type_choice_indexer, type_choice_bit, flush_bits,
-    string, string_stream, block_stream, bits, type_parts, magic_number, parse_bit_size, parse_block_size, quote_next, bind_external, type_map_columns
-}
-export type Scope = { type: ScopeType, needed?: number, items: Item[], result?, op: ParseOp, ops?: ParseOp[], start?: ParsePosition, end?: ParsePosition, parent?: Scope, parentIndex?: number, metaScope?: Scope }
+export const enum ScopeType { bind, type_map, map, type_array, array, array_stream, type_choice, choice, type_choice_indexer, flush_bits, bits, type_parts, parse_bit_size, type_map_columns }
+export type Scope = { type: ScopeType, needed?: number, items: Item[], op: ParseOp, ops?: ParseOp[], start?: ParsePosition, end?: ParsePosition, parent?: Scope, parentIndex?: number, metaScope?: Scope, bit_size?: number }
 export type Slot = Scope | number
 export type Item = Slot | Uint8Array
-export const enum ParseType { varint, item, block_size, block_variable, bit_size, string, string_stream, block_stream, array, array_stream, choice, choice_index, choice_bit_size, map, varint_plus_block, flush_bits, none }
+export const enum ParseType { varint, item, bit_size, array, array_stream, choice, choice_index, map, flush_bits, none }
 export type ParseOp = { type: ParseType, size?: number, ops?: ParseOp[], op?: ParseOp, item?: Item, extendedChoice?: boolean, arrayMultiplier?: number }
 export type ParsePlan = { ops: ParseOp[], index: number }
 export type ParseState = { root: Scope, scope_stack: Scope[], decoder: DecoderState, choice_stack: ParseOp[] }
@@ -182,12 +153,6 @@ export const resolveItemOp = (x: Item): ParseOp => {
         switch (x) {
             case r.parse_varint:
                 return { type: ParseType.varint }
-            case r.parse_varint_plus_block:
-                return { type: ParseType.varint_plus_block }
-            case r.parse_string_varint:
-                return { type: ParseType.string }
-            case r.parse_string_block:
-                return { type: ParseType.block_variable }
             case r.parse_item:
                 return { type: ParseType.item }
             case r.type_choice_indexer:
@@ -197,25 +162,7 @@ export const resolveItemOp = (x: Item): ParseOp => {
     return { type: ParseType.none, item: x }
 }
 export const isExtendedChoice = (t: ParseType): boolean => {
-    switch (t) {
-        case ParseType.bit_size:
-        case ParseType.block_size:
-        case ParseType.choice:
-        case ParseType.choice_index:
-        case ParseType.array:
-        case ParseType.array_stream:
-        case ParseType.none:
-        case ParseType.map:
-            return false
-        case ParseType.block_variable:
-        case ParseType.item:
-        case ParseType.string:
-        case ParseType.varint:
-        case ParseType.varint_plus_block:
-            return true
-        default:
-            throw 'not implemented ParseType: ' + t
-    }
+    return t == ParseType.varint || t == ParseType.bit_size
 }
 export const flattenScopeArray = (s: Scope): Item[] => (s.items[0] as Scope).type == ScopeType.array ? (s.items[0] as Scope).items : (s.items[0] as Scope).items.map(x => (x as Scope).items).flat()
 export const isInvalidText = (n: number) => n > 0x10FFFF
@@ -245,25 +192,14 @@ export const parse = (b: BufferSource): Item => {
                         }
                         case ScopeType.type_array: {
                             const op = resolveItemOp(i)
-                            t.op = op.type == ParseType.none ? { type: ParseType.none, item: r.placeholder } : { type: ParseType.array, op }
+                            t.op = op.type == ParseType.none ? { type: ParseType.none, item: r.placeholder } : { type: ParseType.array, op, size: t.bit_size }
                             break
                         }
                         case ScopeType.type_choice: {
                             t.items = flattenScopeArray(t)
                             if (t.items.length) {
-                                t.op = { type: ParseType.choice, ops: t.items.map(x => resolveItemOp(x)) }
+                                t.op = { type: ParseType.choice, ops: t.items.map(x => resolveItemOp(x)), size: t.bit_size }
                                 t.op.extendedChoice = isExtendedChoice(t.op.ops[t.op.ops.length - 1].type)
-                            }
-                            else {
-                                t.op = { type: ParseType.none, item: r.placeholder }
-                            }
-                            break
-                        }
-                        case ScopeType.type_choice_bit: {
-                            t.items = flattenScopeArray(t)
-                            if (t.items.length) {
-                                const ops = t.items.map(x => resolveItemOp(x))
-                                t.op = { type: ParseType.choice_bit_size, ops, item: (32 - Math.clz32(ops.length - 1) || 1) }
                             }
                             else {
                                 t.op = { type: ParseType.none, item: r.placeholder }
@@ -284,10 +220,6 @@ export const parse = (b: BufferSource): Item => {
                         }
                         case ScopeType.choice: {
                             st.choice_stack.pop()
-                            break
-                        }
-                        case ScopeType.magic_number: {
-                            t.op = { type: ParseType.none, item: t }
                             break
                         }
                         case ScopeType.flush_bits: {
@@ -323,17 +255,9 @@ export const parse = (b: BufferSource): Item => {
                     scope_push({ type: ScopeType.type_choice_indexer, needed: 1, items: [], op: st.choice_stack[st.choice_stack.length - 1], })
                     break
                 }
-                case ParseType.choice_bit_size: {
-                    const c = read_bits(ds, op.item as number) as number
-                    if (op.ops.length <= c) {
-                        return parseError(st, r.error_invalid_choice_index)
-                    }
-                    scope_push({ type: ScopeType.choice, needed: 2, items: [c], op: op.ops[c] })
-                    break
-                }
                 case ParseType.choice: {
                     st.choice_stack.push(op)
-                    const c = read(ds)
+                    const c = op.size ? read_bits(ds, op.size) as number : read(ds)
                     let cop: ParseOp
                     if (op.extendedChoice) {
                         if (op.ops.length - 1 <= c) {
@@ -357,37 +281,8 @@ export const parse = (b: BufferSource): Item => {
                     collapse_scope(read(ds))
                     break
                 }
-                case ParseType.block_size: {
-                    collapse_scope(read_blocks(ds, op.size))
-                    break
-                }
-                case ParseType.block_variable: {
-                    const n = read(ds)
-                    if (n) {
-                        collapse_scope(read_blocks(ds, n))
-                    }
-                    else {
-                        scope_push({ type: ScopeType.block_stream, items: [], op: { type: ParseType.block_stream } })
-                    }
-                    break
-                }
-                case ParseType.block_stream: {
-                    const n = read(ds)
-                    if (n) {
-                        collapse_scope(read_blocks(ds, n))
-                    }
-                    else {
-                        top.end = createPosition(ds)
-                        collapse_scope(st.scope_stack.pop())
-                    }
-                    break
-                }
                 case ParseType.bit_size: {
                     collapse_scope(read_bits(ds, op.size))
-                    break
-                }
-                case ParseType.varint_plus_block: {
-                    collapse_scope(read_varint_plus_block(ds))
                     break
                 }
                 case ParseType.map: {
@@ -400,39 +295,18 @@ export const parse = (b: BufferSource): Item => {
                     }
                     break
                 }
-                case ParseType.string: {
-                    const s = read_string(ds)
-                    if (s) {
-                        collapse_scope(s)
-                    }
-                    else {
-                        scope_push({ type: ScopeType.string_stream, items: [], op: { type: ParseType.string_stream } })
-                    }
-                    break
-                }
-                case ParseType.string_stream: {
-                    const s = read_string(ds)
-                    if (s) {
-                        collapse_scope(s)
-                    }
-                    else {
-                        top.end = createPosition(ds)
-                        collapse_scope(st.scope_stack.pop())
-                    }
-                    break
-                }
                 case ParseType.array: {
-                    const l = read(ds)
+                    const l = op.size ? read_bits(ds, op.size) as number : read(ds)
                     if (l) {
                         scope_push({ type: ScopeType.array, needed: l * (op.op.arrayMultiplier || 1), items: [], op: op.op })
                     }
                     else {
-                        scope_push({ type: ScopeType.array_stream, items: [], op: { type: ParseType.array_stream, op: op.op } })
+                        scope_push({ type: ScopeType.array_stream, items: [], op: { type: ParseType.array_stream, op: op.op, size: op.size } })
                     }
                     break
                 }
                 case ParseType.array_stream: {
-                    const l = read(ds)
+                    const l = op.size ? read_bits(ds, op.size) as number : read(ds)
                     if (l) {
                         scope_push({ type: ScopeType.array, needed: l * (op.arrayMultiplier || 1), items: [], op: op.op })
                     }
@@ -471,7 +345,11 @@ export const parse = (b: BufferSource): Item => {
                             break
                         }
                         case r.type_choice_bit: {
-                            scope_push({ type: ScopeType.type_choice_bit, needed: 1, items: [], op: { type: ParseType.array, op: { type: ParseType.item } } })
+                            const s = read(ds) + 1
+                            if (s > 32) {
+                                return parseError(st, r.error_invalid_choice_bit_size)
+                            }
+                            scope_push({ type: ScopeType.type_choice, needed: 1, items: [], bit_size: s, op: { type: ParseType.array, op: { type: ParseType.item } } })
                             break
                         }
                         case r.parse_bit_size: {
@@ -479,36 +357,24 @@ export const parse = (b: BufferSource): Item => {
                             collapse_scope({ type: ScopeType.parse_bit_size, items: [s], op: { type: ParseType.bit_size, size: s } })
                             break
                         }
-                        case r.parse_block_size: {
-                            const s = read(ds) + 1
-                            collapse_scope({ type: ScopeType.parse_block_size, items: [s], op: { type: ParseType.block_size, size: s } })
-                            break
-                        }
-                        case r.quote_next: {
-                            const s = read(ds)
-                            const x: Scope = { type: ScopeType.quote_next, needed: 1, items: [s], op: { type: ParseType.none } }
-                            x.op.item = x
-                            collapse_scope(x)
-                            break
-                        }
                         case r.bind: {
                             scope_push({ type: ScopeType.bind, needed: 2, items: [], op: { type: ParseType.item } })
-                            break
-                        }
-                        case r.bind_external: {
-                            scope_push({ type: ScopeType.bind_external, needed: 1, items: [], op: { type: ParseType.item } })
                             break
                         }
                         case r.type_array: {
                             scope_push({ type: ScopeType.type_array, needed: 1, items: [], op: { type: ParseType.item } })
                             break
                         }
-                        case r.flush_bits: {
-                            scope_push({ type: ScopeType.flush_bits, needed: 1, items: [], op: { type: ParseType.item } })
+                        case r.type_array_bit: {
+                            const s = read(ds) + 1
+                            if (s > 32) {
+                                return parseError(st, r.error_invalid_array_bit_size)
+                            }
+                            scope_push({ type: ScopeType.type_array, needed: 1, items: [], bit_size: s, op: { type: ParseType.item } })
                             break
                         }
-                        case r.item_varint_plus_block: {
-                            collapse_scope(read_varint_plus_block(ds))
+                        case r.flush_bits: {
+                            scope_push({ type: ScopeType.flush_bits, needed: 1, items: [], op: { type: ParseType.item } })
                             break
                         }
                         default:
