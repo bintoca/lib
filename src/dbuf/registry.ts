@@ -201,8 +201,6 @@ export const enum r {
     error_unfinished_parse_stack,
     error_invalid_text_value,
     error_invalid_registry_value,
-    error_invalid_choice_bit_size,
-    error_invalid_array_bit_size,
 }
 export const enum u {
     space,

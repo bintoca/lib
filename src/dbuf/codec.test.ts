@@ -154,8 +154,6 @@ test.each([
     [[r.type_choice_indexer, 0], r.error_invalid_choice_indexer],
     [[r.type_choice, 3], r.error_unfinished_parse_stack],
     [[0xFFFFFF], r.error_invalid_registry_value],
-    [[r.type_choice_bit, 32], r.error_invalid_choice_bit_size],
-    [[r.type_array_bit, 32], r.error_invalid_array_bit_size],
 ])('parseError(%#)', (i, o) => {
     const er = parse(writer(i))
     if (!isError(er)) { console.log(er['items']) }

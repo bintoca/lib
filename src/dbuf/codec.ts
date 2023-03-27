@@ -351,9 +351,6 @@ export const parse = (b: BufferSource): Item => {
                         }
                         case r.type_choice_bit: {
                             const s = read(ds) + 1
-                            if (s > 32) {
-                                return parseError(st, r.error_invalid_choice_bit_size)
-                            }
                             scope_push({ type: ScopeType.type_choice, needed: 1, items: [], bit_size: s, op: { type: ParseType.array, op: { type: ParseType.item } } })
                             break
                         }
@@ -372,9 +369,6 @@ export const parse = (b: BufferSource): Item => {
                         }
                         case r.type_array_bit: {
                             const s = read(ds) + 1
-                            if (s > 32) {
-                                return parseError(st, r.error_invalid_array_bit_size)
-                            }
                             scope_push({ type: ScopeType.type_array, needed: 1, items: [], bit_size: s, op: { type: ParseType.item } })
                             break
                         }
