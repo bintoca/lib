@@ -169,8 +169,9 @@ export const isInvalidText = (n: number) => n > 0x10FFFF
 export const isInvalidRegistry = (n: number) => n > 600 || (n < 512 && n > 200)
 export const createPosition = (s: DecoderState): ParsePosition => { return { dvOffset: s.dvOffset, tempIndex: s.tempCount ? s.tempIndex : undefined, partialBlockRemaining: s.partialBlockRemaining ? s.partialBlockRemaining : undefined } }
 export const parse = (b: BufferSource): Item => {
-    const root = { type: ScopeType.array, items: [], op: { type: ParseType.item } }
-    const st: ParseState = { root, scope_stack: [root], decoder: createDecoder(b), choice_stack: [] }
+    const root: Scope = { type: ScopeType.array, items: [], op: { type: ParseType.item } }
+    const bind: Scope = { type: ScopeType.bind, needed: 2, items: [], op: { type: ParseType.item } }
+    const st: ParseState = { root, scope_stack: [root, bind], decoder: createDecoder(b), choice_stack: [] }
     try {
         const scope_top = () => st.scope_stack[st.scope_stack.length - 1]
         const scope_push = (s: Scope) => {
@@ -389,7 +390,7 @@ export const parse = (b: BufferSource): Item => {
                     throw { message: 'not implemented ParseType: ' + op.type, st }
             }
         }
-        return st.root.items[0]
+        return bind
     }
     catch (e) {
         if (isError(e)) {

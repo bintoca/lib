@@ -132,48 +132,10 @@ test.each([[-(10 * 365) * 86400, -9], [0, -9], [(10 * 365 + 1) * 86400, -1], [(1
 test.each([[-(20 * 365) * 86400, -9], [-(6) * 86400, -1], [-1, 0], [0, 0], [(366 + 181 - 5) * 86400 + 1, 1]])('leap_reverse', (d, o) => {
     expect(getLeap_millis_tai(d * 1000)).toBe(o * 1000)
 })
-test.each([[[r.IPv4, r.id], r.IPv4]])('early end', (i, o) => {
-    const w = writer(i)
-    try {
-        const s = parse(w)
-        expect(s).toEqual(o)
-    }
-    catch (e) {
-        console.log(w)
-        throw e
-    }
-})
 const u8 = new Uint8Array([1, 2, 3, 4])
-test.each([
-    [[r.IPv4], r.IPv4],
-    [[r.flush_bits, r.IPv4], { type: ScopeType.flush_bits, needed: 1, items: [r.IPv4] }],
-])('parse(%#)', (i, o) => {
-    const w = writer(i)
-    try {
-        const s = parse(w)
-        function strip(x: Item) {
-            if (typeof x == 'object') {
-                if (x instanceof Uint8Array) {
-                    return x
-                }
-                const d: Scope = { type: x.type, items: x.items.map(y => strip(y)), needed: x.needed, op: undefined }
-                if (d.op?.item) {
-                    d.op.item = undefined
-                }
-                return d
-            }
-            return x
-        }
-        //console.log(s.items[0])
-        expect(strip(s)).toEqual(o)
-    }
-    catch (e) {
-        console.log(w)
-        throw e
-    }
-})
 type NumOrBuf = number | Uint8Array | { num?: number, size?: number, debug?: string[] } | NumOrBuf[]
-const b = (a: NumOrBuf, ...b: NumOrBuf[]) => [r.bind, a, ...b]
+const a = (a: NumOrBuf, ...b: NumOrBuf[]) => [a, ...b]
+const bi = (a: NumOrBuf, ...b: NumOrBuf[]) => [r.bind, a, ...b]
 const tc = (len: number, ...a: NumOrBuf[]) => [r.type_choice, len, ...a]
 const tcb = (size: number, len: number, ...a: NumOrBuf[]) => [r.type_choice_bit, size, len, ...a]
 const tm = (len: number, ...a: NumOrBuf[]) => [r.type_map, len, ...a]
@@ -188,12 +150,12 @@ const bs = (...a: number[]) => { return { type: ScopeType.bits, items: [...a], o
 const fb = (...a: Item[]) => { return { type: ScopeType.flush_bits, items: [...a], op: undefined } }
 const dg = (x: string | string[]) => { return { debug: Array.isArray(x) ? x : [x] } }
 test.each([
-    [[r.bind, r.type_choice, 1, r.IEEE_754_binary32, 3], r.error_invalid_choice_index],
-    [[r.bind, r.type_choice_indexer, 0], r.error_invalid_choice_indexer],
-    [[r.bind, r.type_choice, 3], r.error_unfinished_parse_stack],
+    [[r.type_choice, 1, r.IEEE_754_binary32, 3], r.error_invalid_choice_index],
+    [[r.type_choice_indexer, 0], r.error_invalid_choice_indexer],
+    [[r.type_choice, 3], r.error_unfinished_parse_stack],
     [[0xFFFFFF], r.error_invalid_registry_value],
-    [[r.bind, r.type_choice_bit, 32], r.error_invalid_choice_bit_size],
-    [[r.bind, r.type_array_bit, 32], r.error_invalid_array_bit_size],
+    [[r.type_choice_bit, 32], r.error_invalid_choice_bit_size],
+    [[r.type_array_bit, 32], r.error_invalid_array_bit_size],
 ])('parseError(%#)', (i, o) => {
     const er = parse(writer(i))
     if (!isError(er)) { console.log(er['items']) }
@@ -233,93 +195,30 @@ test.each([
 
 
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 }
 test.each([
-    [b(r.parse_item, r.IPv4), r.IPv4],
-    [b(r.parse_varint, 2), 2],
-    [b(r.type_parts, 1, r.parse_varint, 2), ms(2)],
-    [b(tc(0, 0)), r.placeholder],
-    [b(tm(0, 0)), r.placeholder],
-    [b(r.type_array, r.id), r.placeholder],
-    [b(tc(2, r.id, r.denominator), 1), cs(1, r.denominator)],
-    [b(tm(1, r.id, r.denominator)), ms()],
-    [b(tc(2, r.id, b(r.denominator)), 1), cs(1, bo(r.denominator, r.denominator))],
-    [b(tm(1, b(r.parse_varint, 1), r.id)), ms()],
-    [b(tc(2, r.parse_varint, r.type_choice_indexer), 1, 0, 2), cs(1, ci(cs(0, 2)))],
-    [b(tc(2, r.parse_varint, tc(2, r.type_parts, 2, r.parse_varint, r.parse_varint, r.type_choice_indexer)), 1, 1, 0, 2, 3), cs(1, cs(1, ci(cs(0, ms(2, 3)))))],
-    [b(tc(2, r.parse_varint, tm(1, tc(2, r.type_parts, 2, r.parse_varint, r.parse_varint, r.type_choice_indexer), r.type_choice_indexer)), 1, 1, 0, 2, 3, 0, 5), cs(1, ms(cs(1, ci(cs(0, ms(2, 3)))), ci(cs(0, 5))))],
-    [b(r.type_array, r.parse_varint, 0, 2, 3, 4, 1, 5, 0), ass(aos(3, 4), aos(5))],
-    [b(tc(2, r.parse_bit_size, 7, r.parse_bit_size, 5), 0, u8), cs(0, 1)],
-    [b(tcb(0, 2, r.parse_bit_size, 7, r.parse_bit_size, 5), u8), cs(0, 2)],
-    [b(tm(4, r.parse_varint, r.parse_bit_size, 7, r.parse_bit_size, 7, r.parse_bit_size, 23, r.parse_bit_size, 47, r.parse_varint, r.parse_bit_size, 7, r.id), 3, u8, 4, u8, u8), ms(3, 1, 2, 0x030401, bs(0x02030401, 0x0203, 16), 4, 4)],
-    [b(tm(1, r.parse_bit_size, 7, r.flush_bits, r.parse_bit_size, 15), u8, u8), ms(1, fb(0x0102))],
-    [b(tmc(1, r.id, r.denominator)), ms()],
-    [b(r.type_array_bit, 7, r.parse_bit_size, 8, u8), aos(4)],
-])('parse_strip(%#)', (i, o) => {
+    [a(r.parse_item, r.IPv4), r.IPv4],
+    [a(r.parse_varint, 2), 2],
+    [a(r.type_parts, 1, r.parse_varint, 2), ms(2)],
+    [a(tc(0, 0)), r.placeholder],
+    [a(tm(0, 0)), r.placeholder],
+    [a(r.type_array, r.id), r.placeholder],
+    [a(r.flush_bits, r.parse_varint, 2), fb(2)],
+    [a(tc(2, r.id, r.denominator), 1), cs(1, r.denominator)],
+    [a(tm(1, r.id, r.denominator)), ms()],
+    [a(tc(2, r.id, bi(r.denominator)), 1), cs(1, bo(r.denominator, r.denominator))],
+    [a(tm(1, bi(r.parse_varint, 1), r.id)), ms()],
+    [a(tc(2, r.parse_varint, r.type_choice_indexer), 1, 0, 2), cs(1, ci(cs(0, 2)))],
+    [a(tc(2, r.parse_varint, tc(2, r.type_parts, 2, r.parse_varint, r.parse_varint, r.type_choice_indexer)), 1, 1, 0, 2, 3), cs(1, cs(1, ci(cs(0, ms(2, 3)))))],
+    [a(tc(2, r.parse_varint, tm(1, tc(2, r.type_parts, 2, r.parse_varint, r.parse_varint, r.type_choice_indexer), r.type_choice_indexer)), 1, 1, 0, 2, 3, 0, 5), cs(1, ms(cs(1, ci(cs(0, ms(2, 3)))), ci(cs(0, 5))))],
+    [a(r.type_array, r.parse_varint, 0, 2, 3, 4, 1, 5, 0), ass(aos(3, 4), aos(5))],
+    [a(tc(2, r.parse_bit_size, 7, r.parse_bit_size, 5), 0, u8), cs(0, 1)],
+    [a(tcb(0, 2, r.parse_bit_size, 7, r.parse_bit_size, 5), u8), cs(0, 2)],
+    [a(tm(4, r.parse_varint, r.parse_bit_size, 7, r.parse_bit_size, 7, r.parse_bit_size, 23, r.parse_bit_size, 47, r.parse_varint, r.parse_bit_size, 7, r.id), 3, u8, 4, u8, u8), ms(3, 1, 2, 0x030401, bs(0x02030401, 0x0203, 16), 4, 4)],
+    [a(tm(1, r.parse_bit_size, 7, r.flush_bits, r.parse_bit_size, 15), u8, u8), ms(1, fb(0x0102))],
+    [a(tmc(1, r.id, r.denominator)), ms()],
+    [a(r.type_array_bit, 7, r.parse_bit_size, 8, u8), aos(4)],
+])('parse(%#)', (i, o) => {
     const w = writer(i)
     try {
         const s = parse(w)
