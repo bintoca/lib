@@ -134,7 +134,7 @@ test.each([[-(20 * 365) * 86400, -9], [-(6) * 86400, -1], [-1, 0], [0, 0], [(366
 })
 const u8 = new Uint8Array([1, 2, 3, 4])
 type NumOrBuf = number | Uint8Array | { num?: number, size?: number, debug?: string[] } | NumOrBuf[]
-const a = (a: NumOrBuf, ...b: NumOrBuf[]) => [a, ...b]
+const a = (a: NumOrBuf, ...b: NumOrBuf[]) => [r.bind, a, ...b]
 const bi = (a: NumOrBuf, ...b: NumOrBuf[]) => [r.bind, a, ...b]
 const tc = (len: number, ...a: NumOrBuf[]) => [r.type_choice, len, ...a]
 const tcb = (size: number, len: number, ...a: NumOrBuf[]) => [r.type_choice_bit, size, len, ...a]
@@ -150,8 +150,8 @@ const bs = (...a: number[]) => { return { type: ScopeType.bits, items: [...a], o
 const fb = (...a: Item[]) => { return { type: ScopeType.flush_bits, items: [...a], op: undefined } }
 const dg = (x: string | string[]) => { return { debug: Array.isArray(x) ? x : [x] } }
 test.each([
-    [[r.type_choice, 1, r.IEEE_754_binary32, 3], r.error_invalid_choice_index],
-    [[r.type_choice_indexer, 0], r.error_invalid_choice_indexer],
+    [[r.bind, r.type_choice, 1, r.IEEE_754_binary32, 3], r.error_invalid_choice_index],
+    [[r.bind, r.type_choice_indexer, 0], r.error_invalid_choice_indexer],
     [[r.type_choice, 3], r.error_unfinished_parse_stack],
     [[0xFFFFFF], r.error_invalid_registry_value],
 ])('parseError(%#)', (i, o) => {
@@ -195,7 +195,7 @@ test.each([
 
 }
 test.each([
-    [a(r.parse_bind, r.IPv4), bo(r.IPv4, r.IPv4)],
+    [a(r.parse_item, r.IPv4), r.IPv4],
     [a(r.parse_varint, 2), 2],
     [a(r.type_parts, 1, r.parse_varint, 2), ms(2)],
     [a(tc(0, 0)), r.placeholder],

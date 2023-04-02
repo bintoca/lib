@@ -123,7 +123,7 @@ export const enum ScopeType { bind, type_map, map, type_array, array, array_stre
 export type Scope = { type: ScopeType, needed?: number, items: Item[], op: ParseOp, ops?: ParseOp[], start?: ParsePosition, end?: ParsePosition, parent?: Scope, parentIndex?: number, metaScope?: Scope, bit_size?: number }
 export type Slot = Scope | number
 export type Item = Slot | Uint8Array
-export const enum ParseType { varint, item, bit_size, array, array_stream, choice, choice_index, map, flush_bits, none, bind }
+export const enum ParseType { varint, item, bit_size, array, array_stream, choice, choice_index, map, flush_bits, none }
 export type ParseOp = { type: ParseType, size?: number, ops?: ParseOp[], op?: ParseOp, item?: Item, extendedChoice?: boolean, arrayMultiplier?: number }
 export type ParsePlan = { ops: ParseOp[], index: number }
 export type ParseState = { root: Scope, scope_stack: Scope[], decoder: DecoderState, choice_stack: ParseOp[] }
@@ -145,8 +145,8 @@ export const resolveItemOp = (x: Item): ParseOp => {
         switch (x) {
             case r.parse_varint:
                 return { type: ParseType.varint }
-            case r.parse_bind:
-                return { type: ParseType.bind }
+            case r.parse_item:
+                return { type: ParseType.item }
         }
     }
     return { type: ParseType.none, item: x }
@@ -160,8 +160,7 @@ export const isInvalidRegistry = (n: number) => n > 600 || (n < 512 && n > 200)
 export const createPosition = (s: DecoderState): ParsePosition => { return { dvOffset: s.dvOffset, tempIndex: s.tempCount ? s.tempIndex : undefined, partialBlockRemaining: s.partialBlockRemaining ? s.partialBlockRemaining : undefined } }
 export const parse = (b: BufferSource): Item => {
     const root: Scope = { type: ScopeType.array, items: [], op: { type: ParseType.item } }
-    const bind: Scope = { type: ScopeType.bind, needed: 2, items: [], op: { type: ParseType.item } }
-    const st: ParseState = { root, scope_stack: [root, bind], decoder: createDecoder(b), choice_stack: [] }
+    const st: ParseState = { root, scope_stack: [root], decoder: createDecoder(b), choice_stack: [] }
     try {
         const scope_top = () => st.scope_stack[st.scope_stack.length - 1]
         const scope_push = (s: Scope) => {
@@ -317,10 +316,6 @@ export const parse = (b: BufferSource): Item => {
                     scope_push({ type: ScopeType.flush_bits, needed: 1, items: [], op: op.op })
                     break
                 }
-                case ParseType.bind: {
-                    scope_push({ type: ScopeType.bind, needed: 2, items: [], op: { type: ParseType.item } })
-                    break
-                }
                 case ParseType.item: {
                     const x = read(ds)
                     switch (x) {
@@ -384,7 +379,7 @@ export const parse = (b: BufferSource): Item => {
                     throw { message: 'not implemented ParseType: ' + op.type, st }
             }
         }
-        return bind
+        return root.items[0]
     }
     catch (e) {
         if (isError(e)) {

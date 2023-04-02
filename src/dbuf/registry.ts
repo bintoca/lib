@@ -135,7 +135,7 @@ export const enum r {
     type_choice_bit,
     type_map_columns,
     type_array_bit,
-    parse_bind,
+    parse_item,
 
     registry,
     bool,
@@ -145,8 +145,6 @@ export const enum r {
     IEEE_754_binary64,
     numerator,
     unit,
-    point,
-    interval,
     exponent_base2,
     exponent_base10,
     text_unicode,
@@ -156,7 +154,7 @@ export const enum r {
     id,
     transclusion,
     array_splice,
-    array_back_reference,
+    array_relative_reference,
     call,
     parameters,
     repeat_count,
@@ -164,6 +162,7 @@ export const enum r {
     add,
     subtract,
 
+    timezone,
     year,
     month,
     day,
@@ -183,6 +182,8 @@ export const enum r {
     UUID,
     SHA256,
     day_of_week,
+    span,
+    interval,
     
     text_iri_scheme,
     denominator,
@@ -194,7 +195,6 @@ export const enum r {
     nan_quiet,
     nan_signal,
     array_key,
-    array_forward_reference,
 
     error_internal = 512,
     error_invalid_choice_index,
