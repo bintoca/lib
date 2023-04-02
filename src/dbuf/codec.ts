@@ -132,16 +132,8 @@ export const isError = (x) => x.type == ScopeType.bind && Array.isArray(x.items)
 export const createStruct = (fields: Slot[], values: Item[]): Scope => { return { type: ScopeType.bind, items: [{ type: ScopeType.type_map, items: fields, op: undefined }, { type: ScopeType.map, items: values, op: undefined }], op: undefined } }
 export const parseError = (s: ParseState, regError: r) => parseErrorPos(createPosition(s.decoder), regError)
 export const parseErrorPos = (pos: ParsePosition, regError: r): Scope => {
-    const fields = [r.error, r.parse_varint, r.blocks_read, r.parse_varint]
-    const values = [regError, pos.dvOffset / 4]
-    if (pos.tempIndex !== undefined) {
-        fields.push(r.block_varint_index, r.parse_varint)
-        values.push(pos.tempIndex)
-    }
-    if (pos.partialBlockRemaining !== undefined) {
-        fields.push(r.block_bits_remaining, r.parse_varint)
-        values.push(pos.partialBlockRemaining)
-    }
+    const fields = [r.error, r.parse_varint]
+    const values = [regError]
     return createStruct(fields, values)
 }
 export const resolveItemOp = (x: Item): ParseOp => {
