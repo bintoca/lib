@@ -159,8 +159,7 @@ export const enum r {
     parameters,
     repeat_count,
     shared,
-    add,
-    subtract,
+    stream,
 
     timezone,
     year,
@@ -169,19 +168,21 @@ export const enum r {
     hour,
     minute,
     second,
+
     meter,
     kilogram,
     ampere,
     kelvin,
     mole,
     candela,
-    
     IPv4,
     IPv6,
     IP_port,
     UUID,
     SHA256,
     day_of_week,
+    half,
+    quarter,
     span,
     interval,
     
