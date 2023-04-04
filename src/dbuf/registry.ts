@@ -183,8 +183,10 @@ export const enum r {
     day_of_week,
     half,
     quarter,
-    span,
-    interval,
+    temporal_start,
+    temporal_end,
+    temporal_period,
+    duration,
     
     text_iri_scheme,
     denominator,
