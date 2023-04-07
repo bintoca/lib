@@ -1,4 +1,4 @@
-import { Item, Slot } from '@bintoca/dbuf/codec'
+import { Item } from '@bintoca/dbuf/codec'
 export const bufToDV = (b: BufferSource, offset: number = 0, length?: number): DataView => b instanceof ArrayBuffer ? new DataView(b, offset, length !== undefined ? length : b.byteLength - offset) : new DataView(b.buffer, b.byteOffset + offset, length !== undefined ? length : b.byteLength - offset)
 export const bufToU8 = (b: BufferSource, offset: number = 0, length?: number): Uint8Array => b instanceof ArrayBuffer ? new Uint8Array(b, offset, length !== undefined ? length : b.byteLength - offset) : new Uint8Array(b.buffer, b.byteOffset + offset, length !== undefined ? length : b.byteLength - offset)
 export const concat = (buffers: BufferSource[]): Uint8Array => {
@@ -27,7 +27,7 @@ export const strip = (x: Item) => {
         if (x instanceof Uint8Array) {
             return x
         }
-        return { type: x.type, items: x.items.map(y => strip(y as Slot)) }
+        return { type: x.type, items: x.items.map(y => strip(y)) }
     }
     return x
 }

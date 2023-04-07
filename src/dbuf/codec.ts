@@ -119,23 +119,27 @@ export const read_bits = (s: DecoderState, n: number): number | Scope => {
 export const flushBits = (s: DecoderState) => {
     s.partialBlockRemaining = 0
 }
-export const enum ScopeType { bind, type_map, map, type_array, array, array_stream, type_choice, choice, type_choice_indexer, flush_bits, bits, type_parts, parse_bit_size, type_map_columns }
+export const enum ScopeType { bind, type_map, map, type_array, array, array_stream, type_choice, choice, type_choice_indexer, flush_bits, bits, type_array_fixed, parse_bit_size, type_map_columns, type_kind }
 export type Scope = { type: ScopeType, needed?: number, items: Item[], op: ParseOp, ops?: ParseOp[], start?: ParsePosition, end?: ParsePosition, parent?: Scope, parentIndex?: number, metaScope?: Scope, bit_size?: number }
-export type Slot = Scope | number
-export type Item = Slot | Uint8Array
+export type Item = Scope | number
 export const enum ParseType { varint, item, bit_size, array, array_stream, choice, choice_index, map, flush_bits, none }
 export type ParseOp = { type: ParseType, size?: number, ops?: ParseOp[], op?: ParseOp, item?: Item, extendedChoice?: boolean, arrayMultiplier?: number }
-export type ParsePlan = { ops: ParseOp[], index: number }
 export type ParseState = { root: Scope, scope_stack: Scope[], decoder: DecoderState, choice_stack: ParseOp[] }
 export type ParsePosition = { dvOffset: number, tempIndex: number, partialBlockRemaining: number }
-export const isError = (x) => x.type == ScopeType.bind && Array.isArray(x.items) && x.items[0].type == ScopeType.type_map && x.items[0].items.some(y => y == r.error)
-export const createStruct = (fields: Slot[], values: Item[]): Scope => { return { type: ScopeType.bind, items: [{ type: ScopeType.type_map, items: fields, op: undefined }, { type: ScopeType.map, items: values, op: undefined }], op: undefined } }
-export const parseError = (s: ParseState, regError: r) => parseErrorPos(createPosition(s.decoder), regError)
-export const parseErrorPos = (pos: ParsePosition, regError: r): Scope => {
-    const fields = [r.error, r.parse_varint]
-    const values = [regError]
-    return createStruct(fields, values)
+export const isError = (x: Item): boolean => {
+    if (typeof x == 'number') {
+        return false
+    }
+    if (x.type == ScopeType.bind) {
+        x = x.items[0]
+    }
+    if (typeof x == 'number') {
+        return false
+    }
+    return x && x.type == ScopeType.type_kind && x.items[0] == r.error
 }
+export const parseError = (s: ParseState, regError: r) => parseErrorPos(createPosition(s.decoder), regError)
+export const parseErrorPos = (pos: ParsePosition, regError: r): Scope => { return { type: ScopeType.type_kind, items: [r.error, regError], op: undefined } }
 export const resolveItemOp = (x: Item): ParseOp => {
     if (typeof x == 'object') {
         const s = x as Scope
@@ -198,7 +202,7 @@ export const parse = (b: BufferSource): Item => {
                         }
                         case ScopeType.type_map:
                         case ScopeType.type_map_columns:
-                        case ScopeType.type_parts: {
+                        case ScopeType.type_array_fixed: {
                             t.items = flattenScopeArray(t)
                             if (t.items.length) {
                                 t.op = { type: ParseType.map, ops: t.items.map(x => resolveItemOp(x)).filter(x => x.type != ParseType.none) }
@@ -206,6 +210,10 @@ export const parse = (b: BufferSource): Item => {
                             else {
                                 t.op = { type: ParseType.none, item: r.placeholder }
                             }
+                            break
+                        }
+                        case ScopeType.type_kind: {
+                            t.op = { type: ParseType.map, ops: t.items.map(x => resolveItemOp(x)).filter(x => x.type != ParseType.none) }
                             break
                         }
                         case ScopeType.choice: {
@@ -327,8 +335,8 @@ export const parse = (b: BufferSource): Item => {
                             scope_push({ type: ScopeType.type_map_columns, needed: 1, items: [], op: { type: ParseType.array, op: { type: ParseType.item, arrayMultiplier: 2 } } })
                             break
                         }
-                        case r.type_parts: {
-                            scope_push({ type: ScopeType.type_parts, needed: 1, items: [], op: { type: ParseType.array, op: { type: ParseType.item } } })
+                        case r.type_array_fixed: {
+                            scope_push({ type: ScopeType.type_array_fixed, needed: 1, items: [], op: { type: ParseType.array, op: { type: ParseType.item } } })
                             break
                         }
                         case r.type_choice: {
@@ -352,6 +360,10 @@ export const parse = (b: BufferSource): Item => {
                         }
                         case r.bind: {
                             scope_push({ type: ScopeType.bind, needed: 2, items: [], op: { type: ParseType.item } })
+                            break
+                        }
+                        case r.type_kind: {
+                            scope_push({ type: ScopeType.type_kind, needed: 2, items: [], op: { type: ParseType.item } })
                             break
                         }
                         case r.type_array: {

@@ -1,8 +1,8 @@
-import { parse, Scope, Item, Slot, isError, createEncoder, finishWrite } from '@bintoca/dbuf/codec'
+import { parse, Scope, Item, isError, createEncoder, finishWrite } from '@bintoca/dbuf/codec'
 import { r } from '@bintoca/dbuf/registry'
 import { concat, log } from '@bintoca/dbuf/util'
 
-export type ExecutionState = { stack: { scope: Scope, index: number }[], returns: Slot[] }
+export type ExecutionState = { stack: { scope: Scope, index: number }[], returns: Item[] }
 export const execError = (s: ExecutionState, er: Scope | r): Scope => {
     return null
 }
@@ -17,10 +17,10 @@ export const clone = (x: Item, parent: Scope, parentIndex: number): Item => {
     i.items = x.items.map(y => clone(y, i, x.parentIndex))
     return i
 }
-export const exec_item = (s: ExecutionState, sc: Scope, index: number): Slot => {
+export const exec_item = (s: ExecutionState, sc: Scope, index: number): Item => {
     s.stack.push({ scope: sc, index })
     const i = sc.items[index]
-    let res: Slot
+    let res: Item
     if (typeof i == 'number') {
         res = i
     }

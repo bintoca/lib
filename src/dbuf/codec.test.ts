@@ -157,7 +157,7 @@ test.each([
 ])('parseError(%#)', (i, o) => {
     const er = parse(writer(i))
     if (!isError(er)) { console.log(er['items']) }
-    expect((er as any).items[1].items[0]).toEqual(o)
+    expect((er as any).items[1]).toEqual(o)
 })
 {
 
@@ -193,11 +193,13 @@ test.each([
 
 
 
+    
+
 }
 test.each([
     [a(r.parse_item, r.IPv4), r.IPv4],
     [a(r.parse_varint, 2), 2],
-    [a(r.type_parts, 1, r.parse_varint, 2), ms(2)],
+    [a(r.type_array_fixed, 1, r.parse_varint, 2), ms(2)],
     [a(tc(0, 0)), r.placeholder],
     [a(tm(0, 0)), r.placeholder],
     [a(r.type_array, r.id), r.placeholder],
@@ -207,8 +209,8 @@ test.each([
     [a(tc(2, r.id, bi(r.denominator)), 1), cs(1, bo(r.denominator, r.denominator))],
     [a(tm(1, bi(r.parse_varint, 1), r.id)), ms()],
     [a(tc(2, r.parse_varint, r.type_choice_indexer, 0), 1, 0, 2), cs(1, ci(cs(0, 2)))],
-    [a(tc(2, r.parse_varint, tc(2, r.type_parts, 2, r.parse_varint, r.parse_varint, r.type_choice_indexer, 0)), 1, 1, 0, 2, 3), cs(1, cs(1, ci(cs(0, ms(2, 3)))))],
-    [a(tc(2, r.parse_varint, tm(1, tc(2, r.type_parts, 2, r.parse_varint, r.parse_varint, r.type_choice_indexer, 1), r.type_choice_indexer, 0)), 1, 1, 0, 2, 0, 5), cs(1, ms(cs(1, ci(cs(0, 2))), ci(cs(0, 5))))],
+    [a(tc(2, r.parse_varint, tc(2, r.type_array_fixed, 2, r.parse_varint, r.parse_varint, r.type_choice_indexer, 0)), 1, 1, 0, 2, 3), cs(1, cs(1, ci(cs(0, ms(2, 3)))))],
+    [a(tc(2, r.parse_varint, tm(1, tc(2, r.type_array_fixed, 2, r.parse_varint, r.parse_varint, r.type_choice_indexer, 1), r.type_choice_indexer, 0)), 1, 1, 0, 2, 0, 5), cs(1, ms(cs(1, ci(cs(0, 2))), ci(cs(0, 5))))],
     [a(r.type_array, r.parse_varint, 0, 2, 3, 4, 1, 5, 0), ass(aos(3, 4), aos(5))],
     [a(tc(2, r.parse_bit_size, 7, r.parse_bit_size, 5), 0, u8), cs(0, 1)],
     [a(tcb(0, 2, r.parse_bit_size, 7, r.parse_bit_size, 5), u8), cs(0, 2)],
@@ -216,6 +218,7 @@ test.each([
     [a(tm(1, r.parse_bit_size, 7, r.flush_bits, r.parse_bit_size, 15), u8, u8), ms(1, fb(0x0102))],
     [a(tmc(1, r.id, r.denominator)), ms()],
     [a(r.type_array_bit, 7, r.parse_bit_size, 8, u8), aos(4)],
+    [a(r.type_kind, r.integer_signed, r.parse_varint, 5), ms(5)],
 ])('parse(%#)', (i, o) => {
     const w = writer(i)
     try {

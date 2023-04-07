@@ -125,7 +125,7 @@ export const enum r {
     type_choice,
     type_map,
     type_array,
-    type_parts,
+    type_kind,
     parse_varint,
     parse_bit_size,
     bind,
@@ -135,6 +135,7 @@ export const enum r {
     type_choice_bit,
     type_map_columns,
     type_array_bit,
+    type_array_fixed,
     parse_item,
 
     registry,
@@ -143,7 +144,7 @@ export const enum r {
     IEEE_754_binary16,
     IEEE_754_binary32,
     IEEE_754_binary64,
-    numerator,
+    value,
     unit,
     exponent_base2,
     exponent_base10,
@@ -197,7 +198,6 @@ export const enum r {
     zero_negative,
     nan_quiet,
     nan_signal,
-    array_key,
 
     error_internal = 512,
     error_invalid_choice_index,
