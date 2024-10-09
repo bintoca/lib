@@ -26,6 +26,7 @@ test('dom', async () => {
     script.runInContext(vmContext);
     await dom.window['bintocaFetchTest']
     const r = await dom.window['bintocaTest']
+    expect(dom.window['bintocaNonConfigurable']).toEqual(['window', 'top', 'document', 'location'])
     expect(r.bad).toEqual([])
     expect(r.good.length).toBe(21)
     expect(dom.window.document.head.firstChild != null).toBe(true)

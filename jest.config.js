@@ -6,16 +6,13 @@ export default {
     "@bintoca/(.*)": '<rootDir>/$1'
   },
   extensionsToTreatAsEsm: ['.ts'],
-  globals: {
-    'ts-jest': {
-      useESM: true,
-    },
+  transform: {
+    '^.+\\.tsx?$': ['ts-jest', {useESM: true}],
+    '^.+\\.ts?$': ['ts-jest', {useESM: true}],
   },
   testPathIgnorePatterns: [
     'half.test.ts',
     '<rootDir>/cbor/',
-    '<rootDir>/dev/',
-    '<rootDir>/http/',
-    '<rootDir>/package/',
+    '<rootDir>/dbuf/',
   ]
 };

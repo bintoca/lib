@@ -89,7 +89,6 @@ tes('window', async () => {
     expec(typeof Object.getOwnPropertyNames(window)).toBe('object')
     expec(typeof Object.getOwnPropertyDescriptor(window, 'foo')).toBe('object')
     expec(window['foo']).toBe(5)
-    expec(typeof top).toBe('undefined')
     expec(window.top).toBe(undefined)
     expec(self).toBe(window)
     expec(self.location.href).toBe(undefined)

@@ -289,6 +289,7 @@ while (ob && ob !== Object.prototype) {
     }
     ob = Object.getPrototypeOf(ob)
 }
+gt['bintocaNonConfigurable'] = Array.from(nonConfigurable)
 const fetchPromise = _fetch(configURL, { method: 'POST', body: JSON.stringify({ nonConfigurable: Array.from(nonConfigurable) }) }).then(x => x.json()).then(x => {
     if (typeof gt.document !== 'undefined') {
         const s = gt.document.createElement('script')
