@@ -1,5 +1,5 @@
 {
-  "name": "@bintoca/http",
+  "name": "@bintoca/sandbox",
   "version": "0.0.1-beta",
   "description": "",
   "type": "module",
@@ -9,9 +9,8 @@
   "exports": {
     ".": "./index.js",
     "./home": "./home.js",
-    "./resolve": "./resolve.js",
+    "./run": "./run.js",
     "./shared": "./shared.js",
-    "./server": "./server.js",
     "./sw": "./sw.js"
   },
   "types": "./index.d.ts",

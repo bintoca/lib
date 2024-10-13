@@ -3,4 +3,4 @@ node_modules
 packages/**/*.js
 packages/**/*.d.ts
 src/dev/test1/lib/t1.js
-packages/http/out
+packages/sandbox/out
