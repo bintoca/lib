@@ -1,5 +1,5 @@
 export type PageConfig = { title: string, docs: string, isDev: boolean }
-export type PlatformManifestItem = { fileURL?: URL, path?: string, deps?: string[], content?: Buffer, ct: string, module?: string, hash?: string, headers?: { [header: string]: number | string }, htmlOptions?: HtmlOptions }
+export type PlatformManifestItem = { fileURL?: URL, path?: string, deps?: string[], content?: Buffer, extension?: string, ct: string, module?: string, hash?: string, headers?: { [header: string]: number | string }, htmlOptions?: HtmlOptions }
 export type PlatformManifest = { [k: string]: PlatformManifestItem }
 export type HtmlOptions = { base?: string, scripts?: string[], embedData?, preconnects?: string[], stylesheets?: string[] }
 export type HtmlRoutes = { [k: string]: HtmlOptions }

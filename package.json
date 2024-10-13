@@ -10,7 +10,8 @@
     "build": "tsc -b src && tsc -b src/dev/test1",
     "watch": "tsc -b -w src",
     "cbor-benchmark": "node ./packages/cbor/benchmark.js",
-    "postinstall": "node ./src/setup.js"
+    "postinstall": "node ./src/setup.js",
+    "runHttp": "tsc -b src && node ./packages/http/index2.js"
   },
   "repository": {
     "type": "git",
