@@ -8,7 +8,7 @@ import open from 'open'
 import { cwd } from 'process'
 import { HtmlRoutes, PageConfig, PlatformManifest, matchHtmlRoute, indexHtml, indexHtmlHeaders, PlatformManifestItem } from '@bintoca/http/shared'
 
-export type Config = { hostname: string, port: number, open: boolean, configFile, pageConfig: PageConfig }
+export type Config = { hostname: string, port: number, open: boolean, configFile, pageConfig: PageConfig, outPath: string }
 export type State = { readlineInterface: readline.Interface, config: Config, platformManifest: PlatformManifest, routes: HtmlRoutes, log: (x: { type: string, [k: string]: any }) => any }
 
 const TD = new TextDecoder()
@@ -24,6 +24,7 @@ export const defaultConfig: Config = {
     port: 3001,
     open: true,
     configFile: './bintoca.config.js',
+    outPath: './out/',
     pageConfig: { title: 'bintoca', docs: 'https://docs.bintoca.com', isDev: false }
 }
 export const defaultPlatformManifest: PlatformManifest = {
@@ -68,7 +69,7 @@ export const inferContentType = (path: string) => {
     }
     return 'application/octet-stream'
 }
-export const init = async (state: State) => {
+export const run = async (state: State) => {
     if (state.config.configFile) {
         await applyConfigFile(state)
     }
@@ -84,14 +85,14 @@ export const init = async (state: State) => {
                 res.statusCode = 200
                 switch (req.method) {
                     case 'GET': {
-                        if (req.url = '/') {
+                        if (req.url == '/') {
                             req.url = '/index.html'
                             const hs = indexHtmlHeaders()
                             for (let h in hs) {
                                 res.setHeader(h, hs[h])
                             }
                         }
-                        const furl = new URL('.' + req.url, import.meta.url)
+                        const furl = new URL('.' + req.url, outURL(state.config))
                         if (existsSync(furl)) {
                             res.setHeader('Content-Type', inferContentType(req.url))
                             res.end(readFileSync(furl))
@@ -128,6 +129,7 @@ export const init = async (state: State) => {
     }
     return { httpServer, state }
 }
+export const outURL = (config: Config) => new URL(config.outPath, import.meta.url)
 export const readFile = (item: PlatformManifestItem) => readFileSync(item.fileURL || new URL(import.meta.resolve(item.module)))
 export const initRootsJS = (manifest: PlatformManifest) => {
     const roots = Object.keys(manifest).filter(x => manifest[x].ct == 'text/javascript').map(x => manifest[x])
@@ -150,7 +152,7 @@ export const initRootsJS = (manifest: PlatformManifest) => {
     }
     return manifest
 }
-export const initPlatformManifest = (manifest: PlatformManifest) => {
+export const initPlatformManifest = (manifest: PlatformManifest, config: Config) => {
     function rec(k) {
         let b: Buffer = readFile(manifest[k])
         if (manifest[k].deps) {
@@ -165,7 +167,7 @@ export const initPlatformManifest = (manifest: PlatformManifest) => {
         }
         if (!manifest[k].path) {
             manifest[k].path = '/' + k.replace(/\//g, '_') + '.' + crypto.createHash('sha256').update(b).digest().toString('hex') + (manifest[k].extension || '')
-            writeFileSync(new URL('.' + manifest[k].path, import.meta.url), b)
+            writeFileSync(new URL('.' + manifest[k].path, outURL(config)), b)
         }
     }
     for (let k in manifest) {
@@ -173,7 +175,7 @@ export const initPlatformManifest = (manifest: PlatformManifest) => {
     }
     return manifest
 }
-export const initInline = (k: string, manifest: PlatformManifest, replace: { [k: string]: string }) => {
+export const initInline = (k: string, manifest: PlatformManifest, replace: { [k: string]: string }, config: Config) => {
     const item = manifest[k]
     const b = readFile(item)
     let rb = TD.decode(b)
@@ -185,7 +187,7 @@ export const initInline = (k: string, manifest: PlatformManifest, replace: { [k:
         .filter(x => !x.startsWith('import ') && !x.startsWith('export '))
         .join('\n'))
     item.hash = crypto.createHash('sha256').update(content).digest().toString('hex')
-    writeFileSync(new URL('.' + item.path, import.meta.url), content)
+    writeFileSync(new URL('.' + item.path, outURL(config)), content)
 }
 export const serviceWorkerReplace = (manifest: PlatformManifest, pageConfig: PageConfig, routes: HtmlRoutes) => {
     return {
@@ -194,16 +196,7 @@ export const serviceWorkerReplace = (manifest: PlatformManifest, pageConfig: Pag
         'const routes = {}': 'const routes = ' + JSON.stringify(routes)
     }
 }
-const state: State = {
-    readlineInterface: readline.createInterface({ input: process.stdin, output: process.stdout, prompt: 'bintoca> ' }),
-    config: defaultConfig,
-    platformManifest: initPlatformManifest(initRootsJS(defaultPlatformManifest)),
-    routes: defaultRoutes,
-    log: ((x: { type: string, [k: string]: any }) => {
-        console.log(x)
-        state.readlineInterface.prompt()
-    })
+export const build = (state: State) => {
+    writeFileSync(new URL('./index.html', outURL(state.config)), indexHtml(state.config.pageConfig, state.platformManifest, { scripts: ['home'], stylesheets: ['css'] }))
+    initInline('sw', state.platformManifest, serviceWorkerReplace(state.platformManifest, state.config.pageConfig, state.routes), state.config)
 }
-writeFileSync(new URL('./index.html', import.meta.url), indexHtml(state.config.pageConfig, state.platformManifest, { scripts: ['home'], stylesheets: ['css'] }))
-initInline('sw', state.platformManifest, serviceWorkerReplace(state.platformManifest, state.config.pageConfig, state.routes))
-//init(state)

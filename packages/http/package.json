@@ -8,6 +8,7 @@
   },
   "exports": {
     ".": "./index.js",
+    "./index2": "./index2.js",
     "./home": "./home.js",
     "./resolve": "./resolve.js",
     "./shared": "./shared.js",
