@@ -9,7 +9,7 @@ import { cwd } from 'process'
 import { HtmlRoutes, PageConfig, PlatformManifest, matchHtmlRoute, indexHtml, indexHtmlHeaders, PlatformManifestItem } from '@bintoca/http/shared'
 
 export type Config = { hostname: string, port: number, open: boolean, configFile, pageConfig: PageConfig, outPath: string }
-export type State = { readlineInterface: readline.Interface, config: Config, platformManifest: PlatformManifest, routes: HtmlRoutes, log: (x: { type: string, [k: string]: any }) => any }
+export type State = { readlineInterface?: readline.Interface, config: Config, platformManifest: PlatformManifest, routes: HtmlRoutes, log: (x: { type: string, [k: string]: any }) => any }
 
 const TD = new TextDecoder()
 export const applyConfigFile = async (state: State) => {
@@ -73,8 +73,10 @@ export const run = async (state: State) => {
     if (state.config.configFile) {
         await applyConfigFile(state)
     }
-    state.readlineInterface.on('line', line => readlineHandler(line, state))
-    state.readlineInterface.prompt()
+    if (state.readlineInterface) {
+        state.readlineInterface.on('line', line => readlineHandler(line, state))
+        state.readlineInterface.prompt()
+    }
     const httpServer = http.createServer({}, async (req: http.IncomingMessage, res: http.ServerResponse) => {
         let chunks: Buffer[] = []
         req.on('data', (c: Buffer) => {
@@ -99,11 +101,13 @@ export const run = async (state: State) => {
                         }
                         else {
                             res.statusCode = 404
+                            res.end()
                         }
                         break
                     }
                     default:
                         res.statusCode = 405
+                        res.end()
                 }
                 // const r = await httpHandler({ method: req.method || '', url: req.url || '', headers: req.headers, body: Buffer.concat(chunks) }, state)
                 // res.statusCode = r.statusCode
