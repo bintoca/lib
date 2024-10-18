@@ -57,4 +57,7 @@ const matchHtmlRoute = (pathname: string, routes: HtmlRoutes): HtmlOptions => {
         }
     }
 }
-export { apiVersion, indexHtml, indexHtmlHeaders, matchHtmlRoute }
+const installedPrefix = '/installed'
+const installedOriginalPrefix = '/installed/original/'
+const installedProcessedPrefix = '/installed/processed/'
+export { apiVersion, indexHtml, indexHtmlHeaders, matchHtmlRoute, installedPrefix, installedOriginalPrefix, installedProcessedPrefix }

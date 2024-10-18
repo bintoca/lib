@@ -40,20 +40,7 @@ _self.addEventListener('fetch', function (event) {
         event.respondWith(Promise.resolve(0).then(() => {
             const u = new URL(event.request.url)
             if (u.origin == selfOrigin) {
-                if (u.pathname.startsWith('/api/')) {
-                    switch (u.pathname) {
-                        case '/api/ss': {
-                            break
-                        }
-                    }
-                }
-                else {
-                    const isAppProcess = event.request.referrer && new URL(event.request.referrer).origin == selfOrigin
-                    const route = matchHtmlRoute(u.pathname, routes)
-                    if (route) {
-                        return new Response(indexHtml(pageConfig, manifest, Object.assign({ embedData: { isAppProcess } }, route)), { headers: indexHtmlHeaders() })
-                    }
-                }
+                
             }
             return fetch(event.request);
         }))
