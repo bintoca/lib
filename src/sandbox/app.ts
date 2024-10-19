@@ -82,18 +82,24 @@ export const getResponse = async (p: AppPath, cache: Cache): Promise<{ error?: s
     }
 }
 export const integrityCacheURL = (i: string) => '/' + i
-export const simpleContentTypes = new Set([null, '', 'application/octet-stream'])
-export const processFile = async (r: Response): Promise<{ error?: string, transformed?: Response }> => {
+export const enum ResourceType { js, binary }
+export const getResourceType = (r: Response): ResourceType => {
     const ct = r.headers.get("Content-Type")
-    switch (ct) {
-        case 'text/css': {
+    if (!ct) {
+        return ResourceType.binary
+    }
+}
+
+export const processFile = async (r: Response): Promise<{ error?: string, transformed?: Response }> => {
+    const rt = getResourceType(r)
+    switch (rt) {
+        case ResourceType.js: {
 
         }
+        case ResourceType.binary:
+            return {}
         default:
-            if (simpleContentTypes.has(ct)) {
-                return {}
-            }
-            return { error: `content type ${ct} not implemented` }
+            return { error: `resource type ${rt} not implemented` }
     }
 }
 export const SRI_prefix_to_algo = { 'sha256': 'SHA-256', 'sha384': 'SHA-384', 'sha512': 'SHA-512' }

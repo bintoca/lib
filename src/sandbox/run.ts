@@ -1,5 +1,6 @@
-import { State, defaultConfig, defaultPlatformManifest, initRootsJS, initPlatformManifest, defaultRoutes, build, run } from '@bintoca/sandbox'
+import { State, defaultConfig, defaultPlatformManifest, initRootsJS, initPlatformManifest, defaultRoutes, build, run, outURL } from '@bintoca/sandbox'
 import * as readline from 'readline'
+import * as fs from 'fs'
 
 const state: State = {
     //readlineInterface: readline.createInterface({ input: process.stdin, output: process.stdout, prompt: 'bintoca> ' }),
@@ -12,4 +13,5 @@ const state: State = {
     })
 }
 build(state)
+//fs.copyFileSync(new URL('./wrap.html', import.meta.url), new URL('./wrap.html', outURL(defaultConfig)))
 run(state)

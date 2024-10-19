@@ -40,9 +40,13 @@ _self.addEventListener('fetch', function (event) {
         event.respondWith(Promise.resolve(0).then(() => {
             const u = new URL(event.request.url)
             if (u.origin == selfOrigin) {
-                
+
             }
-            return fetch(event.request);
+            if (event.request.url.includes('wrap.html')) {
+                return fetch(event.request)
+            }
+            console.log('sw', event.request.url)
+            return new Response('404', { status: 404 });
         }))
     }
 });

@@ -28,11 +28,11 @@ export const defaultConfig: Config = {
     pageConfig: { title: 'bintoca', docs: 'https://docs.bintoca.com', isDev: false }
 }
 export const defaultPlatformManifest: PlatformManifest = {
-    'home': { ct: 'text/javascript', module: '@bintoca/http/home', extension: '.js' },
+    'home': { ct: 'text/javascript', module: '@bintoca/sandbox/home', extension: '.js' },
     'favicon': { ct: 'image/x-icon', fileURL: new URL('./favicon.ico', import.meta.url), extension: '.ico' },
     'apple-touch-icon': { ct: 'image/png', fileURL: new URL('./apple-touch-icon.png', import.meta.url), extension: '.png' },
     'css': { ct: 'text/css', fileURL: new URL('./main.css', import.meta.url), extension: '.css' },
-    'sw': { ct: 'text/javascript', module: '@bintoca/http/sw', path: '/sw.js' }
+    'sw': { ct: 'text/javascript', module: '@bintoca/sandbox/sw', path: '/sw.js' }
 }
 export const defaultRoutes: HtmlRoutes = {
     "/": { scripts: ['home'], stylesheets: ['css'] }
