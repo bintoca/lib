@@ -7,7 +7,7 @@
             "WebWorker"
         ],
         "module": "es2020",
-        "target": "es2019",
+        "target": "es2023",
         "esModuleInterop": true,
         "skipLibCheck": true,
         "moduleResolution": "node",

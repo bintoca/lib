@@ -11,8 +11,5 @@ export default {
     '^.+\\.ts?$': ['ts-jest', {useESM: true}],
   },
   testPathIgnorePatterns: [
-    'half.test.ts',
-    '<rootDir>/cbor/',
-    '<rootDir>/dbuf/',
   ]
 };
