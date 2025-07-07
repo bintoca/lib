@@ -83,7 +83,7 @@ const renderSection = (section: Section, specLinkFunc, parseModeFunc): string =>
         heading += '#'
     }
     const id = section.id.length ? section.id.join('.') + '.' : ''
-    return heading + ` <a href="section-${id}">${id}</a> ${section.title}\n\n` + section.paragraphs.map(x => renderParagraph(x, specLinkFunc, parseModeFunc)).join('\n\n')
+    return heading + ` ${section.title}\n\n` + section.paragraphs.map(x => renderParagraph(x, specLinkFunc, parseModeFunc)).join('\n\n')
 }
 export type RefineStack = { val, index: number }[]
 export const refineKeys = (v) => {

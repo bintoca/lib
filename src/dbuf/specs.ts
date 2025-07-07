@@ -66,7 +66,7 @@ export const registry: { [key: number]: { paragraphs: Paragraph[], parseRules?: 
     },
     [r.type_map]: {
         paragraphs: [
-            ['Defines a list of key/value pairs.'],
+            ['Defines a collection of key/value pairs.'],
             ['Consumes one varint specifying the number of pairs to parse. All the keys come first followed by all the values.'],
             ['When encountered in the parsing of a data component: Each key or value that has data component parsing rules is executed.'],
             ['Type component values and data component values combine to form a logical map. If an array of maps all have the same value for a key, that value can be specified once in the type component and omittted in the data component.'],
@@ -305,7 +305,7 @@ export const registry: { [key: number]: { paragraphs: Paragraph[], parseRules?: 
     [r.describe_no_value]: {
         paragraphs: [
             ['Used as a placeholder for an empty value.'],
-            ['When used in a ', { rid: r.type_map }, ' preserves the key\'s presence, in contrast to ', { rid: r.nonexistent }, ' which implies the key is absent.']
+            ['When used in a ', { rid: r.type_map }, ', it preserves the key\'s presence, in contrast to ', { rid: r.nonexistent }, ' which implies the key is absent.']
         ],
         examples: [
             { description: 'Empty value', dbuf: root(type_map(r.denominator, r.describe_no_value), map()), unpack: { [getReg(r.denominator)]: getReg(r.describe_no_value) } },
@@ -808,7 +808,7 @@ export const codec: Doc = {
     sections: [
         {
             title: 'DBUF Codec', heading: 1, id: [], paragraphs: [
-                ['DBUF is structured as a stream of binary integers. The first few values in a stream correspond to symbols in the [Registry](./registry/README.md) that describe the size and meaning of values later in the stream.',
+                ['DBUF is structured as a stream of binary integers. The first few values in a stream correspond to symbols in the [Registry](./registry/README.md) that describe the size and meaning of values later in the stream. ',
                     'The symbols also compose in ways that can describe nested or repeating patterns with dense packing.'],
             ]
         },
@@ -816,7 +816,7 @@ export const codec: Doc = {
             title: 'Varints', heading: 2, id: [1], paragraphs: [
                 ['Several areas of the DBUF spec refer to a default variable length integer encoding or "varint" for short. The following bit patterns specify the 5 possible bit widths:'],
                 [{ item: ['Leading bit 0 - 3 data bits'] }, { item: ['Leading bits 10 - 6 data bits'] }, { item: ['Leading bits 110 - 13 data bits'] }, { item: ['Leading bits 1110 - 20 data bits'] }, { item: ['Leading bits 1111 - 32 data bits'] }],
-                ['The leading bits may be the most or least significant bits as defined by ', { rid: r.little_endian_marker }, ' at the beginning of the stream. Likewise, the data bits will follow the same convention of most or least significant first.']
+                ['The leading bits may be the most or least significant bits as defined by the optional prefixes at the beginning of the stream. Likewise, the data bits will follow the same convention of most or least significant first.']
             ]
         },
         {
@@ -831,8 +831,8 @@ export const codec: Doc = {
         },
         {
             title: 'Root Structure', heading: 2, id: [3], paragraphs: [
-                ['After the optional prefixes in [Section 2](#section-2.), a DBUF stream consists of two parts, a type component that defines a structure and a data component with data that conforms to the type component.'],
-                ['Some symbols consume additional bits and/or additional symbols which create nested structures. The type component consists of one symbol and its nested children.',
+                ['After the optional prefixes, a DBUF stream consists of two parts, a type component that defines a structure and a data component with data that conforms to the type component.'],
+                ['Some symbols consume additional bits and/or additional symbols which create nested structures. The type component consists of one symbol and its nested children. ',
                     'The data component begins directly after, following the rules of the root symbol of the type component.'],
                 ['The end of the data component is considered the end of the DBUF stream. Any data in the bit stream after this point MUST be ignored. ',
                     'A DBUF stream contains exactly one type component and one data component, never a sequence of type/data components. If a sequence is desired, the type component should use an appropriate structure such as ', { rid: r.type_array }]
