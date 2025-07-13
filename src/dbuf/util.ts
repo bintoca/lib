@@ -1,4 +1,4 @@
-import { Node, NodeType } from '@bintoca/dbuf/codec'
+import { Node, NodeType } from './codec'
 
 export const bufToDV = (b: BufferSource, offset: number = 0, length?: number): DataView => !b['buffer'] ? new DataView(b as ArrayBuffer, offset, length !== undefined ? length : b.byteLength - offset) : new DataView((b as ArrayBufferView).buffer, (b as ArrayBufferView).byteOffset + offset, length !== undefined ? length : b.byteLength - offset)
 export const bufToU8 = (b: BufferSource, offset: number = 0, length?: number): Uint8Array => !b['buffer'] ? new Uint8Array(b as ArrayBuffer, offset, length !== undefined ? length : b.byteLength - offset) : new Uint8Array((b as ArrayBufferView).buffer, (b as ArrayBufferView).byteOffset + offset, length !== undefined ? length : b.byteLength - offset)
@@ -13,9 +13,6 @@ export const concatBuffers = (buffers: BufferSource[]): Uint8Array => {
         offset += b.byteLength
     }
     return u
-}
-export function buf2hex(buffer: ArrayBuffer): string {
-    return Array.prototype.map.call(new Uint8Array(buffer), x => ('00' + x.toString(16)).slice(-2)).join('');
 }
 export const strip = (x: Node): Node => {
     if (typeof x == 'object') {
