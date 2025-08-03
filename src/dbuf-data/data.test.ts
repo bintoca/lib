@@ -1,6 +1,5 @@
-import { r } from '../dbuf-codec/registryEnum'
-import { getRegistrySymbol } from '@bintoca/dbuf-data/registry'
-import { string, char, bits_le, u8Text_chunks, parse_type_data, parse_align, array_no_children, type_array_bit, array_chunk, type_array_chunk, type_array_fixed, type_choice, type_optional, type_choice_select, type_choice_shared, type_choice_array, type_choice_shared_array, chunk, choice, map, choice_shared, choice_select, array, bits, align, array_bit, array_fixed, cycle, bytes, u8Text, nodeOrNum, root, parse_type_data_immediate, parse_bit_size, type_map, type_array, byte_chunks } from '@bintoca/dbuf-codec/encode'
+import { getRegistrySymbol, r } from './registry'
+import { string, char, bits_le, u8Text_chunks, parse_type_data, parse_align, array_no_children, type_array_bit, array_chunk, type_array_chunk, type_array_fixed, type_choice, type_optional, type_choice_select, type_choice_shared, type_choice_array, type_choice_shared_array, chunk, choice, map, choice_shared, choice_select, array, bits, align, array_bit, array_fixed, cycle, bytes, root, parse_type_data_immediate, parse_bit_size, type_map, type_array, byte_chunks } from '@bintoca/dbuf-codec/encode'
 import { bit_val, val_size, val } from '../dbuf-codec/common'
 import { valSymbol, bitSizeSymbol, cycleSymbol, unpack } from './unpack'
 import { refineValues } from './refine'
@@ -143,7 +142,7 @@ test.each([
     [root(type_map(r.epoch_seconds_continuous, type_map(r.integer_signed, parse_bit_size(32))), map(map(bit_val(0xFFFFFFFF - ((45 * 365 + 11) * 86400 + 24), 32)))), new Date('1973-01-01T00:00:00Z')],
     [root(type_map(r.epoch_seconds_continuous, type_map(r.integer_signed, parse_bit_size(32))), map(map(bit_val(0xFFFFFFFF - ((45 * 365 + 11) * 86400 + 23), 32)))), new Date('1973-01-01T00:00:01Z')],
     [root(type_map(r.instant, type_map(r.year, r.month, r.day, r.hour, r.minute, r.second, r.parse_varint, r.parse_varint, r.parse_varint, r.parse_varint, r.parse_varint, r.parse_varint)), map(map(1, 2, 3, 4, 5, 6))), new Date('2019-03-04T04:05:06')],
-    [root(type_map(parse_type_data_immediate(r.parse_text, string('key1')), r.parse_varint), map(3)), ob(['s_key1'], 3)],
+    [root(type_map(parse_type_data_immediate(r.parse_text, string('key1')), r.parse_varint), map(3)), ob(['key1'], 3)],
     [root(type_map(parse_type_data_immediate(r.parse_varint, 2), r.parse_varint), map(3)), ob(['n_2'], 3)],
     [root(type_map(parse_type_data_immediate(parse_bit_size(64), bits(bit_val(1, 32), bit_val(1, 32))), r.parse_varint), map(3)), ob(['n_4294967297'], 3)],
     [root(type_map(parse_type_data_immediate(r.true)), map(3)), ob(['b_true'], 3)],

@@ -1,5 +1,4 @@
-import { getRegistrySymbol, symbolPrefix } from '@bintoca/dbuf-data/registry'
-import { r } from '../dbuf-codec/registryEnum'
+import { getRegistrySymbol, r } from './registry'
 import { isUnsignedInt, valSymbol, u8Symbol, u8TextSymbol, getUnsignedIntVal, bitSizeSymbol, isUnsignedInt2, getValueFromUnrefinedMap, isUnrefinedMap } from './unpack'
 import { concatBuffers } from '@bintoca/dbuf-codec/common'
 import { tai_dbuf_epochOffset, getLeap_millis_tai } from './time'
@@ -253,10 +252,8 @@ export const assembleMap = (v: any[]) => {
     for (let i = 1; i <= l; i++) {
         let pi = v[i]
         switch (typeof pi) {
+            case 'symbol':
             case 'string':
-                if (!pi.startsWith(symbolPrefix)) {
-                    pi = 's_' + pi
-                }
                 break
             case 'number':
             case 'bigint':

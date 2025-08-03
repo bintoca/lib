@@ -1,5 +1,5 @@
 import { Node, NodeType, magicNumberPrefix, littleEndianPrefix, val, concatBuffers } from './common'
-import { r } from './registryEnum'
+import { r } from './registry'
 
 export type EncoderState = { buffers: Uint8Array[], dv: DataView, offset: number, bitsRemaining: number, bits: number, nodeStack: { node: Node, itemIndex?: number }[], littleEndian?: boolean, bitsWritten: number, rootInitialized: boolean, alignVarint8?: boolean, newBufferSize: number }
 export const createEncoder = (bufferSize?: number): EncoderState => {

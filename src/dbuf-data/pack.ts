@@ -1,5 +1,4 @@
-import { getRegistryIndex, isRegistrySymbol } from '@bintoca/dbuf-data/registry'
-import { r } from '../dbuf-codec/registryEnum'
+import { getRegistryIndex, r } from './registry'
 import { type_array, array, parse_type_data, bytes, string, type_map, map, root, isNotNonNegativeInteger } from '@bintoca/dbuf-codec/encode'
 import { Node, val } from '@bintoca/dbuf-codec/common'
 
@@ -44,11 +43,11 @@ export const pack = (v) => {
             lastType = val(r.describe_no_value, true)
         }
         else if (typeof top.val == 'object') {
-            const ks = Object.keys(top.val)
+            const ks = Reflect.ownKeys(top.val)
             if (top.tempTypes.length == 0) {
                 for (let k of ks) {
                     if (top.val[k] !== undefined) {
-                        if (isRegistrySymbol(k)) {
+                        if (typeof k == 'symbol') {
                             top.tempTypes.push(val(getRegistryIndex(k), true))
                         }
                         else {
@@ -83,29 +82,28 @@ export const pack = (v) => {
         }
         else {
             stack.pop()
-            if (typeof top.val == 'string') {
-                if (isRegistrySymbol(top.val)) {
+            switch (typeof top.val) {
+                case 'symbol':
                     lastType = val(getRegistryIndex(top.val), true)
-                }
-                else {
+                    break
+                case 'string':
                     lastType = val(r.parse_text, true)
                     lastData = string(top.val)
-                }
-            }
-            else if (typeof top.val == 'number') {
-                if (isNotNonNegativeInteger(top.val)) {
-                    throw 'not implemented number'
-                }
-                else {
-                    lastType = val(r.parse_varint, true)
-                    lastData = val(top.val)
-                }
-            }
-            else if (typeof top.val == 'boolean') {
-                lastType = val(top.val ? r.true : r.false, true)
-            }
-            else {
-                throw 'not implemented pack'
+                    break
+                case 'number':
+                    if (isNotNonNegativeInteger(top.val)) {
+                        throw 'not implemented number'
+                    }
+                    else {
+                        lastType = val(r.parse_varint, true)
+                        lastData = val(top.val)
+                    }
+                    break
+                case 'boolean':
+                    lastType = val(top.val ? r.true : r.false, true)
+                    break
+                default:
+                    throw 'not implemented pack'
             }
         }
     }

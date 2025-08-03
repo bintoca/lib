@@ -1,7 +1,7 @@
-import { finishWrite, createEncoder, writeBits, alignEncoder, writeBytes, WriterToken, writer, writerPrefix, writeNode, trimBuffer, parse_type_data, array_bit_no_children, array_no_children, array_fixed_no_children, array_chunk, chunk_no_children, chunk, choice, map, choice_shared, choice_select, array, bits, align, array_bit, array_fixed, cycle, bytes, u8Text, nodeOrNum, root, parse_type_data_immediate, parse_bit_size, type_map, type_array, byte_chunks, writeVarintChecked } from '@bintoca/dbuf-codec/encode'
-import { readVarint, setParserBuffer, createDecoder, readBits32, alignDecoder, parseCore, createParser as cp, ParseState } from '@bintoca/dbuf-codec/decode'
+import { finishWrite, createEncoder, writeBits, alignEncoder, writeBytes, WriterToken, writer, writerPrefix, writeNode, trimBuffer, parse_type_data, array_bit_no_children, array_no_children, array_fixed_no_children, array_chunk, chunk_no_children, chunk, choice, map, choice_shared, choice_select, array, bits, align, array_bit, array_fixed, cycle, bytes, u8Text, nodeOrNum, root, parse_type_data_immediate, parse_bit_size, type_map, type_array, byte_chunks, writeVarintChecked } from './encode'
+import { readVarint, setParserBuffer, createDecoder, readBits32, alignDecoder, parseCore, createParser as cp, ParseState } from './decode'
 import { Node, NodeType, bit_val, littleEndianPrefix, concatBuffers } from './common'
-import { r } from './registryEnum'
+import { r } from './registry'
 
 export const bufToDV = (b: BufferSource, offset: number = 0, length?: number): DataView => !b['buffer'] ? new DataView(b as ArrayBuffer, offset, length !== undefined ? length : b.byteLength - offset) : new DataView((b as ArrayBufferView).buffer, (b as ArrayBufferView).byteOffset + offset, length !== undefined ? length : b.byteLength - offset)
 export const bufToU8 = (b: BufferSource, offset: number = 0, length?: number): Uint8Array => !b['buffer'] ? new Uint8Array(b as ArrayBuffer, offset, length !== undefined ? length : b.byteLength - offset) : new Uint8Array((b as ArrayBufferView).buffer, (b as ArrayBufferView).byteOffset + offset, length !== undefined ? length : b.byteLength - offset)
@@ -137,7 +137,7 @@ const parseTests = [
     [[tac(4), r.parse_varint, wbs(1, 4), n(2), wbs(1, 4), n(3), wbs(0, 4)], array_chunk(chunk(4, 2), chunk(4, 3), chunk(4))],
     [[tab(2), r.parse_varint, wbs(2, 2), n(3), n(4)], array_bit(2, 3, 4)],
     [[taf(2), r.parse_varint, n(3), n(5)], array_fixed(3, 5)],
-    [[tc(3, r.IEEE_754_binary32, r.IEEE_754_binary64, r.IEEE_754_binary16), wbs(3, 2)], choice(bit_val(3, 2))],
+    [[tc(3, r.denominator, r.error, r.error_internal), wbs(3, 2)], choice(bit_val(3, 2))],
     [[tct(10)], choice_select()],
     [[r.type_array, tm(1, r.error, r.error), n(3)], array_no_children(3)],
     [[tcs(1, r.type_array, tc(2, r.parse_varint, tct(0))), n(1), wbs(1, 1), n(1), wbs(0, 1), n(3)], choice_shared(bit_val(0, 0), array(choice(bit_val(1, 1), choice_select(array(choice(bit_val(0, 1), 3))))))],
@@ -403,7 +403,7 @@ test('readVarint', () => {
 test.each([
     [[r.type_array, tm(1, r.error, r.error)], r.registry_symbol_not_accepted_as_array_type],
     [[r.type_array, r.parse_align, 5], r.registry_symbol_not_accepted_as_array_type],
-    [[r.type_array, r.value], r.registry_symbol_not_accepted_as_array_type],
+    [[r.type_array, r.denominator], r.registry_symbol_not_accepted_as_array_type],
     [[r.type_choice], r.registry_symbol_not_accepted],
     [[r.type_choice_shared], r.registry_symbol_not_accepted],
     [[r.type_choice_select], r.registry_symbol_not_accepted],

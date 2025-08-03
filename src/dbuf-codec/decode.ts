@@ -1,4 +1,4 @@
-import { r } from './registryEnum'
+import { r } from './registry'
 import { Node, NodeType, ParseOp, ParseMode, magicNumberPrefix, littleEndianPrefix, val, val_size, bit_val } from './common'
 
 export type DecoderState = { dv: DataView, dvOffset: number, partialBlock: number, partialBlockRemaining: number, bitNode?: Node, varintPrefix?: number, littleEndian?: boolean, initialized?: boolean, totalBitsRead: number, lastSize: number, endOfBuffer: boolean }

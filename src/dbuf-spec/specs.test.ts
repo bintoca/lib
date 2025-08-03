@@ -1,13 +1,12 @@
 import { writeFileSync, readdirSync, unlinkSync } from 'fs'
 import { join } from 'path'
 import { Section, registry, codec, Paragraph, parseEnum, registryEnum, dbufWrite } from './specs'
-import { finishWrite, createEncoder } from '@bintoca/dbuf-codec/encode'
+import { finishWrite, createEncoder, writeNode } from '@bintoca/dbuf-codec/encode'
 import { createParser, setParserBuffer } from '@bintoca/dbuf-codec/decode'
-import { Node, NodeType } from '../dbuf-codec/common'
-import { getRegistryIndex, isRegistrySymbol } from '../dbuf-data/registry'
-import { writeNode } from '../dbuf-codec/encode'
-import { parseFull, unpack, } from '../dbuf-data/unpack'
-import { refineValues } from '../dbuf-data/refine'
+import { Node, NodeType } from '@bintoca/dbuf-codec/common'
+import { getRegistryIndex } from '@bintoca/dbuf-data/registry'
+import { parseFull, unpack, } from '@bintoca/dbuf-data/unpack'
+import { refineValues } from '@bintoca/dbuf-data/refine'
 import { getFloat16PolyFill } from './float16'
 import * as b64Auto from 'es-arraybuffer-base64/auto'
 const b64Shim = b64Auto
@@ -113,50 +112,37 @@ const renderSection = (section: Section, specLinkFunc, parseModeFunc): string =>
 export type RefineStack = { val, index: number }[]
 export const refineKeys = (v) => {
     const stack: RefineStack = [{ val: v, index: 0 }]
-    let last
-    while (stack.length) {
-        const top = stack[stack.length - 1]
-        if (Array.isArray(top.val)) {
-            let i = 0
-            for (let x of top.val) {
-                const l = refineKeys(x)
-                if (l !== undefined) {
-                    top.val[i] = l
-                }
-                i++
+    const top = stack[stack.length - 1]
+    if (Array.isArray(top.val)) {
+        let i = 0
+        for (let x of top.val) {
+            const l = refineKeys(x)
+            if (l !== undefined) {
+                top.val[i] = l
             }
-            last = stack.pop().val
+            i++
         }
-        else if (typeof top.val == 'object' && top.val !== null) {
-            const ks = Object.keys(top.val)
-            if (last !== undefined) {
-                const k = ks[top.index]
-                if (isRegistrySymbol(k)) {
-                    top.val[registryEnum[getRegistryIndex(k)]] = last
-                }
-                top.index++
-                last = undefined
+    }
+    else if (typeof top.val == 'object' && top.val !== null) {
+        const ks = Reflect.ownKeys(top.val)
+        for (let k of ks) {
+            let vs = top.val[k]
+            if (typeof vs == 'symbol') {
+                vs = top.val[k] = registryEnum[getRegistryIndex(vs)]
             }
-            if (top.index == ks.length) {
-                last = stack.pop().val
-                for (let k of ks) {
-                    if (isRegistrySymbol(k)) {
-                        delete top.val[k]
-                    }
-                }
+            if (typeof vs == 'object') {
+                vs = top.val[k] = refineKeys(vs)
             }
-            else {
-                stack.push({ val: top.val[ks[top.index]], index: 0 })
-            }
-        }
-        else {
-            last = stack.pop().val
-            if (typeof last == 'string' && isRegistrySymbol(last)) {
-                last = registryEnum[getRegistryIndex(last)]
+            if (typeof k == 'symbol') {
+                top.val[registryEnum[getRegistryIndex(k)]] = vs
+                delete top.val[k]
             }
         }
     }
-    return last
+    else if (typeof v == 'symbol') {
+        return registryEnum[getRegistryIndex(v)]
+    }
+    return v
 }
 test('specs', () => {
     const folder = 'E:\\bintoca-gh\\dbuf\\'
@@ -188,6 +174,14 @@ test('specs', () => {
     }
     if (missing.length) {
         console.log('missing', missing)
+    }
+    const codecReg = parseEnum('./dbuf-codec/registry.ts', 'r')
+    for (let k in codecReg) {
+        expect(codecReg[k]).toBe(registryEnum[k])
+    }
+    const dataReg = parseEnum('./dbuf-data/registry.ts', 'r')
+    for (let k in dataReg) {
+        expect(dataReg[k]).toBe(registryEnum[k])
     }
     writeFileSync(join(registryFolder, 'index.md'), '# DBUF Symbol Registry\n\nSubject to change until core semantics are settled\n\n' + indexTxt)
     writeFileSync(join(folder, 'codec.md'), codec.sections.map(x => renderSection(x, renderSpecLinkOnCodec, renderParseModeLink)).join('\n\n'))
