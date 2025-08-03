@@ -1,33 +1,3 @@
-import { Node, NodeType } from './codec'
-
-export const bufToDV = (b: BufferSource, offset: number = 0, length?: number): DataView => !b['buffer'] ? new DataView(b as ArrayBuffer, offset, length !== undefined ? length : b.byteLength - offset) : new DataView((b as ArrayBufferView).buffer, (b as ArrayBufferView).byteOffset + offset, length !== undefined ? length : b.byteLength - offset)
-export const bufToU8 = (b: BufferSource, offset: number = 0, length?: number): Uint8Array => !b['buffer'] ? new Uint8Array(b as ArrayBuffer, offset, length !== undefined ? length : b.byteLength - offset) : new Uint8Array((b as ArrayBufferView).buffer, (b as ArrayBufferView).byteOffset + offset, length !== undefined ? length : b.byteLength - offset)
-export const concatBuffers = (buffers: BufferSource[]): Uint8Array => {
-    if (buffers.length == 1) {
-        return buffers[0] instanceof Uint8Array ? buffers[0] : bufToU8(buffers[0])
-    }
-    const u = new Uint8Array(buffers.reduce((a, b) => a + b.byteLength, 0))
-    let offset = 0
-    for (let b of buffers) {
-        u.set(b instanceof Uint8Array ? b : bufToU8(b), offset)
-        offset += b.byteLength
-    }
-    return u
-}
-export const strip = (x: Node): Node => {
-    if (typeof x == 'object') {
-        if (x.children) {
-            return { type: x.type, children: x.children.map(y => strip(y)), arraySize: x.arraySize, bitSize: x.type == NodeType.bits ? undefined : x.bitSize, choiceShared: x.choiceShared ? true : undefined }
-        }
-        if (x.type == NodeType.val) {
-            return { type: x.type, val: x.val }
-        }
-        if (x.type == NodeType.bit_val) {
-            return { type: x.type, val: x.val, bitSize: x.bitSize }
-        }
-    }
-    return x
-}
 export const tai_dbuf_epochOffset = ((48 * 365 + 12) * 86400 + 37) * 1000
 //https://data.iana.org/time-zones/tzdb-2024b/leap-seconds.list
 export const ietf_leap = [

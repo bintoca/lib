@@ -1,5 +1,5 @@
 import { r } from './registryEnum'
-import { bufToDV, bufToU8 } from '@bintoca/dbuf/util'
+import { Node, NodeType, ParseOp, ParseMode, magicNumberPrefix, littleEndianPrefix, val, val_size, bit_val } from './common'
 
 export type DecoderState = { dv: DataView, dvOffset: number, partialBlock: number, partialBlockRemaining: number, bitNode?: Node, varintPrefix?: number, littleEndian?: boolean, initialized?: boolean, totalBitsRead: number, lastSize: number, endOfBuffer: boolean }
 export const createDecoder = (): DecoderState => {
@@ -184,14 +184,7 @@ export const alignDecoder = (s: DecoderState, n: number) => {
         num <= 32 ? readBits32(s, num) : readBitsLarge(s, num)
     }
 }
-export const enum NodeType { parse_type_data, type_map, map, type_array, array, type_array_chunk, array_chunk, chunk, type_choice, type_optional, type_choice_shared, choice, type_choice_select, choice_select, bits, parse_bit_size, val, bit_val, parse_align, align, type_array_bit, type_array_fixed, array_bit, array_fixed, parse_span, span, cycle, u8Text, u8Text_chunks, bytes, byte_chunks }
-export type Node = { type: NodeType, registry?: r, needed?: number, children?: Node[], val?: number, op?: ParseOp, ops?: ParseOp[], bitSize?: number, arraySize?: number, rootMagic?: boolean, rootLittleEndian?: boolean, choiceShared?: boolean, choiceArray?: boolean, arrayOffset?: number, u8?: Uint8Array }
-export const enum ParseMode { varint, any, parse_type_data, bit_size, array, array_chunk, chunk, choice, choice_select, map, none, read_assign, align, array_bit, array_fixed, array_none, bytes, byte_chunk, u8Text, u8Text_chunk }
-export type ParseOp = { type: ParseMode, bitSize?: number, ops?: ParseOp[], op?: ParseOp, shared?: boolean, spanUnit?: number, spanBitFlag?: number, index?: number, lastTotalBitsRead?: number, arrayOffset?: number }
 export type ParseState = { container: Node, root: Node, nodeStack: Node[], decoder: DecoderState, sharedChoiceStack: ParseOp[], liteProfile?: boolean, codecError?: r, codecErrorValue?}
-export const val = (v: number, isRegistry?: boolean): Node => { return { type: NodeType.val, val: v, registry: isRegistry ? v : undefined } }
-export const val_size = (v: number, numBits: number, isRegistry?: boolean): Node => { return { type: NodeType.val, val: v, bitSize: numBits, op: { type: ParseMode.none }, registry: isRegistry ? v : undefined } }
-export const bit_val = (v: number, numBits: number): Node => { return { type: NodeType.bit_val, val: v, bitSize: numBits, op: { type: ParseMode.none } } }
 export const resolveParseOp = (x: Node): ParseOp => {
     if (x.type != NodeType.val) {
         return x.op
@@ -658,8 +651,8 @@ export const createParser = (liteProfile?: boolean): ParseState => {
     const root: Node = { type: NodeType.parse_type_data, children: [], needed: 2, op: { type: ParseMode.any } }
     return { container, root, nodeStack: [container, root], decoder: createDecoder(), sharedChoiceStack: [], liteProfile }
 }
-export const setParserBuffer = (b: BufferSource, st: ParseState) => {
-    st.decoder.dv = bufToDV(b)
+export const setParserBuffer = (b: ArrayBufferView, st: ParseState) => {
+    st.decoder.dv = new DataView(b.buffer, b.byteOffset, b.byteLength)
     st.decoder.dvOffset = 0
     st.decoder.endOfBuffer = false
     if (!st.decoder.initialized) {
@@ -674,137 +667,4 @@ export const setParserBuffer = (b: BufferSource, st: ParseState) => {
             st.decoder.dvOffset += 1
         }
     }
-}
-export const littleEndianPrefix = 128 + r.little_endian_marker
-export const magicNumberPrefix = 0xDFDFDFDF
-export type EncoderState = { buffers: Uint8Array[], dv: DataView, offset: number, bitsRemaining: number, bits: number, nodeStack: { node: Node, itemIndex?: number }[], littleEndian?: boolean, bitsWritten: number, rootInitialized: boolean, alignVarint8?: boolean, newBufferSize: number }
-export const createEncoder = (bufferSize?: number): EncoderState => {
-    const newBufferSize = bufferSize || 4096
-    const es: EncoderState = { buffers: [], dv: new DataView(new ArrayBuffer(newBufferSize)), offset: 0, bitsRemaining: 32, bits: 0, nodeStack: [], bitsWritten: 0, rootInitialized: false, newBufferSize }
-    return es
-}
-export const writeVarint = (s: EncoderState, x: number) => {
-    if (x < 8 && !s.alignVarint8) {
-        writeBits(s, 0, 1)
-        writeBits(s, x, 3)
-    }
-    else if (x < 64) {
-        writeBits(s, s.littleEndian ? 1 : 2, 2)
-        writeBits(s, x, 6)
-    }
-    else if (x < 2 ** 13) {
-        writeBits(s, s.littleEndian ? 3 : 6, 3)
-        writeBits(s, x, 13)
-    }
-    else if (x < 2 ** 20) {
-        writeBits(s, s.littleEndian ? 7 : 14, 4)
-        writeBits(s, x, 20)
-    }
-    else if (x < 2 ** 32) {
-        writeBits(s, 15, 4)
-        writeBits(s, x, 32)
-    }
-}
-export const alignEncoder = (s: EncoderState, n: number) => {
-    const current = (s.offset * 8 + 32 - s.bitsRemaining) % n
-    if (current) {
-        writeBits(s, 0, n - current)
-    }
-}
-export const writeBits = (s: EncoderState, x: number, size: number) => {
-    if (s.dv.byteLength == s.offset) {
-        s.buffers.push(bufToU8(s.dv))
-        s.dv = new DataView(new ArrayBuffer(s.newBufferSize))
-        s.offset = 0
-    }
-    if (s.littleEndian) {
-        const shift = 32 - s.bitsRemaining
-        s.bits = s.bits | (x << shift)
-        if (s.bitsRemaining > size) {
-            s.bitsRemaining -= size
-        }
-        else {
-            s.dv.setUint32(s.offset, s.bits, true)
-            s.offset += 4
-            if (s.bitsRemaining == 32) {
-                s.bits = 0
-            }
-            else {
-                s.bits = x >>> s.bitsRemaining
-                s.bitsRemaining = 32 - (size - s.bitsRemaining)
-            }
-        }
-    }
-    else {
-        if (s.bitsRemaining > size) {
-            const shift = s.bitsRemaining - size
-            s.bits = s.bits | (x << shift)
-            s.bitsRemaining -= size
-        }
-        else {
-            const shift = size - s.bitsRemaining
-            s.bits = s.bits | (x >>> shift)
-            s.dv.setUint32(s.offset, s.bits)
-            s.offset += 4
-            if (shift == 0) {
-                s.bits = 0
-                s.bitsRemaining = 32
-            }
-            else {
-                const shift1 = 32 - shift
-                s.bits = x << shift1
-                s.bitsRemaining = shift1
-            }
-        }
-    }
-    s.bitsWritten += size
-}
-export const writeBytes = (s: EncoderState, u8: Uint8Array) => {
-    let pad = 0
-    if (s.bitsRemaining != 32) {
-        pad = s.bitsRemaining
-        s.bitsWritten -= s.bitsRemaining
-        writeBits(s, 0, s.bitsRemaining)
-        const align = s.bitsWritten % 8
-        if (align) {
-            s.bitsWritten += 8 - align
-        }
-    }
-    s.offset -= pad >>> 3
-    let u8i = 0
-    while (u8i < u8.byteLength) {
-        const dvRemaining = s.dv.byteLength - s.offset
-        const bytesRemaining = u8.byteLength - u8i
-        if (dvRemaining < bytesRemaining) {
-            for (let i = 0; i < dvRemaining; i++) {
-                s.dv.setUint8(s.offset, u8[u8i])
-                s.offset++
-                u8i++
-            }
-            s.buffers.push(bufToU8(s.dv))
-            s.dv = new DataView(new ArrayBuffer(s.newBufferSize))
-            s.offset = 0
-        }
-        else {
-            for (let i = 0; i < bytesRemaining; i++) {
-                s.dv.setUint8(s.offset, u8[u8i])
-                s.offset++
-                u8i++
-            }
-        }
-    }
-    s.bitsWritten += u8.byteLength * 8
-    const b = s.offset % 4
-    s.offset -= b
-    s.bitsWritten -= b * 8
-    for (let i = 0; i < b; i++) {
-        writeBits(s, s.dv.getUint8(s.offset + i), 8)
-    }
-}
-export const finishWrite = (s: EncoderState) => {
-    if (s.bitsRemaining != 32) {
-        s.bitsWritten -= s.bitsRemaining
-        writeBits(s, 0, s.bitsRemaining)
-    }
-    s.buffers.push(bufToU8(s.dv, 0, Math.ceil(s.bitsWritten / 8) - s.buffers.reduce((a, b) => a + b.length, 0)))
 }

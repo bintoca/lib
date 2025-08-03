@@ -1,4 +1,4 @@
-import { r } from './registryEnum'
+import { r } from '../dbuf-codec/registryEnum'
 export const symbolPrefix = 'dbuf_' 
 export const getRegistrySymbol = (r: r): string => symbolPrefix + r
 export const isRegistrySymbol = (s: string) => s.startsWith(symbolPrefix)

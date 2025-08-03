@@ -1,13 +1,32 @@
 import { writeFileSync, readdirSync, unlinkSync } from 'fs'
 import { join } from 'path'
 import { Section, registry, codec, Paragraph, parseEnum, registryEnum, dbufWrite } from './specs'
-import { Node, NodeType, createParser, setParserBuffer, createEncoder, finishWrite } from './codec'
-import { getRegistryIndex, isRegistrySymbol } from './registry'
-import { strip } from './util'
-import { writeNode, parseFull, unpack, refineValues } from './pack'
+import { finishWrite, createEncoder } from '@bintoca/dbuf-codec/encode'
+import { createParser, setParserBuffer } from '@bintoca/dbuf-codec/decode'
+import { Node, NodeType } from '../dbuf-codec/common'
+import { getRegistryIndex, isRegistrySymbol } from '../dbuf-data/registry'
+import { writeNode } from '../dbuf-codec/encode'
+import { parseFull, unpack, } from '../dbuf-data/unpack'
+import { refineValues } from '../dbuf-data/refine'
+import { getFloat16PolyFill } from './float16'
 import * as b64Auto from 'es-arraybuffer-base64/auto'
 const b64Shim = b64Auto
+const f16Shim = getFloat16PolyFill
 
+export const strip = (x: Node): Node => {
+    if (typeof x == 'object') {
+        if (x.children) {
+            return { type: x.type, children: x.children.map(y => strip(y)), arraySize: x.arraySize, bitSize: x.type == NodeType.bits ? undefined : x.bitSize, choiceShared: x.choiceShared ? true : undefined }
+        }
+        if (x.type == NodeType.val) {
+            return { type: x.type, val: x.val }
+        }
+        if (x.type == NodeType.bit_val) {
+            return { type: x.type, val: x.val, bitSize: x.bitSize }
+        }
+    }
+    return x
+}
 const renderSpecLinkOnIndex = (id): string => `[${registryEnum[id]}](./specs/${registryEnum[id]}.md)`
 const renderSpecLinkOnCodec = (id): string => `[${registryEnum[id]}](./registry/specs/${registryEnum[id]}.md)`
 const renderSpecLink = (id): string => `[${registryEnum[id]}](./${registryEnum[id]}.md)`
@@ -16,8 +35,8 @@ const renderParseModeLink = (id): string => `[[parse mode ${parseModes[id]}]](..
 const renderParseMode = (id): string => `${parseModes[id]}`
 const renderSpecLinkHTML = (id): string => `<a href="./${registryEnum[id]}.md">${registryEnum[id]}</a>`
 
-const nodeTypes = parseEnum('./dbuf/codec.ts', 'NodeType')
-const parseModes = parseEnum('./dbuf/codec.ts', 'ParseMode')
+const nodeTypes = parseEnum('./dbuf-codec/common.ts', 'NodeType')
+const parseModes = parseEnum('./dbuf-codec/common.ts', 'ParseMode')
 function nodeToString(n: Node, specLinkFunc, nodeLinkFunc, nest: number): string {
     switch (n.type) {
         case NodeType.val:

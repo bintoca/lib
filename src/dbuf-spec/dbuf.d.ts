@@ -6,3 +6,6 @@ interface Uint8Array {
     toBase64(options?: { alphabet?: 'base64' | 'base64url', omitPadding?: boolean }): string
     toHex(): string
 }
+interface DataView {
+    getFloat16(byteOffset: number, littleEndian?: boolean): number
+}
