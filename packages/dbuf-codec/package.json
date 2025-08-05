@@ -1,21 +1,17 @@
 {
-  "name": "@bintoca/dbuf",
-  "version": "0.0.1-beta",
+  "name": "@bintoca/dbuf-codec",
+  "version": "0.5.0",
   "description": "",
   "type": "module",
   "publishConfig": {
     "access": "public"
   },
   "exports": {
-    ".": "./index.js"
+    "./*": "./*.js"
   },
   "license": "Apache-2.0 WITH LLVM-exception",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/bintoca/lib.git"
-  },
-  "files": [
-    "index.js",
-    "index.d.ts"
-  ]
+  }
 }

@@ -1,7 +1,7 @@
 import { r } from './registry'
 
 export const enum NodeType { parse_type_data, type_map, map, type_array, array, type_array_chunk, array_chunk, chunk, type_choice, type_optional, type_choice_shared, choice, type_choice_select, choice_select, bits, parse_bit_size, val, bit_val, parse_align, align, type_array_bit, type_array_fixed, array_bit, array_fixed, parse_span, span, cycle, u8Text, u8Text_chunks, bytes, byte_chunks }
-export type Node = { type: NodeType, registry?: r, needed?: number, children?: Node[], val?: number, op?: ParseOp, ops?: ParseOp[], bitSize?: number, arraySize?: number, rootMagic?: boolean, rootLittleEndian?: boolean, choiceShared?: boolean, choiceArray?: boolean, arrayOffset?: number, u8?: Uint8Array }
+export type Node = { type: NodeType, registry?: number, needed?: number, children?: Node[], val?: number, op?: ParseOp, ops?: ParseOp[], bitSize?: number, arraySize?: number, rootMagic?: boolean, rootLittleEndian?: boolean, choiceShared?: boolean, choiceArray?: boolean, arrayOffset?: number, u8?: Uint8Array }
 export const enum ParseMode { varint, any, parse_type_data, bit_size, array, array_chunk, chunk, choice, choice_select, map, none, read_assign, align, array_bit, array_fixed, array_none, bytes, byte_chunk, u8Text, u8Text_chunk }
 export type ParseOp = { type: ParseMode, bitSize?: number, ops?: ParseOp[], op?: ParseOp, shared?: boolean, spanUnit?: number, spanBitFlag?: number, index?: number, lastTotalBitsRead?: number, arrayOffset?: number }
 export const littleEndianPrefix = 128 + r.little_endian_marker

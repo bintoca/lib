@@ -1,5 +1,5 @@
 import { r } from './registry'
-import { bit_val, littleEndianPrefix, magicNumberPrefix, Node, ParseMode } from '@bintoca/dbuf-codec/common'
+import { bit_val, val, littleEndianPrefix, magicNumberPrefix, Node, ParseMode } from '@bintoca/dbuf-codec/common'
 import { createEncoder, finishWrite } from '@bintoca/dbuf-codec/encode'
 import { readFileSync } from 'fs'
 import * as pa from 'path'
@@ -802,6 +802,88 @@ export const registry: { [key: number]: { paragraphs: Paragraph[], parseRules?: 
         ],
         examples: [
             { description: 'Array of strings with partial shared prefixes', dbuf: root(type_array(type_map(r.prefix_delta, r.value, r.parse_varint, r.parse_text)), array(map(0, string('abcd')), map(1, string('efgh')), map(5, string('ijk')))), unpack: ['abcd', 'abcefgh', 'abijk'] },
+        ]
+    },
+    [r.preamble_max_size_exceeded]: {
+        paragraphs: [
+            ['Symbol for a size validation error of a server request preamble.'],
+        ],
+        examples: [
+            { description: 'Error stating the request preamble is too large', dbuf: root(type_map(r.error, r.preamble_max_size_exceeded), map()), unpack: { [getReg(r.error)]: getReg(r.preamble_max_size_exceeded) } },
+        ]
+    },
+    [r.body_max_size_exceeded]: {
+        paragraphs: [
+            ['Symbol for a size validation error of a server request body.'],
+        ],
+        examples: [
+            { description: 'Error stating the request body is too large', dbuf: root(type_map(r.error, r.body_max_size_exceeded), map()), unpack: { [getReg(r.error)]: getReg(r.body_max_size_exceeded) } },
+        ]
+    },
+    [r.data_type_not_accepted]: {
+        paragraphs: [
+            ['Symbol for data type validation errors.'],
+        ],
+        examples: [
+            { description: 'Error stating the data type of the operation field is not accepted', dbuf: root(type_map(r.error, r.data_path, r.data_type_not_accepted, type_array(r.parse_type_data)), map(array(parse_type_data(val(r.operation, true))))), unpack: { [getReg(r.error)]: getReg(r.data_type_not_accepted), [getReg(r.data_path)]: [getReg(r.operation)] } },
+        ]
+    },
+    [r.data_value_not_accepted]: {
+        paragraphs: [
+            ['Symbol for data value validation errors.'],
+        ],
+        examples: [
+            { description: 'Error stating the data value of the operation field is not accepted', dbuf: root(type_map(r.error, r.data_path, r.data_value_not_accepted, type_array(r.parse_type_data)), map(array(parse_type_data(val(r.operation, true))))), unpack: { [getReg(r.error)]: getReg(r.data_value_not_accepted), [getReg(r.data_path)]: [getReg(r.operation)] } },
+        ]
+    },
+    [r.data_path]: {
+        paragraphs: [
+            ['Symbol for describing a position in a hierarchy of nested maps and arrays as an array of map keys and array indexes.'],
+            ['An empty array signifies the root object.'],
+        ],
+        examples: [
+            { description: 'Error stating the data type of the operation field is not accepted', dbuf: root(type_map(r.error, r.data_path, r.data_type_not_accepted, type_array(r.parse_type_data)), map(array(parse_type_data(val(r.operation, true))))), unpack: { [getReg(r.error)]: getReg(r.data_type_not_accepted), [getReg(r.data_path)]: [getReg(r.operation)] } },
+        ]
+    },
+    [r.required_field_missing]: {
+        paragraphs: [
+            ['Symbol for missing field validation errors'],
+        ],
+        examples: [
+            { description: 'Error stating the operation field is missing', dbuf: root(type_map(r.error, r.data_path, r.required_field_missing, type_array(r.parse_type_data)), map(array(parse_type_data(val(r.operation, true))))), unpack: { [getReg(r.error)]: getReg(r.required_field_missing), [getReg(r.data_path)]: [getReg(r.operation)] } },
+        ]
+    },
+    [r.field_not_accepted]: {
+        paragraphs: [
+            ['Symbol for validation errors caused by extraneous fields.'],
+        ],
+        examples: [
+            { description: 'Error stating the operation field is not accepted', dbuf: root(type_map(r.error, r.data_path, r.field_not_accepted, type_array(r.parse_type_data)), map(array(parse_type_data(val(r.operation, true))))), unpack: { [getReg(r.error)]: getReg(r.field_not_accepted), [getReg(r.data_path)]: [getReg(r.operation)] } },
+        ]
+    },
+    [r.field_order_not_accepted]: {
+        paragraphs: [
+            ['Symbol for validation errors caused by fields appearing out of order according to some specication.'],
+        ],
+        examples: [
+            { description: 'Error stating the position of the operation field is not accepted', dbuf: root(type_map(r.error, r.data_path, r.field_order_not_accepted, type_array(r.parse_type_data)), map(array(parse_type_data(val(r.operation, true))))), unpack: { [getReg(r.error)]: getReg(r.field_order_not_accepted), [getReg(r.data_path)]: [getReg(r.operation)] } },
+        ]
+    },
+    [r.reference]: {
+        paragraphs: [
+            ['Used for describing a resolvable reference.'],
+            ['Text values are considered IRI references.']
+        ],
+        examples: [
+            { description: 'Reference to https://example.com/hey', dbuf: root(type_map(r.reference, r.parse_text), map(string('https://example.com/hey'))), unpack: { [getReg(r.reference)]: 'https://example.com/hey' } },
+        ]
+    },
+    [r.operation]: {
+        paragraphs: [
+            ['Used for specifying an operation in a request'],
+        ],
+        examples: [
+            { description: 'Operation 3 with parameter 5', dbuf: root(type_map(r.operation, r.value, r.parse_varint, r.parse_varint), map(3, 5)), unpack: { [getReg(r.operation)]: 3, [getReg(r.value)]: 5 } },
         ]
     },
 }

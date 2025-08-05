@@ -2,8 +2,8 @@
     "$schema": "https://json.schemastore.org/tsconfig",
     "compilerOptions": {
         "lib": [
-            "es2020",
-            "dom",
+            "es2023",
+            "DOM",
             "WebWorker"
         ],
         "module": "es2020",
@@ -12,7 +12,6 @@
         "skipLibCheck": true,
         "moduleResolution": "node",
         "declaration": true,
-        "preserveConstEnums": true,
         "paths": {
             "@bintoca/*": [
                 "./*"

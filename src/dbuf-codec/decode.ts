@@ -184,7 +184,7 @@ export const alignDecoder = (s: DecoderState, n: number) => {
         num <= 32 ? readBits32(s, num) : readBitsLarge(s, num)
     }
 }
-export type ParseState = { container: Node, root: Node, nodeStack: Node[], decoder: DecoderState, sharedChoiceStack: ParseOp[], liteProfile?: boolean, codecError?: r, codecErrorValue?}
+export type ParseState = { container: Node, root: Node, nodeStack: Node[], decoder: DecoderState, sharedChoiceStack: ParseOp[], liteProfile?: boolean, codecError?: number, codecErrorValue?}
 export const resolveParseOp = (x: Node): ParseOp => {
     if (x.type != NodeType.val) {
         return x.op
