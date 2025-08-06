@@ -24,7 +24,7 @@ export const internalError = (state: ServeState, e) => {
     state.internalError = e
     return state.responseError
 }
-export const pathError = (er: r, path: any[]) => Object.assign(registryError(er), { [sym_data_path]: path })
+export const pathError = (er: number, path: any[]) => Object.assign(registryError(er), { [sym_data_path]: path })
 export const hasError = (state: ServeState) => state.responseError !== undefined
 export const createServeState = (): ServeState => {
     return { parser: createParser(true) }

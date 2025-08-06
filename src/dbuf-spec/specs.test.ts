@@ -183,6 +183,10 @@ test('specs', () => {
     for (let k in dataReg) {
         expect(dataReg[k]).toBe(registryEnum[k])
     }
+    const serverReg = parseEnum('./dbuf-server/registry.ts', 'r')
+    for (let k in serverReg) {
+        expect(serverReg[k]).toBe(registryEnum[k])
+    }
     writeFileSync(join(registryFolder, 'index.md'), '# DBUF Symbol Registry\n\nSubject to change until core semantics are settled\n\n' + indexTxt)
     writeFileSync(join(folder, 'codec.md'), codec.sections.map(x => renderSection(x, renderSpecLinkOnCodec, renderParseModeLink)).join('\n\n'))
 })

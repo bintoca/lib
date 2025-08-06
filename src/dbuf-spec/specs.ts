@@ -1,11 +1,11 @@
-import { r } from './registry'
+import { r } from '@bintoca/dbuf-registry'
 import { bit_val, val, littleEndianPrefix, magicNumberPrefix, Node, ParseMode } from '@bintoca/dbuf-codec/common'
 import { createEncoder, finishWrite } from '@bintoca/dbuf-codec/encode'
 import { readFileSync } from 'fs'
 import * as pa from 'path'
 import { writeNode, type_array, type_choice, choice, array, root, type_map, map, parse_bit_size, parse_type_data_immediate, align, type_array_bit, array_bit, type_array_fixed, array_fixed, type_array_chunk, array_chunk, chunk, type_choice_shared, type_choice_select, choice_select, parse_align, choice_shared, string, type_choice_array, type_choice_shared_array, type_optional, parse_type_data, trimBuffer, bytes } from '../dbuf-codec/encode'
 
-export type RegistryLink = { rid: r }
+export type RegistryLink = { rid: number }
 export type ParseModeLink = { pid: ParseMode }
 export type ListItem = { item: Paragraph, parseMode?: ParseMode }
 export type Paragraph = (string | RegistryLink | ParseModeLink | ListItem)[]
@@ -44,8 +44,11 @@ export const dbufWriteToArray8 = (d: Node) => {
     const b = dbufWrite(d)
     return bytes(b)
 }
-export const registryEnum = parseEnum('./dbuf-spec/registry.ts', 'r')
-const getReg = (r: r) => registryEnum[r]
+export const registryEnum = {}
+for (let k in r) {
+    registryEnum[r[k]] = k
+}
+const getReg = (r: number) => registryEnum[r]
 export const registry: { [key: number]: { paragraphs: Paragraph[], parseRules?: boolean, examples: { description: string, dbuf: Node, unpack?}[] } } = {
     [r.nonexistent]: {
         paragraphs: [
