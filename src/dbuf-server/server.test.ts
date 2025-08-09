@@ -16,7 +16,7 @@ const sym_registry_symbol_not_accepted = getRegistrySymbol(r.registry_symbol_not
 const sym_registry_symbol_not_accepted_as_array_type = getRegistrySymbol(r.registry_symbol_not_accepted_as_array_type)
 const sym_data_type_not_accepted = getRegistrySymbol(r.data_type_not_accepted)
 const sym_preamble_max_size_exceeded = getRegistrySymbol(r.preamble_max_size_exceeded)
-const call_response = async <T>(i: Uint8Array | Uint8Array[], config?: ExecutionConfig<T>): Promise<ResponseState> => {
+const call_response = async (i: Uint8Array | Uint8Array[], config?: ExecutionConfig): Promise<ResponseState> => {
     const bufs = Array.isArray(i) ? i : [i]
     const input = new ReadableStream<BufferSource>({
         pull(controller) {

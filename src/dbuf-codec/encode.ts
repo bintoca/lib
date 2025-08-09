@@ -352,7 +352,7 @@ export const type_choice_array = (t: NodeOrNum, a: NodeOrNum[], ...b: NodeOrNum[
 export const type_choice_shared = (...a: NodeOrNum[]): Node => { return { type: NodeType.type_choice_shared, children: nodeOrNumsRegistry(a), registry: r.type_choice_shared } }
 export const type_choice_shared_array = (t: NodeOrNum, a: NodeOrNum[], ...b: NodeOrNum[]): Node => { return { type: NodeType.type_choice_shared, children: [parse_type_data_immediate(type_array(nodeOrNumRegistry(t)), array_offset(1, ...a)), ...nodeOrNumsRegistry(b)], registry: r.type_choice_shared, choiceArray: true } }
 export const type_choice_select = (a: number): Node => { return { type: NodeType.type_choice_select, children: [nodeOrNum(a)], registry: r.type_choice_select } }
-export const choice = (a: Node, b?: NodeOrNum) => { return { type: NodeType.choice, children: b === undefined ? [nodeOrNum(a)] : [nodeOrNum(a), nodeOrNum(b)] } }
+export const choice = (a: Node, b?: NodeOrNum): Node => { return { type: NodeType.choice, children: b === undefined ? [nodeOrNum(a)] : [nodeOrNum(a), nodeOrNum(b)] } }
 export const choice_shared = (a: Node, b?: NodeOrNum): Node => { return { type: NodeType.choice, children: b === undefined ? [nodeOrNum(a)] : [nodeOrNum(a), nodeOrNum(b)], choiceShared: true } }
 export const map = (...a: NodeOrNum[]): Node => { return { type: NodeType.map, children: nodeOrNums(a) } }
 export const array = (...a: NodeOrNum[]): Node => { return { type: NodeType.array, children: nodeOrNums(a) } }

@@ -17,20 +17,20 @@ export const registryError = (er: number) => { return { [getRegistrySymbol(r.err
 export type ServeState = {
     parser: ParseState, inputStream?: ReadableStream<ArrayBufferView>, reader?: ReadableStreamDefaultReader<ArrayBufferView>,
     refinedPreamble?: any, bodyType?: Node, responseError?: object, internalError?, preambleNode?: Node, bodyNode?: Node, refinedBody?: any, request?: Request,
-    refinedToken?: any
+    refinedToken?: any, env?
 }
 export const internalError = (state: ServeState, e) => {
     state.responseError = registryError(r.error_internal)
     state.internalError = e
     return state.responseError
 }
-export const pathError = (er: number, path: any[]) => Object.assign(registryError(er), { [sym_data_path]: path })
+export const pathError = (er: number, path: any[]): object => Object.assign(registryError(er), { [sym_data_path]: path })
 export const hasError = (state: ServeState) => state.responseError !== undefined
 export const createServeState = (): ServeState => {
     return { parser: createParser(true) }
 }
-export const codecError = (state: ServeState) => Object.assign(registryError(state.parser.codecError), { [sym_stream_position]: state.parser.decoder.totalBitsRead })
-export const readPreamble = async (state: ServeState, maxBytes: number) => {
+export const codecError = (state: ServeState): object => Object.assign(registryError(state.parser.codecError), { [sym_stream_position]: state.parser.decoder.totalBitsRead })
+export const readPreamble = async (state: ServeState, maxBytes: number): Promise<any> => {
     try {
         state.reader = state.inputStream.getReader()
         let read = await state.reader.read()
@@ -114,7 +114,7 @@ export const initRequest = async <T>(request: Request): Promise<ServeState> => {
     await readPreamble(state, maxPreambleBytes)
     return state
 }
-export const validatePreamble = (state: ServeState, preambleFields: FieldSymbolConfig[]) => {
+export const validatePreamble = (state: ServeState, preambleFields: FieldSymbolConfig[]): any => {
     if (hasError(state)) { return }
     try {
         const rp = refineValues(unpack(state.preambleNode))
@@ -146,9 +146,9 @@ export const responseFromError = (state: ServeState, ob?: object): Response => {
 export const packResponse = (value): Response => new Response(writeNodeFull(pack({ [sym_value]: value })), { status: 200, headers: { [contentTypeHeaderName]: contentTypeDBUF } })
 export type FieldConfig = { key: number, required?: boolean, advancedProfile?: boolean }
 export type FieldSymbolConfig = { key: symbol, required?: boolean, advancedProfile?: boolean }
-export type OperationConfig<T> = { func: (state: ServeState, env: T) => Promise<Response>, fields: FieldConfig[], streamBody?: boolean, checkCredentialToken?: boolean }
-export type OperationMap<T> = Map<(string | number | symbol), OperationConfig<T>>
-export type ExecutionConfig<T> = { preambleFields: FieldSymbolConfig[], operationMap: OperationMap<T>, extraTokenValidationFunc?: (state: ServeState) => void }
+export type OperationConfig = { func: (state: ServeState, deps: object, env) => Promise<Response>, fields: FieldConfig[], streamBody?: boolean, checkCredentialToken?: boolean, deps?}
+export type OperationMap = Map<(string | number | symbol), OperationConfig>
+export type ExecutionConfig = { preambleFields: FieldSymbolConfig[], operationMap: OperationMap, extraTokenValidationFunc?: (state: ServeState) => void }
 export type ResponseState = { response: Response, state: ServeState }
 export const validateBodyType = (state: ServeState, fields: FieldConfig[]) => {
     const n = state.bodyType.children.length / 2
@@ -176,7 +176,7 @@ export const validateBodyType = (state: ServeState, fields: FieldConfig[]) => {
         }
     }
 }
-export const validateCredentialToken = <T>(state: ServeState, config: ExecutionConfig<T>) => {
+export const validateCredentialToken = <T>(state: ServeState, config: ExecutionConfig) => {
     const ct = state.refinedPreamble[getRegistrySymbol(r.credential_token)]
     if (!ct) { return state.responseError = pathError(r.required_field_missing, [getRegistrySymbol(r.credential_token)]) }
     if (!(ct instanceof Uint8Array)) { return state.responseError = pathError(r.data_type_not_accepted, [getRegistrySymbol(r.credential_token)]) }
@@ -197,7 +197,7 @@ export const validateCredentialToken = <T>(state: ServeState, config: ExecutionC
     }
 }
 export const small_body_max_bytes = 2 ** 16
-export const dispatchOperation = async <T>(state: ServeState, config: ExecutionConfig<T>, env: T) => {
+export const dispatchOperation = async <T>(state: ServeState, config: ExecutionConfig, env: T) => {
     try {
         if (!hasError(state)) {
             const op = state.refinedPreamble[sym_operation]
@@ -214,11 +214,14 @@ export const dispatchOperation = async <T>(state: ServeState, config: ExecutionC
                     refineBody(state)
                 }
                 if (!hasError(state)) {
-                    const resp = await opConfig.func(state, env)
+                    const resp = await opConfig.func(state, opConfig.deps, env)
                     if (resp) {
                         return resp
                     }
-                    internalError(state, 'no response returned ' + op)
+                    if (state.responseError) {
+                        return responseFromError(state)
+                    }
+                    internalError(state, 'no response returned ' + op.toString())
                 }
             }
             else {
@@ -231,12 +234,13 @@ export const dispatchOperation = async <T>(state: ServeState, config: ExecutionC
     }
     return responseFromError(state)
 }
-export const executeRequest = async <T>(request: Request, config: ExecutionConfig<T>, env: T): Promise<ResponseState> => {
+export const executeRequest = async (request: Request, config: ExecutionConfig, env): Promise<ResponseState> => {
     const state = await initRequest(request)
+    state.env = env
     validatePreamble(state, config.preambleFields)
     return { response: await dispatchOperation(state, config, env), state }
 }
-export const createConfig = <T>(): ExecutionConfig<T> => { return { preambleFields: [{ key: sym_operation, required: true }, { key: getRegistrySymbol(r.credential_token) }], operationMap: new Map() } }
+export const createConfig = (): ExecutionConfig => { return { preambleFields: [{ key: sym_operation, required: true }, { key: getRegistrySymbol(r.credential_token) }], operationMap: new Map() } }
 export const readBody = async (state: ServeState, maxBytes: number) => {
     try {
         if (state.bodyType.children.length) {
