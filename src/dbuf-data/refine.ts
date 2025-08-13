@@ -1,7 +1,8 @@
 import { getRegistrySymbol, r } from './registry'
-import { isUnsignedInt, valSymbol, u8Symbol, u8TextSymbol, getUnsignedIntVal, bitSizeSymbol, isUnsignedInt2, getValueFromUnrefinedMap, isUnrefinedMap } from './unpack'
+import { isUnsignedInt, valSymbol, u8Symbol, u8TextSymbol, getUnsignedIntVal, bitSizeSymbol, isUnsignedInt2, getValueFromUnrefinedMap, isUnrefinedMap, createFullParser, parseFull, unpack } from './unpack'
 import { concatBuffers } from '@bintoca/dbuf-codec/common'
 import { tai_dbuf_epochOffset, getLeap_millis_tai } from './time'
+import { setParserBuffer } from '@bintoca/dbuf-codec/decode'
 
 const sym_nonexistent = getRegistrySymbol(r.nonexistent)
 const sym_false = getRegistrySymbol(r.false)
@@ -340,4 +341,13 @@ export const refineValues = (v) => {
         }
     }
     return last
+}
+export const parseFullRefine = (u8: ArrayBufferView) => {
+    const st = createFullParser()
+    setParserBuffer(u8, st)
+    parseFull(st)
+    if (st.error) {
+        throw st.error
+    }
+    return refineValues(unpack(st.root))
 }

@@ -46,10 +46,10 @@ export const readPreamble = async (state: ServeState, maxBytes: number): Promise
         let mapOpCount = 0
         while (true) {
             parseCore(state.parser)
+            if (state.parser.decoder.totalBitsRead / 8 >= maxBytes) {
+                return state.responseError = registryError(r.preamble_max_size_exceeded)
+            }
             if (state.parser.decoder.endOfBuffer) {
-                if (state.parser.decoder.totalBitsRead / 8 >= maxBytes) {
-                    return state.responseError = registryError(r.preamble_max_size_exceeded)
-                }
                 let read = await state.reader.read()
                 if (read.done) {
                     return state.responseError = registryError(r.incomplete_stream)
@@ -136,7 +136,17 @@ export const validatePreamble = (state: ServeState, preambleFields: FieldSymbolC
 }
 export const contentTypeDBUF = 'application/dbuf'
 export const contentTypeHeaderName = 'Content-Type'
-export const httpStatusFromError = (ob: object): number => ob[getRegistrySymbol(r.error)] === sym_error_internal ? 500 : 400
+export const httpStatusFromError = (ob: object): number => {
+    const er = ob[getRegistrySymbol(r.error)]
+    if (er === sym_error_internal) {
+        return 500
+    }
+    const path = ob[sym_data_path]
+    if (path && path.length == 1 && path[0] == getRegistrySymbol(r.credential_token)) {
+        return 401
+    }
+    return 400
+}
 export const responseFromError = (state: ServeState, ob?: object): Response => {
     if (ob) {
         state.responseError = ob

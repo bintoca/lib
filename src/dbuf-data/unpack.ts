@@ -1,5 +1,5 @@
 import { getRegistrySymbol, r } from './registry'
-import { parseCore, ParseState, createParser, resolveParseOp,  } from '@bintoca/dbuf-codec/decode'
+import { parseCore, ParseState, createParser, resolveParseOp, setParserBuffer, } from '@bintoca/dbuf-codec/decode'
 import { Node, NodeType, ParseMode, val, concatBuffers } from '@bintoca/dbuf-codec/common'
 
 const sym_nonexistent = getRegistrySymbol(r.nonexistent)
@@ -18,6 +18,10 @@ export const parseFull = (st: ParseFullState) => {
             parseCore(st)
             if (st.decoder.endOfBuffer) {
                 st.error = { [getRegistrySymbol(r.error)]: getRegistrySymbol(r.incomplete_stream) }
+                break
+            }
+            if (st.codecError) {
+                st.error = { [getRegistrySymbol(r.error)]: getRegistrySymbol(st.codecError) }
                 break
             }
             if (st.container.children.length) {

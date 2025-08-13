@@ -1,6 +1,8 @@
 node_modules
 
 packages/**/*.js
+packages/**/*.js.map
 packages/**/*.d.ts
+packages/**/*.ts.map
 src/dev/test1/lib/t1.js
 packages/sandbox/out
