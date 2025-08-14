@@ -1,4 +1,4 @@
-import { r } from './registry'
+import { r } from '@bintoca/dbuf-codec/registry'
 
 export const enum NodeType { parse_type_data, type_map, map, type_array, array, type_array_chunk, array_chunk, chunk, type_choice, type_optional, type_choice_shared, choice, type_choice_select, choice_select, bits, parse_bit_size, val, bit_val, parse_align, align, type_array_bit, type_array_fixed, array_bit, array_fixed, parse_span, span, cycle, u8Text, u8Text_chunks, bytes, byte_chunks }
 export type Node = { type: number, registry?: number, needed?: number, children?: Node[], val?: number, op?: ParseOp, ops?: ParseOp[], bitSize?: number, arraySize?: number, rootMagic?: boolean, rootLittleEndian?: boolean, choiceShared?: boolean, choiceArray?: boolean, arrayOffset?: number, u8?: Uint8Array }

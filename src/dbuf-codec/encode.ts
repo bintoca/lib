@@ -1,5 +1,5 @@
-import { Node, NodeType, magicNumberPrefix, littleEndianPrefix, val, concatBuffers } from './common'
-import { r } from './registry'
+import { Node, NodeType, magicNumberPrefix, littleEndianPrefix, val, concatBuffers } from '@bintoca/dbuf-codec/common'
+import { r } from '@bintoca/dbuf-codec/registry'
 
 export type EncoderState = { buffers: Uint8Array[], dv: DataView, offset: number, bitsRemaining: number, bits: number, nodeStack: { node: Node, itemIndex?: number }[], littleEndian?: boolean, bitsWritten: number, rootInitialized: boolean, alignVarint8?: boolean, newBufferSize: number }
 export const createEncoder = (bufferSize?: number): EncoderState => {
@@ -313,7 +313,7 @@ export const writeNode = (s: EncoderState, sc: Node) => {
         writeNodeCore(s)
     }
 }
-export const writeNodeStream = async (s: EncoderState, sc: Node, stream: WritableStreamDefaultWriter<BufferSource>) => {
+export const writeNodeStream = async (s: EncoderState, sc: Node, stream: WritableStreamDefaultWriter<ArrayBufferView>) => {
     s.nodeStack.push({ node: sc })
     while (s.nodeStack.length) {
         while (s.nodeStack.length && s.buffers.length == 0) {

@@ -1,5 +1,5 @@
-import { getRegistrySymbol, r } from './registry'
-import { parseCore, ParseState, createParser, resolveParseOp, setParserBuffer, } from '@bintoca/dbuf-codec/decode'
+import { getRegistrySymbol, r } from '@bintoca/dbuf-data/registry'
+import { parseCore, ParseState, createParser, resolveParseOp } from '@bintoca/dbuf-codec/decode'
 import { Node, NodeType, ParseMode, val, concatBuffers } from '@bintoca/dbuf-codec/common'
 
 const sym_nonexistent = getRegistrySymbol(r.nonexistent)

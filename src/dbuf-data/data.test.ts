@@ -1,10 +1,10 @@
-import { getRegistrySymbol, r } from './registry'
+import { getRegistrySymbol, r } from '@bintoca/dbuf-data/registry'
 import { string, char, bits_le, u8Text_chunks, parse_type_data, parse_align, array_no_children, type_array_bit, array_chunk, type_array_chunk, type_array_fixed, type_choice, type_optional, type_choice_select, type_choice_shared, type_choice_array, type_choice_shared_array, chunk, choice, map, choice_shared, choice_select, array, bits, align, array_bit, array_fixed, cycle, bytes, root, parse_type_data_immediate, parse_bit_size, type_map, type_array, byte_chunks } from '@bintoca/dbuf-codec/encode'
-import { bit_val, val_size, val } from '../dbuf-codec/common'
-import { valSymbol, bitSizeSymbol, cycleSymbol, unpack } from './unpack'
-import { refineValues } from './refine'
-import { pack } from './pack'
-import { getLeap_millis, getLeap_millis_tai } from './time'
+import { bit_val, val_size, val } from '@bintoca/dbuf-codec/common'
+import { valSymbol, bitSizeSymbol, cycleSymbol, unpack } from '@bintoca/dbuf-data/unpack'
+import { refineValues } from '@bintoca/dbuf-data/refine'
+import { pack } from '@bintoca/dbuf-data/pack'
+import { getLeap_millis, getLeap_millis_tai } from '@bintoca/dbuf-data/time'
 import { getFloat16PolyFill } from '../dbuf-spec/float16'
 const f16Shim = getFloat16PolyFill
 

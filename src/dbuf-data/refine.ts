@@ -1,7 +1,7 @@
-import { getRegistrySymbol, r } from './registry'
-import { isUnsignedInt, valSymbol, u8Symbol, u8TextSymbol, getUnsignedIntVal, bitSizeSymbol, isUnsignedInt2, getValueFromUnrefinedMap, isUnrefinedMap, createFullParser, parseFull, unpack } from './unpack'
+import { getRegistrySymbol, r } from '@bintoca/dbuf-data/registry'
+import { isUnsignedInt, valSymbol, u8Symbol, u8TextSymbol, getUnsignedIntVal, bitSizeSymbol, isUnsignedInt2, getValueFromUnrefinedMap, isUnrefinedMap, createFullParser, parseFull, unpack } from '@bintoca/dbuf-data/unpack'
 import { concatBuffers } from '@bintoca/dbuf-codec/common'
-import { tai_dbuf_epochOffset, getLeap_millis_tai } from './time'
+import { tai_dbuf_epochOffset, getLeap_millis_tai } from '@bintoca/dbuf-data/time'
 import { setParserBuffer } from '@bintoca/dbuf-codec/decode'
 
 const sym_nonexistent = getRegistrySymbol(r.nonexistent)

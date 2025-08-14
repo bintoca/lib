@@ -1,5 +1,5 @@
-import { r } from './registry'
-import { Node, NodeType, ParseOp, ParseMode, magicNumberPrefix, littleEndianPrefix, val, val_size, bit_val } from './common'
+import { r } from '@bintoca/dbuf-codec/registry'
+import { Node, NodeType, ParseOp, ParseMode, magicNumberPrefix, littleEndianPrefix, val, val_size, bit_val } from '@bintoca/dbuf-codec/common'
 
 export type DecoderState = { dv: DataView, dvOffset: number, partialBlock: number, partialBlockRemaining: number, bitNode?: Node, varintPrefix?: number, littleEndian?: boolean, initialized?: boolean, totalBitsRead: number, lastSize: number, endOfBuffer: boolean }
 export const createDecoder = (): DecoderState => {

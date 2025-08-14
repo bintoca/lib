@@ -1,7 +1,7 @@
 import { ParseState, createParser, setParserBuffer, parseCore, resolveParseOp } from '@bintoca/dbuf-codec/decode'
 import { NodeType, Node, ParseMode } from '@bintoca/dbuf-codec/common'
 import { getRegistrySymbol } from '@bintoca/dbuf-data/registry'
-import { r } from './registry'
+import { r } from '@bintoca/dbuf-server/registry'
 import { type_map, root, writeNodeFull, map } from '@bintoca/dbuf-codec/encode'
 import { unpack, parseFull, createFullParser } from '@bintoca/dbuf-data/unpack'
 import { pack } from '@bintoca/dbuf-data/pack'
@@ -151,9 +151,9 @@ export const responseFromError = (state: ServeState, ob?: object): Response => {
     if (ob) {
         state.responseError = ob
     }
-    return new Response(writeNodeFull(pack(state.responseError)), { status: httpStatusFromError(state.responseError), headers: { [contentTypeHeaderName]: contentTypeDBUF } })
+    return new Response(writeNodeFull(pack(state.responseError)) as Uint8Array<ArrayBuffer>, { status: httpStatusFromError(state.responseError), headers: { [contentTypeHeaderName]: contentTypeDBUF } })
 }
-export const packResponse = (value): Response => new Response(writeNodeFull(pack({ [sym_value]: value })), { status: 200, headers: { [contentTypeHeaderName]: contentTypeDBUF } })
+export const packResponse = (value): Response => new Response(writeNodeFull(pack({ [sym_value]: value })) as Uint8Array<ArrayBuffer>, { status: 200, headers: { [contentTypeHeaderName]: contentTypeDBUF } })
 export type FieldConfig = { key: number, required?: boolean, advancedProfile?: boolean }
 export type FieldSymbolConfig = { key: symbol, required?: boolean, advancedProfile?: boolean }
 export type OperationConfig = { func: (state: ServeState, deps: object, env) => Promise<Response>, fields: FieldConfig[], streamBody?: boolean, checkCredentialToken?: boolean, deps?}

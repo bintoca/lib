@@ -1,4 +1,4 @@
-import { getRegistryIndex, r } from './registry'
+import { getRegistryIndex, r } from '@bintoca/dbuf-data/registry'
 import { type_array, array, parse_type_data, bytes, string, type_map, map, root, isNotNonNegativeInteger } from '@bintoca/dbuf-codec/encode'
 import { Node, val } from '@bintoca/dbuf-codec/common'
 
