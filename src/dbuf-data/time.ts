@@ -1,4 +1,4 @@
-export const tai_dbuf_epochOffset = ((48 * 365 + 12) * 86400 + 37) * 1000
+export const tai_dbuf_epochOffsetSeconds = ((48 * 365 + 12) * 86400 + 37)
 //https://data.iana.org/time-zones/tzdb-2024b/leap-seconds.list
 export const ietf_leap = [
     [2272060800, 10],
@@ -30,21 +30,21 @@ export const ietf_leap = [
     [3644697600, 36],
     [3692217600, 37],
 ]
-export const createLeapItem = (posix_millis: number, tai_leap_seconds: number) => [posix_millis, tai_leap_seconds * 1000, posix_millis + tai_leap_seconds * 1000]
-export const leapLookup = ietf_leap.map(x => createLeapItem((x[0] - ((70 * 365 + 17) * 24 * 60 * 60)) * 1000, x[1]))
-export const getLeap_millis = (posix_millis: number) => getLeap_millis_lookup(posix_millis, leapLookup)
-export const getLeap_millis_lookup = (posix_millis: number, lookup: number[][]) => {
+export const createLeapItem = (posix_seconds: number, tai_leap_seconds: number) => [posix_seconds, tai_leap_seconds, posix_seconds + tai_leap_seconds]
+export const leapLookup = ietf_leap.map(x => createLeapItem(x[0] - ((70 * 365 + 17) * 24 * 60 * 60), x[1]))
+export const getLeapSecondsFromPosix = (posix_seconds: number) => lookupLeapSecondsFromPosix(posix_seconds, leapLookup)
+export const lookupLeapSecondsFromPosix = (posix_seconds: number, lookup: number[][]) => {
     for (let i = lookup.length - 1; i >= 0; i--) {
-        if (posix_millis >= lookup[i][0]) {
+        if (posix_seconds >= lookup[i][0]) {
             return lookup[i][1]
         }
     }
     return lookup[0][1]
 }
-export const getLeap_millis_tai = (tai_millis: number) => getLeap_millis_lookup_tai(tai_millis, leapLookup)
-export const getLeap_millis_lookup_tai = (tai_millis: number, lookup: number[][]) => {
+export const getLeapSecondsFromTAI = (tai_seconds: number) => lookupLeapSecondsFromTAI(tai_seconds, leapLookup)
+export const lookupLeapSecondsFromTAI = (tai_seconds: number, lookup: number[][]) => {
     for (let i = lookup.length - 1; i >= 0; i--) {
-        if (tai_millis >= lookup[i][2]) {
+        if (tai_seconds >= lookup[i][2]) {
             return lookup[i][1]
         }
     }

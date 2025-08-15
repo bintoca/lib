@@ -1,7 +1,7 @@
 import { getRegistrySymbol, r } from '@bintoca/dbuf-data/registry'
 import { isUnsignedInt, valSymbol, u8Symbol, u8TextSymbol, getUnsignedIntVal, bitSizeSymbol, isUnsignedInt2, getValueFromUnrefinedMap, isUnrefinedMap, createFullParser, parseFull, unpack } from '@bintoca/dbuf-data/unpack'
 import { concatBuffers } from '@bintoca/dbuf-codec/common'
-import { tai_dbuf_epochOffset, getLeap_millis_tai } from '@bintoca/dbuf-data/time'
+import { tai_dbuf_epochOffsetSeconds, getLeapSecondsFromTAI } from '@bintoca/dbuf-data/time'
 import { setParserBuffer } from '@bintoca/dbuf-codec/decode'
 
 const sym_nonexistent = getRegistrySymbol(r.nonexistent)
@@ -141,8 +141,8 @@ export const refineObject = (ob, tempDV: DataView, stack: RefineStack): any => {
         else if (k === sym_epoch_seconds_continuous) {
             const val = typeof v == 'number' || typeof v == 'bigint' ? v : refineValues(v)
             if (typeof val == 'number') {
-                const tai = val * 1000 + tai_dbuf_epochOffset
-                return new Date(tai - getLeap_millis_tai(tai))
+                const tai = val + tai_dbuf_epochOffsetSeconds
+                return new Date((tai - getLeapSecondsFromTAI(tai)) * 1000)
             }
         }
         else if (k === sym_instant && isUnrefinedMap(v)) {

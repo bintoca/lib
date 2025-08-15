@@ -7,10 +7,8 @@ import { Node, NodeType } from '@bintoca/dbuf-codec/common'
 import { getRegistryIndex } from '@bintoca/dbuf-data/registry'
 import { parseFull, unpack, } from '@bintoca/dbuf-data/unpack'
 import { refineValues } from '@bintoca/dbuf-data/refine'
-import { getFloat16PolyFill } from './float16'
 import * as b64Auto from 'es-arraybuffer-base64/auto'
 const b64Shim = b64Auto
-const f16Shim = getFloat16PolyFill
 
 export const strip = (x: Node): Node => {
     if (typeof x == 'object') {

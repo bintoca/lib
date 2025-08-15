@@ -1,0 +1,17 @@
+{
+  "name": "@bintoca/dbuf-data-test",
+  "version": "0.5.0",
+  "description": "",
+  "type": "module",
+  "publishConfig": {
+    "access": "public"
+  },
+  "exports": {
+    "./*": "./*.js"
+  },
+  "license": "Apache-2.0 WITH LLVM-exception",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/bintoca/lib.git"
+  }
+}
