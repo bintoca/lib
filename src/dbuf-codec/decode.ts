@@ -1,7 +1,7 @@
 import { r } from '@bintoca/dbuf-codec/registry'
 import { Node, NodeType, ParseOp, ParseMode, magicNumberPrefix, littleEndianPrefix, val, val_size, bit_val } from '@bintoca/dbuf-codec/common'
 
-export type DecoderState = { dv: DataView, dvOffset: number, partialBlock: number, partialBlockRemaining: number, bitNode?: Node, varintPrefix?: number, littleEndian?: boolean, initialized?: boolean, totalBitsRead: number, lastSize: number, endOfBuffer: boolean }
+export type DecoderState<T extends ArrayBufferLike = ArrayBufferLike> = { dv: DataView<T>, dvOffset: number, partialBlock: number, partialBlockRemaining: number, bitNode?: Node, varintPrefix?: number, littleEndian?: boolean, initialized?: boolean, totalBitsRead: number, lastSize: number, endOfBuffer: boolean }
 export const createDecoder = (): DecoderState => {
     return { dv: undefined, dvOffset: 0, partialBlock: 0, partialBlockRemaining: 0, totalBitsRead: 0, lastSize: 0, endOfBuffer: false }
 }
@@ -184,7 +184,7 @@ export const alignDecoder = (s: DecoderState, n: number) => {
         num <= 32 ? readBits32(s, num) : readBitsLarge(s, num)
     }
 }
-export type ParseState = { container: Node, root: Node, nodeStack: Node[], decoder: DecoderState, sharedChoiceStack: ParseOp[], liteProfile?: boolean, codecError?: number, codecErrorValue?}
+export type ParseState<T extends ArrayBufferLike = ArrayBufferLike> = { container: Node<T>, root: Node<T>, nodeStack: Node<T>[], decoder: DecoderState<T>, sharedChoiceStack: ParseOp[], liteProfile?: boolean, codecError?: number, codecErrorValue?}
 export const resolveParseOp = (x: Node): ParseOp => {
     if (x.type != NodeType.val) {
         return x.op
@@ -651,7 +651,7 @@ export const createParser = (liteProfile?: boolean): ParseState => {
     const root: Node = { type: NodeType.parse_type_data, children: [], needed: 2, op: { type: ParseMode.any } }
     return { container, root, nodeStack: [container, root], decoder: createDecoder(), sharedChoiceStack: [], liteProfile }
 }
-export const setParserBuffer = (b: ArrayBufferView, st: ParseState) => {
+export const setParserBuffer = <T extends ArrayBufferLike = ArrayBufferLike>(b: ArrayBufferView<T>, st: ParseState<T>) => {
     st.decoder.dv = new DataView(b.buffer, b.byteOffset, b.byteLength)
     st.decoder.dvOffset = 0
     st.decoder.endOfBuffer = false
@@ -667,4 +667,9 @@ export const setParserBuffer = (b: ArrayBufferView, st: ParseState) => {
             st.decoder.dvOffset += 1
         }
     }
+}
+export const initParser = <T extends ArrayBufferLike = ArrayBufferLike>(b: ArrayBufferView<T>, liteProfile?: boolean): ParseState<T> => {
+    const st = createParser(liteProfile)
+    setParserBuffer(b, st)
+    return st as ParseState<T>
 }

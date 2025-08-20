@@ -2,10 +2,9 @@ import { writeFileSync, readdirSync, unlinkSync } from 'fs'
 import { join } from 'path'
 import { Section, registry, codec, Paragraph, parseEnum, registryEnum, dbufWrite } from './specs'
 import { finishWrite, createEncoder, writeNode } from '@bintoca/dbuf-codec/encode'
-import { createParser, setParserBuffer } from '@bintoca/dbuf-codec/decode'
 import { Node, NodeType } from '@bintoca/dbuf-codec/common'
 import { getRegistryIndex } from '@bintoca/dbuf-data/registry'
-import { parseFull, unpack, } from '@bintoca/dbuf-data/unpack'
+import { unpack, parseFull } from '@bintoca/dbuf-data/unpack'
 import { refineValues } from '@bintoca/dbuf-data/refine'
 import * as b64Auto from 'es-arraybuffer-base64/auto'
 const b64Shim = b64Auto
@@ -61,13 +60,11 @@ function dbufUnpack(id, d: Node, p: any) {
     return up
 }
 function dbufWriteParse(id, d: Node) {
-    const st = createParser()
     const es = createEncoder()
     writeNode(es, d)
     finishWrite(es)
     const buf = es.buffers[0]
-    setParserBuffer(buf, st)
-    parseFull(st)
+    const st = parseFull(buf)
     const s = st.root
     if (!s) {
         console.log(st, buf)

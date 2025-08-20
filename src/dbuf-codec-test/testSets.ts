@@ -1,9 +1,9 @@
-import { createDecoder, DecoderState, setParserBuffer } from '@bintoca/dbuf-codec/decode'
+import { createDecoder, DecoderState } from '@bintoca/dbuf-codec/decode'
 import { bit_val, Node, NodeType, littleEndianPrefix, concatBuffers } from '@bintoca/dbuf-codec/common'
-import { EncoderState, createEncoder, WriterToken, writer, writerPrefix, writeNode, parse_type_data, array_bit_no_children, array_no_children, array_fixed_no_children, array_chunk, chunk_no_children, chunk, choice, map, choice_shared, choice_select, array, bits, align, array_bit, array_fixed, cycle, bytes, u8Text, nodeOrNum, root, parse_type_data_immediate, parse_bit_size, type_map, type_array, byte_chunks } from '@bintoca/dbuf-codec/encode'
+import { EncoderState, createEncoder, WriterToken, writeTokens, writerPrefix, writeNode, parse_type_data, array_bit_no_children, array_no_children, array_fixed_no_children, array_chunk, chunk_no_children, chunk, choice, map, choice_shared, choice_select, array, bits, align, array_bit, array_fixed, cycle, bytes, u8Text, nodeOrNum, root, parse_type_data_immediate, parse_bit_size, type_map, type_array, byte_chunks } from '@bintoca/dbuf-codec/encode'
 import { r } from '@bintoca/dbuf-codec/registry'
 import { getRegistrySymbol } from '@bintoca/dbuf-data/registry'
-import { createFullParser } from '@bintoca/dbuf-data/unpack'
+import { initFullParser } from '@bintoca/dbuf-data/unpack'
 
 const bi = (a: WriterToken, ...b: WriterToken[]) => [r.parse_type_data_immediate, a, ...b]
 const tc = (len: number, ...a: WriterToken[]) => [r.type_choice, len - 1, ...a]
@@ -86,7 +86,7 @@ export const testParseError = (test, expect, parseError: (u8: Uint8Array) => obj
         [[r.nonexistent], r.registry_symbol_not_accepted],
     ])('parseError(%#)', (i, o) => {
         function f(le) {
-            const er = parseError(writer(writerPrefix(i, le)))
+            const er = parseError(writeTokens(writerPrefix(i, le)).buffers[0])
             expect(er).toEqual({ [getRegistrySymbol(r.error)]: getRegistrySymbol(o) })
         }
         f(true)
@@ -131,7 +131,7 @@ const parseTests = [
 export const testParse = (test, expect, parse: (u8: Uint8Array) => Node) => {
     test.each(parseTests as any)('parse(%#)', (i, o) => {
         function f(le) {
-            const root = parse(writer(writerPrefix(i, le)))
+            const root = parse(writeTokens(writerPrefix(i, le)).buffers[0])
             const data = root.children.length == 1 ? root.children[0] : root.children[1]
             expect(strip(data)).toEqual(strip(nodeOrNum(o)))
         }
@@ -151,7 +151,7 @@ export const testParseChunks = (test, expect, parseChunks: (u8: Uint8Array) => N
         [[bi(r.type_array, r.parse_bytes, n(2), n(4), b(2), b(3), b(4), b(5), n(2), wbs(0, 4), b(6), b(7))], root(parse_type_data_immediate(type_array(r.parse_bytes), array(byte_chunks(bytes(new Uint8Array([2])), bytes(new Uint8Array([3])), bytes(new Uint8Array([4])), bytes(new Uint8Array([5]))), byte_chunks(bytes(new Uint8Array([6])), bytes(new Uint8Array([7]))))))]
     ])('parse_chunks(%#)', (i, o) => {
         function f(le) {
-            const root = parseChunks(writer(writerPrefix(i, le)))
+            const root = parseChunks(writeTokens(writerPrefix(i, le)).buffers[0])
             expect(strip(root)).toEqual(strip(nodeOrNum(o)))
         }
         f(true)
@@ -161,7 +161,7 @@ export const testParseChunks = (test, expect, parseChunks: (u8: Uint8Array) => N
 export const testWriteNodeFull = (test, expect, parse: (u8: Uint8Array) => Node, writeNodeFull: (node: Node) => Uint8Array) => {
     test.each(parseTests as any)('writeNode(%#)', (i) => {
         function f(le) {
-            const b = writer(writerPrefix(i, le))
+            const b = writeTokens(writerPrefix(i, le)).buffers[0]
             expect(b).toEqual(writeNodeFull(parse(b)))
         }
         f(true)
@@ -219,8 +219,7 @@ export const testReadBits32 = (test, expect, readBits32: (d: DecoderState, size:
         new Uint8Array([0xDF, 0xDF, 0xDF, 0xDF, littleEndianPrefix, 1, 2, 3, 4, 5, 6, 7, 8, 0, 0, 0]),
         new Uint8Array([0x10, 0x40, 24, 20, 16, 12, 16, 14]),
     ])('readBits32(%#)', (b) => {
-        const ps = createFullParser()
-        setParserBuffer(b, ps)
+        const ps = initFullParser(b, true)
         const d = ps.decoder
         expect(readBits32(d, 4)).toBe(1)
         expect(readBits32(d, 11)).toBe(32)

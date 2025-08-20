@@ -1,10 +1,11 @@
 import { writeNodeFull } from '@bintoca/dbuf-codec/encode'
-import { ServeState, hasError, executeRequest, responseFromError, createConfig, pathError } from '@bintoca/dbuf-server/request'
+import { ServeState, hasError, executeRequest, responseFromError, createConfig, pathError, ttsig } from '@bintoca/dbuf-server/request'
 import { getRegistrySymbol } from '@bintoca/dbuf-data/registry'
 import { r } from '@bintoca/dbuf-server/registry'
-import { type_map, root, map, parse_type_data, type_array, parse_bit_size, array, parse_align, type_choice, choice, writer, writerPrefix, type_array_bit } from '@bintoca/dbuf-codec/encode'
-import { parseFullRefine } from '@bintoca/dbuf-data/refine'
+import { type_map, root, map, parse_type_data, type_array, parse_bit_size, array, parse_align, type_choice, choice, writeTokens, writerPrefix, type_array_bit } from '@bintoca/dbuf-codec/encode'
 import { bit_val, Node } from '@bintoca/dbuf-codec/common'
+import { parseFull, unpack } from '@bintoca/dbuf-data/unpack'
+import { RefineType, refineValues } from '@bintoca/dbuf-data/refine'
 
 const sym_stream_position = getRegistrySymbol(r.stream_position)
 const sym_error = getRegistrySymbol(r.error)
@@ -26,13 +27,15 @@ testConfig.operationMap.set(getRegistrySymbol(r.value), {
         }
     }
 })
-export type RefinedResponse = { status: number, ob: object }
+test('sig', async () => { await ttsig() })
+export type RefinedResponse = { status: number, ob: RefineType }
 const fetchRefine = async (req: Request): Promise<RefinedResponse> => {
     const r = await executeRequest(req, testConfig, null)
-    if (r.state.internalError !== undefined) {
-        console.log(r.state.internalError)
+    if (r.internalError !== undefined) {
+        console.log(r.internalError)
     }
-    return { status: r.response.status, ob: parseFullRefine(new Uint8Array(await r.response.arrayBuffer())) }
+    const st = parseFull(new Uint8Array(await r.response.arrayBuffer()))
+    return { status: r.response.status, ob: refineValues(unpack(st.root)) }
 }
 const createRequest = (n: Uint8Array | ReadableStream): Request => new Request('http://example.com', { body: n, method: 'post', duplex: 'half' } as any)
 const nodeFetchRefine = async (n: Node): Promise<RefinedResponse> => await fetchRefine(createRequest(writeNodeFull(n)))
@@ -85,7 +88,7 @@ test.each([
     [[]],
     [[r.type_map, 1]],
 ])('error_incomplete(%#)', async (i) => {
-    const r = await fetchRefine(createRequest(writer(writerPrefix(i, true))))
+    const r = await fetchRefine(createRequest(writeTokens(writerPrefix(i, true)).buffers[0]))
     expect(r.status).toBe(400)
     expect(r.ob).toStrictEqual({ [sym_error]: sym_error_incomplete_stream })
 })

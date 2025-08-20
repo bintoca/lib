@@ -1,8 +1,7 @@
 import { getRegistrySymbol, r } from '@bintoca/dbuf-data/registry'
-import { isUnsignedInt, valSymbol, u8Symbol, u8TextSymbol, getUnsignedIntVal, bitSizeSymbol, isUnsignedInt2, getValueFromUnrefinedMap, isUnrefinedMap, createFullParser, parseFull, unpack } from '@bintoca/dbuf-data/unpack'
+import { isUnsignedInt, valSymbol, u8Symbol, u8TextSymbol, getUnsignedIntVal, bitSizeSymbol, isUnsignedInt2, getValueFromUnrefinedMap, isUnrefinedMap, parseCoreLoop, unpack, initFullParser, UnpackType } from '@bintoca/dbuf-data/unpack'
 import { concatBuffers } from '@bintoca/dbuf-codec/common'
 import { tai_dbuf_epochOffsetSeconds, getLeapSecondsFromTAI } from '@bintoca/dbuf-data/time'
-import { setParserBuffer } from '@bintoca/dbuf-codec/decode'
 
 const sym_nonexistent = getRegistrySymbol(r.nonexistent)
 const sym_false = getRegistrySymbol(r.false)
@@ -30,7 +29,7 @@ const sym_hour = getRegistrySymbol(r.hour)
 const sym_minute = getRegistrySymbol(r.minute)
 const sym_second = getRegistrySymbol(r.second)
 
-export const refineVal = (v) => {
+export const refineVal = (v: UnpackType): RefineType => {
     if (isUnsignedInt(v)) {
         return v[valSymbol]
     }
@@ -73,10 +72,9 @@ export const alignNumber = (n: number | bigint, inSize: number, outSize: number)
     }
 }
 export const isText = (v) => v !== undefined && v[u8TextSymbol] !== undefined
-export const isInt = (x) => typeof x == 'number' && Math.floor(x) === x && !isNaN(x) && isFinite(x)
+export const isInt = (x): x is number => typeof x == 'number' && Math.floor(x) === x && !isNaN(x) && isFinite(x)
 export const isAddable = (x) => typeof refineValues(x) == 'number'
-export const addValues = (a, b) => refineValues(a) + refineValues(b)
-export const refineObject = (ob, tempDV: DataView, stack: RefineStack): any => {
+export const refineObject = (ob: UnpackType[], tempDV: DataView, stack: RefineStack): RefineType => {
     if (ob.length == 3) {
         const k = ob[1]
         const v = ob[2]
@@ -120,7 +118,7 @@ export const refineObject = (ob, tempDV: DataView, stack: RefineStack): any => {
             if (Array.isArray(parent.val)) {
                 const last = parent.val[parent.index - 1]
                 const num = typeof last == 'number' ? last : 0
-                return num + refineValues(v)
+                return num + (refineValues(v) as number)
             }
         }
         else if (k === sym_delta_double && isAddable(v)) {
@@ -131,7 +129,7 @@ export const refineObject = (ob, tempDV: DataView, stack: RefineStack): any => {
                     const last2 = parent.val[parent.index - 2]
                     const num2 = typeof last2 == 'number' ? last2 : 0
                     const delta = last - num2
-                    return last + delta + refineValues(v)
+                    return last + delta + (refineValues(v) as number)
                 }
                 else {
                     return refineValues(v)
@@ -207,7 +205,7 @@ export const refineObject = (ob, tempDV: DataView, stack: RefineStack): any => {
             const r_offset_add = getValueFromUnrefinedMap(ob, sym_offset_add)
             if (r_offset_add !== undefined) {
                 if (ob.length == 5 && isAddable(r_offset_add) && isAddable(r_value)) {
-                    return addValues(r_offset_add, r_value)
+                    return (refineValues(r_offset_add) as number) + (refineValues(r_value) as number)
                 }
                 else {
                     return assembleMap(ob)
@@ -220,7 +218,7 @@ export const refineObject = (ob, tempDV: DataView, stack: RefineStack): any => {
                     const last = parent.val[parent.index - 1]
                     const s = typeof last == 'string' ? last : ''
                     const sb = new TextEncoder().encode(s)
-                    return new TextDecoder().decode(concatBuffers([sb.slice(0, sb.byteLength - refineVal(r_prefixDelta)), r_value[u8TextSymbol]]))
+                    return new TextDecoder().decode(concatBuffers([sb.slice(0, sb.byteLength - (refineVal(r_prefixDelta) as number)), r_value[u8TextSymbol]]))
                 }
                 return assembleMap(ob)
             }
@@ -247,45 +245,50 @@ export const refineObject = (ob, tempDV: DataView, stack: RefineStack): any => {
         }
     }
 }
-export const assembleMap = (v: any[]) => {
-    const o = {}
+export const assembleMap = (v: RefineType[]) => {
+    const o: { [key: string | symbol]: RefineType } = {}
     const l = Math.floor((v.length - 1) / 2)
     for (let i = 1; i <= l; i++) {
         let pi = v[i]
+        let k: string | symbol
         switch (typeof pi) {
             case 'symbol':
             case 'string':
+                k = pi
                 break
             case 'number':
             case 'bigint':
-                pi = 'n_' + pi
+                k = 'n_' + pi
                 break
             case 'boolean':
-                pi = 'b_' + pi
+                k = 'b_' + pi
                 break
             case 'object':
-                pi = 'x_' + i
+                k = 'x_' + i
                 break
             default:
                 throw 'key type not implemented'
         }
         const pv = v[i + l]
-        if (pi !== sym_nonexistent && pv !== sym_nonexistent) {
-            if (o[pi] === undefined) {
-                o[pi] = pv
+        if (k !== sym_nonexistent && pv !== sym_nonexistent) {
+            const ok = o[k]
+            if (o[k] === undefined) {
+                o[k] = pv
             }
-            else if (Array.isArray(o[pi])) {
-                o[pi].push(pv)
+            else if (Array.isArray(ok)) {
+                ok.push(pv)
             }
             else {
-                o[pi] = [o[pi], pv]
+                o[k] = [o[k], pv]
             }
         }
     }
     return o
 }
-export type RefineStack = { val, index: number }[]
-export const refineValues = (v) => {
+export type RefineType<T extends ArrayBufferLike = ArrayBufferLike> = number | bigint | symbol | string | boolean | Date | Uint8Array<T> | RefineType<T>[] | RefineObjectType<T>
+export type RefineObjectType<T extends ArrayBufferLike = ArrayBufferLike> = { [key: string | symbol]: RefineType<T> }
+export type RefineStack = { val: UnpackType, index: number }[]
+export const refineValues = (v: UnpackType) => {
     const stack: RefineStack = [{ val: v, index: 0 }]
     const tempDV = new DataView(new ArrayBuffer(8))
     let last
@@ -340,14 +343,5 @@ export const refineValues = (v) => {
             last = refineVal(stack.pop().val)
         }
     }
-    return last
-}
-export const parseFullRefine = (u8: ArrayBufferView) => {
-    const st = createFullParser()
-    setParserBuffer(u8, st)
-    parseFull(st)
-    if (st.error) {
-        throw st.error
-    }
-    return refineValues(unpack(st.root))
+    return last as RefineType
 }

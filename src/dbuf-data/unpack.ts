@@ -1,5 +1,5 @@
 import { getRegistrySymbol, r } from '@bintoca/dbuf-data/registry'
-import { parseCore, ParseState, createParser, resolveParseOp } from '@bintoca/dbuf-codec/decode'
+import { parseCore, ParseState, resolveParseOp, initParser } from '@bintoca/dbuf-codec/decode'
 import { Node, NodeType, ParseMode, val, concatBuffers } from '@bintoca/dbuf-codec/common'
 
 const sym_nonexistent = getRegistrySymbol(r.nonexistent)
@@ -10,9 +10,9 @@ const sym_copy_distance = getRegistrySymbol(r.copy_distance)
 const sym_flatten_array = getRegistrySymbol(r.flatten_array)
 const sym_offset_add = getRegistrySymbol(r.offset_add)
 
-export type ParseFullState = ParseState & { error?: object, internalError?: any }
-export const createFullParser = (liteProfile?: boolean) => createParser(liteProfile) as ParseFullState
-export const parseFull = (st: ParseFullState) => {
+export type ParseFullState<T extends ArrayBufferLike = ArrayBufferLike> = ParseState<T> & { error?: object, internalError?: any }
+export const initFullParser = <T extends ArrayBufferLike = ArrayBufferLike>(b: ArrayBufferView<T>, liteProfile?: boolean): ParseFullState<T> => initParser(b, liteProfile)
+export const parseCoreLoop = (st: ParseFullState) => {
     try {
         while (true) {
             parseCore(st)
@@ -37,19 +37,25 @@ export const parseFull = (st: ParseFullState) => {
         st.decoder.dv = undefined
     }
 }
+export const parseFull = <T extends ArrayBufferLike = ArrayBufferLike>(b: ArrayBufferView<T>, liteProfile?: boolean): ParseFullState<T> => {
+    const st = initFullParser(b, liteProfile)
+    parseCoreLoop(st)
+    return st
+}
 export const enum UnpackMode { type, data }
-export type UnpackNode = Node & { ob?}
+export type UnpackNode = Node & { ob?: UnpackType }
 export type NodeIndex = { node: UnpackNode, itemIndex?: number }
-export type ModeIndex = { mode: UnpackMode, typeStack: NodeIndex[], objectStack: any[] }
+export type ModeIndex = { mode: UnpackMode, typeStack: NodeIndex[], objectStack: UnpackType[][] }
 export type UnpackState = { nodeStack: NodeIndex[], modeStack: ModeIndex[], sharedChoiceStack: NodeIndex[], copyBuffer: any[], unsafeExpand?: boolean }
+export type UnpackType = { [valSymbol]?: number | bigint, [bitSizeSymbol]?: number, [u8Symbol]?: Uint8Array, [u8TextSymbol]?: Uint8Array } | symbol | UnpackType[]
 export const bitSizeSymbol = Symbol.for('bitSizeSymbol')
 export const valSymbol = Symbol.for('valSymbol')
 export const u8Symbol = Symbol.for('u8Symbol')
 export const u8TextSymbol = Symbol.for('u8TextSymbol')
 export const cycleSymbol = Symbol.for('dbuf_cycle')
 export const mapMarkerSymbol = Symbol.for('mapMarkerSymbol')
-export const assignPropNode = (ob, n: UnpackNode, state: UnpackState) => {
-    let v
+export const assignPropNode = (ob: UnpackType[], n: UnpackNode, state: UnpackState) => {
+    let v: UnpackType
     switch (n.type) {
         case NodeType.val:
         case NodeType.bit_val:
@@ -81,7 +87,7 @@ export const assignPropNode = (ob, n: UnpackNode, state: UnpackState) => {
             v = n.ob
             break
         case NodeType.type_map: {
-            const c = [mapMarkerSymbol]
+            const c: UnpackType[] = [mapMarkerSymbol]
             for (let x of n.children) {
                 assignPropNode(c, x, state)
             }
@@ -120,7 +126,7 @@ export const getUnsignedIntVal = (v) => {
     }
     return getUnsignedIntVal(getValueFromUnrefinedMap(v, sym_offset_add)) + getUnsignedIntVal(getValueFromUnrefinedMap(v, sym_value))
 }
-export const getValueFromUnrefinedMap = (a: any[], key) => {
+export const getValueFromUnrefinedMap = (a: UnpackType[], key) => {
     const l = Math.floor((a.length - 1) / 2)
     for (let i = 1; i <= l; i++) {
         if (a[i] === key) {
@@ -128,8 +134,8 @@ export const getValueFromUnrefinedMap = (a: any[], key) => {
         }
     }
 }
-export const isUnrefinedMap = (a) => Array.isArray(a) && a[0] === mapMarkerSymbol
-export const copyLenDist = (state: UnpackState, dest: any[], len: number, dist: number) => {
+export const isUnrefinedMap = (a: UnpackType): a is UnpackType[] => Array.isArray(a) && a[0] === mapMarkerSymbol
+export const copyLenDist = (state: UnpackState, dest: UnpackType[], len: number, dist: number) => {
     const mark = state.copyBuffer.length - dist
     for (let i = mark - 1; i < mark + len; i++) {
         if (i < 0) {
@@ -142,9 +148,9 @@ export const copyLenDist = (state: UnpackState, dest: any[], len: number, dist: 
         }
     }
 }
-export const assignProp = (ob, v, state: UnpackState) => {
+export const assignProp = (ob: UnpackType[], v: UnpackType, state: UnpackState) => {
     let push = true
-    if (v[0] === mapMarkerSymbol) {
+    if (isUnrefinedMap(v)) {
         switch (v.length) {
             case 3: {
                 const kv = v[2]
@@ -182,7 +188,7 @@ export const resolveOp = (x: Node) => {
         return { type: ParseMode.none }
     }
 }
-export const assignParseNone = (ty: NodeIndex, ob, state: UnpackState) => {
+export const assignParseNone = (ty: NodeIndex, ob: UnpackType[], state: UnpackState) => {
     while (ty?.itemIndex !== undefined && ty.itemIndex < ty.node.children?.length && resolveOp(ty.node.children[ty.itemIndex])?.type == ParseMode.none) {
         assignPropNode(ob, ty.node.children[ty.itemIndex], state)
         ty.itemIndex++
@@ -214,7 +220,7 @@ export const cycleTypeStack = (state: UnpackState) => {
         }
     }
 }
-export const createObject = (a, state: UnpackState) => {
+export const createObject = (a: UnpackType, state: UnpackState) => {
     if (isUnrefinedMap(a)) {
         if (a.length == 3 && a[1] === sym_copyable) {
             state.copyBuffer.push(a[2])
@@ -240,8 +246,7 @@ export const createObject = (a, state: UnpackState) => {
 }
 export const finishContainer = (state: UnpackState) => {
     const mo = state.modeStack[state.modeStack.length - 1]
-    let a = mo.objectStack.pop()
-    a = createObject(a, state)
+    let a = createObject(mo.objectStack.pop(), state)
     const ob = mo.objectStack[mo.objectStack.length - 1]
     assignProp(ob, a, state)
     cycleTypeStack(state)

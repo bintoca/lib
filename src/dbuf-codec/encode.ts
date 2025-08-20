@@ -1,11 +1,25 @@
 import { Node, NodeType, magicNumberPrefix, littleEndianPrefix, val, concatBuffers } from '@bintoca/dbuf-codec/common'
 import { r } from '@bintoca/dbuf-codec/registry'
 
-export type EncoderState = { buffers: Uint8Array[], dv: DataView, offset: number, bitsRemaining: number, bits: number, nodeStack: { node: Node, itemIndex?: number }[], littleEndian?: boolean, bitsWritten: number, rootInitialized: boolean, alignVarint8?: boolean, newBufferSize: number }
-export const createEncoder = (bufferSize?: number): EncoderState => {
+export type EncoderState<T extends ArrayBufferLike = ArrayBufferLike> = { buffers: Uint8Array<T>[], dv: DataView<T>, offset: number, bitsRemaining: number, bits: number, nodeStack: { node: Node, itemIndex?: number }[], littleEndian?: boolean, bitsWritten: number, rootInitialized: boolean, alignVarint8?: boolean, newBufferSize: number }
+export const createEncoder = (bufferSize?: number): EncoderState<ArrayBuffer> => {
     const newBufferSize = bufferSize || 4096
-    const es: EncoderState = { buffers: [], dv: new DataView(new ArrayBuffer(newBufferSize)), offset: 0, bitsRemaining: 32, bits: 0, nodeStack: [], bitsWritten: 0, rootInitialized: false, newBufferSize }
-    return es
+    return { buffers: [], dv: new DataView(new ArrayBuffer(newBufferSize)), offset: 0, bitsRemaining: 32, bits: 0, nodeStack: [], bitsWritten: 0, rootInitialized: false, newBufferSize }
+}
+export const createEncoderSharedArrayBuffer = (bufferSize?: number): EncoderState<SharedArrayBuffer> => {
+    const newBufferSize = bufferSize || 4096
+    return { buffers: [], dv: new DataView(new SharedArrayBuffer(newBufferSize)), offset: 0, bitsRemaining: 32, bits: 0, nodeStack: [], bitsWritten: 0, rootInitialized: false, newBufferSize }
+}
+export const newBuffer = (s: EncoderState) => {
+    if (s.dv.buffer instanceof ArrayBuffer) {
+        s.dv = new DataView(new ArrayBuffer(s.newBufferSize))
+    }
+    else if (s.dv.buffer instanceof SharedArrayBuffer) {
+        s.dv = new DataView(new SharedArrayBuffer(s.newBufferSize))
+    }
+    else {
+        throw 'unknown buffer type'
+    }
 }
 export const writeVarint = (s: EncoderState, x: number) => {
     if (x < 8 && !s.alignVarint8) {
@@ -38,7 +52,7 @@ export const alignEncoder = (s: EncoderState, n: number) => {
 export const writeBits = (s: EncoderState, x: number, size: number) => {
     if (s.dv.byteLength == s.offset) {
         s.buffers.push(new Uint8Array(s.dv.buffer))
-        s.dv = new DataView(new ArrayBuffer(s.newBufferSize))
+        newBuffer(s)
         s.offset = 0
     }
     if (s.littleEndian) {
@@ -106,7 +120,7 @@ export const writeBytes = (s: EncoderState, u8: Uint8Array) => {
                 u8i++
             }
             s.buffers.push(new Uint8Array(s.dv.buffer))
-            s.dv = new DataView(new ArrayBuffer(s.newBufferSize))
+            newBuffer(s)
             s.offset = 0
         }
         else {
@@ -150,8 +164,11 @@ export const writeBitsChecked = (s: EncoderState, x: number, size: number) => {
     writeBits(s, x, size)
 }
 export type WriterToken = number | { num?: number, size?: number, debug?: string[], bit?: boolean } | WriterToken[]
-export const trimBuffer = (es: EncoderState) => new Uint8Array(es.buffers[0].buffer, 0, es.bitsWritten / 8 + ((es.bitsWritten % 8) ? 1 : 0))
-export const writer = (x: WriterToken) => trimBuffer(writerCore(x))
+export const writeTokens = (x: WriterToken) => {
+    const es = createEncoder()
+    writeTokensCore(x, es)
+    return es
+}
 export const writerPrefix = (x: WriterToken, le: boolean, magic?: boolean): WriterToken => {
     if (le) {
         if (magic) {
@@ -164,8 +181,7 @@ export const writerPrefix = (x: WriterToken, le: boolean, magic?: boolean): Writ
     }
     return x
 }
-export const writerCore = (x: WriterToken) => {
-    const es = createEncoder()
+export const writeTokensCore = (x: WriterToken, es: EncoderState) => {
     if (Array.isArray(x)) {
         if (x[0] === r.magic_number && x[1] === r.magic_number) {
             es.dv.setUint32(0, magicNumberPrefix)
@@ -201,10 +217,6 @@ export const writerCore = (x: WriterToken) => {
     }
     f(x)
     finishWrite(es)
-    return es
-}
-export const writerFull = (x: WriterToken, le: boolean, magic?: boolean) => {
-    return concatBuffers(writerCore(writerPrefix(x, le, magic)).buffers)
 }
 export const writeNodeCore = (s: EncoderState) => {
     const stackProps = s.nodeStack[s.nodeStack.length - 1]
@@ -328,7 +340,7 @@ export const writeNodeStream = async (s: EncoderState, sc: Node, stream: Writabl
         }
     }
 }
-export const writeNodeFull = (node: Node): Uint8Array => {
+export const writeNodeFull = (node: Node) => {
     const es = createEncoder()
     writeNode(es, node)
     finishWrite(es)

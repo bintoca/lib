@@ -26,6 +26,7 @@ export const enum r {
     error = 32,
     operation = 45,
     reference = 46,
+    credential = 47,
     error_internal = 64,
     incomplete_stream,
     registry_symbol_not_accepted,
@@ -42,5 +43,8 @@ export const enum r {
     preamble_max_size_exceeded,
     body_max_size_exceeded,
 
-    credential_token,
+    signature = 200,
+    algorithm = 201,
+    public_key = 202,
+    ed25519 = 203
 }
