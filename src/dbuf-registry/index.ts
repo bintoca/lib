@@ -48,7 +48,6 @@ export const r = {
     prefix_delta: 44,
     operation: 45,
     reference: 46,
-    credential: 47,
 
     error_internal: 64,
     incomplete_stream: 65,
@@ -84,10 +83,14 @@ export const r = {
     preamble_max_size_exceeded: 91,
     body_max_size_exceeded: 92,
 
+    nonce: 97,
+
     signature: 200,
     algorithm: 201,
     public_key: 202,
     ed25519: 203,
+    user: 204,
+    not_authenticated: 205,
 
     magic_number: 8159,
 } as const

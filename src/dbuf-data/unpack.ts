@@ -43,11 +43,11 @@ export const parseFull = <T extends ArrayBufferLike = ArrayBufferLike>(b: ArrayB
     return st
 }
 export const enum UnpackMode { type, data }
-export type UnpackNode = Node & { ob?: UnpackType }
-export type NodeIndex = { node: UnpackNode, itemIndex?: number }
-export type ModeIndex = { mode: UnpackMode, typeStack: NodeIndex[], objectStack: UnpackType[][] }
-export type UnpackState = { nodeStack: NodeIndex[], modeStack: ModeIndex[], sharedChoiceStack: NodeIndex[], copyBuffer: any[], unsafeExpand?: boolean }
-export type UnpackType = { [valSymbol]?: number | bigint, [bitSizeSymbol]?: number, [u8Symbol]?: Uint8Array, [u8TextSymbol]?: Uint8Array } | symbol | UnpackType[]
+export type UnpackNode<T extends ArrayBufferLike = ArrayBufferLike> = Node<T> & { ob?: UnpackType<T> }
+export type NodeIndex<T extends ArrayBufferLike = ArrayBufferLike> = { node: UnpackNode<T>, itemIndex?: number }
+export type ModeIndex<T extends ArrayBufferLike = ArrayBufferLike> = { mode: UnpackMode, typeStack: NodeIndex<T>[], objectStack: UnpackType<T>[][] }
+export type UnpackState<T extends ArrayBufferLike = ArrayBufferLike> = { nodeStack: NodeIndex<T>[], modeStack: ModeIndex<T>[], sharedChoiceStack: NodeIndex<T>[], copyBuffer: any[], unsafeExpand?: boolean }
+export type UnpackType<T extends ArrayBufferLike = ArrayBufferLike> = { [valSymbol]?: number | bigint, [bitSizeSymbol]?: number, [u8Symbol]?: Uint8Array<T>, [u8TextSymbol]?: Uint8Array<T> } | symbol | UnpackType<T>[]
 export const bitSizeSymbol = Symbol.for('bitSizeSymbol')
 export const valSymbol = Symbol.for('valSymbol')
 export const u8Symbol = Symbol.for('u8Symbol')
@@ -270,9 +270,9 @@ export const selectChoiceShared = (state: UnpackState, index: number): Node => {
         }
     }
 }
-export const unpack = (n: Node, unsafeExpand?: boolean) => {
-    const state: UnpackState = { nodeStack: [{ node: n }], modeStack: [], sharedChoiceStack: [], copyBuffer: [], unsafeExpand }
-    let lastNode: NodeIndex
+export const unpack = <T extends ArrayBufferLike = ArrayBufferLike>(n: Node<T>, unsafeExpand?: boolean): UnpackType<T> => {
+    const state: UnpackState<T> = { nodeStack: [{ node: n }], modeStack: [], sharedChoiceStack: [], copyBuffer: [], unsafeExpand }
+    let lastNode: NodeIndex<T>
     while (state.nodeStack.length) {
         const top = state.nodeStack[state.nodeStack.length - 1]
         const mo = state.modeStack[state.modeStack.length - 1]
@@ -303,7 +303,7 @@ export const unpack = (n: Node, unsafeExpand?: boolean) => {
                 case NodeType.type_optional:
                     top.node.type = NodeType.type_choice
                     top.node.children[1] = top.node.children[0]
-                    top.node.children[0] = val(r.nonexistent, true)
+                    top.node.children[0] = val(r.nonexistent, true) as Node<T>
                     break
                 case NodeType.map: {
                     const o = [mapMarkerSymbol]
@@ -378,7 +378,7 @@ export const unpack = (n: Node, unsafeExpand?: boolean) => {
                 case NodeType.choice_select: {
                     const index = ty.node.children[0].val
                     if (top.node.children?.length == 1) {
-                        mo.typeStack.push({ node: selectChoiceShared(state, index) })
+                        mo.typeStack.push({ node: selectChoiceShared(state, index) as Node<T> })
                     }
                     else {
                         assignPropNode(ob, selectChoiceShared(state, index), state)

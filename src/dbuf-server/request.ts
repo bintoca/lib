@@ -7,6 +7,8 @@ import { unpack, parseFull } from '@bintoca/dbuf-data/unpack'
 import { pack } from '@bintoca/dbuf-data/pack'
 import { RefineObjectType, RefineType, refineValues } from '@bintoca/dbuf-data/refine'
 
+export type Result<T, E> = { value?: T, error?: E }
+
 const sym_value = getRegistrySymbol(r.value)
 const sym_error_internal = getRegistrySymbol(r.error_internal)
 const sym_operation = getRegistrySymbol(r.operation)
@@ -14,25 +16,25 @@ const sym_data_path = getRegistrySymbol(r.data_path)
 const sym_stream_position = getRegistrySymbol(r.stream_position)
 export const registryError = (er: number) => { return { [getRegistrySymbol(r.error)]: getRegistrySymbol(er) } }
 
+export type PreparedCredential = { type: 'token' | 'signature', user?: Uint8Array, nonce?: Uint8Array, value?: Uint8Array, publicKey?: Uint8Array, algorithm?: symbol }
 export type ServeState = {
     parser?: ParseState, reader?: ReadableStreamDefaultReader<Uint8Array<ArrayBuffer>>,
-    refinedPreamble?: RefineObjectType<ArrayBuffer>, bodyType?: Node, responseError?: object, internalError?, preambleNode?: Node, bodyNode?: Node, refinedBody?: RefineObjectType<ArrayBuffer>, request?: Request,
-    env?, refinedCredential?: any, response?: Response, opConfig?: OperationConfig, config: ExecutionConfig
+    refinedPreamble?: RefineObjectType<ArrayBuffer>, bodyType?: Node, responseError?: RefineObjectType<ArrayBuffer>, internalError?, preambleNode?: Node, bodyNode?: Node, refinedBody?: RefineObjectType<ArrayBuffer>, request?: Request,
+    env?, preparedCredential?: PreparedCredential, response?: Response, refinedResponse?: RefineObjectType<ArrayBuffer>, opConfig?: OperationConfig, config: ExecutionConfig, serveCompleted?: boolean
 }
 export const internalError = (state: ServeState, e) => {
     state.responseError = registryError(r.error_internal)
     state.internalError = e
     return state.responseError
 }
-export const pathError = (er: number, path: RefineType[]): RefineObjectType => Object.assign(registryError(er), { [sym_data_path]: path })
-export const hasError = (state: ServeState) => state.responseError !== undefined
+export const pathError = (er: number, path: RefineType[], basePath?: RefineType[]): RefineObjectType<ArrayBuffer> => Object.assign(registryError(er), { [sym_data_path]: basePath ? basePath.concat(path) : path })
+export const serveCompleted = (state: ServeState) => state.responseError !== undefined || state.serveCompleted
 export const createServeState = (req: Request, config: ExecutionConfig): ServeState => {
-    return { request: req, config }
+    return { request: req, config, reader: req.body.getReader() }
 }
-export const codecError = (state: ServeState): RefineObjectType => Object.assign(registryError(state.parser.codecError), { [sym_stream_position]: state.parser.decoder.totalBitsRead })
+export const codecError = (state: ServeState): RefineObjectType<ArrayBuffer> => Object.assign(registryError(state.parser.codecError), { [sym_stream_position]: state.parser.decoder.totalBitsRead })
 export const readPreamble = async (state: ServeState, maxBytes: number): Promise<any> => {
     try {
-        state.reader = state.request.body.getReader()
         let read = await state.reader.read()
         if (read.done) {
             return state.responseError = registryError(r.incomplete_stream)
@@ -108,7 +110,7 @@ export const readPreamble = async (state: ServeState, maxBytes: number): Promise
 }
 export const maxPreambleBytes = 2 ** 14
 export const validatePreamble = (state: ServeState): any => {
-    if (hasError(state)) { return }
+    if (serveCompleted(state)) { return }
     try {
         const rp = refineValues(unpack(state.preambleNode)) as RefineObjectType<ArrayBuffer>
         for (let x of Reflect.ownKeys(rp)) {
@@ -129,31 +131,30 @@ export const validatePreamble = (state: ServeState): any => {
 }
 export const contentTypeDBUF = 'application/dbuf'
 export const contentTypeHeaderName = 'Content-Type'
-export const httpStatusFromError = (ob: object): number => {
+export const httpStatusFromError = (ob: RefineObjectType<ArrayBuffer>): number => {
     const er = ob[getRegistrySymbol(r.error)]
     if (er === sym_error_internal) {
         return 500
     }
-    const path = ob[sym_data_path]
-    if (path && path.length == 1 && path[0] == getRegistrySymbol(r.credential)) {
+    if (er == getRegistrySymbol(r.not_authenticated)) {
         return 401
     }
     return 400
 }
-export const responseFromError = (state: ServeState, ob?: object): Response => {
+export const responseFromError = (state: ServeState, ob?: RefineObjectType<ArrayBuffer>): Response => {
     if (ob) {
         state.responseError = ob
     }
     return new Response(writeNodeFull(pack(state.responseError)), { status: httpStatusFromError(state.responseError), headers: { [contentTypeHeaderName]: contentTypeDBUF } })
 }
-export const packResponse = (value): Response => new Response(writeNodeFull(pack({ [sym_value]: value })), { status: 200, headers: { [contentTypeHeaderName]: contentTypeDBUF } })
+export const packResponse = (state: ServeState): Response => new Response(writeNodeFull(pack(state.refinedResponse)), { status: 200, headers: { [contentTypeHeaderName]: contentTypeDBUF } })
 export type FieldConfig = { key: number, required?: boolean, advancedProfile?: boolean }
 export type FieldSymbolConfig = { key: symbol, required?: boolean, advancedProfile?: boolean }
-export type OperationConfig = { func: (state: ServeState, deps) => Promise<Response>, fields: FieldConfig[], streamBody?: boolean, checkCredentialToken?: boolean, deps?}
+export type OperationConfig = { func: (state: ServeState, deps) => Promise<void>, fields: FieldConfig[], streamBody?: boolean, checkCredentialToken?: boolean, deps?}
 export type OperationMap = Map<RefineType, OperationConfig>
 export type ExecutionConfig = { preambleFields: FieldSymbolConfig[], operationMap: OperationMap }
 export const validateBodyType = (state: ServeState) => {
-    if (hasError(state)) { return }
+    if (serveCompleted(state)) { return }
     const n = state.bodyType.children.length / 2
     for (let i = 0; i < n; i++) {
         const c = state.bodyType.children[i]
@@ -179,99 +180,123 @@ export const validateBodyType = (state: ServeState) => {
         }
     }
 }
-export const validateCredentialToken = (state: ServeState, u8: Uint8Array) => {
-    try {
-        const p = parseFull(u8, true)
-        if (p.error) {
-            return state.responseError = pathError(r.data_value_not_accepted, [getRegistrySymbol(r.credential)])
-        }
-        state.refinedCredential = refineValues(unpack(p.root))
-        const accountIRI = state.refinedCredential[getRegistrySymbol(r.reference)]
-        if (!accountIRI) {
-            return state.responseError = pathError(r.required_field_missing, [getRegistrySymbol(r.credential), getRegistrySymbol(r.reference)])
-        }
-        if (typeof accountIRI != 'string') {
-            return state.responseError = pathError(r.data_type_not_accepted, [getRegistrySymbol(r.credential), getRegistrySymbol(r.reference)])
-        }
-        const tokenValue = state.refinedCredential[sym_value]
-        if (!tokenValue) {
-            return state.responseError = pathError(r.required_field_missing, [getRegistrySymbol(r.credential), sym_value])
-        }
-        if (!(tokenValue instanceof Uint8Array)) {
-            return state.responseError = pathError(r.data_type_not_accepted, [getRegistrySymbol(r.credential), sym_value])
-        }
-    }
-    catch (e) {
-        internalError(state, e)
-    }
+export const validateEd25519 = async (publicKey: Uint8Array<ArrayBuffer>, signature: Uint8Array<ArrayBuffer>, data: Uint8Array<ArrayBuffer>): Promise<boolean> => {
+    const k1 = await crypto.subtle.importKey('raw', publicKey, { name: "Ed25519" }, true, ['verify'])
+    return await crypto.subtle.verify({ name: "Ed25519" }, k1, signature, data)
 }
-export const ttsig = async () => {
-    const u = new Uint8Array([1, 2, 3, 4])
-    const k = await crypto.subtle.generateKey('Ed25519', true, ['sign', 'verify'])
-    const sig = await crypto.subtle.sign({ name: 'Ed25519' }, k.privateKey, u)
-    const pk = await crypto.subtle.exportKey("raw", k.publicKey);
-    const k1 = await crypto.subtle.importKey('raw', pk, { name: "Ed25519" }, true, ['verify'])
-    expect(await crypto.subtle.verify({ name: "Ed25519" }, k1, sig, u)).toBe(true)
-}
-export const validateCredentialSignature = async (state: ServeState, c: RefineObjectType<ArrayBuffer>) => {
-    const sig = c[getRegistrySymbol(r.signature)]
-    if (!(sig instanceof Uint8Array)) {
-        return state.responseError = pathError(r.data_type_not_accepted, [getRegistrySymbol(r.credential), getRegistrySymbol(r.signature)])
+export const validateCredentialSignature = async (c: RefineObjectType<ArrayBuffer>, basePath?: RefineType[]): Promise<Result<PreparedCredential, RefineObjectType<ArrayBuffer>>> => {
+    const signature = c[getRegistrySymbol(r.signature)]
+    if (!signature) {
+        return { error: pathError(r.required_field_missing, [getRegistrySymbol(r.signature)], basePath) }
+    }
+    if (!(signature instanceof Uint8Array)) {
+        return { error: pathError(r.data_type_not_accepted, [getRegistrySymbol(r.signature)], basePath) }
     }
     const data = c[sym_value]
     if (!data) {
-        return state.responseError = pathError(r.required_field_missing, [getRegistrySymbol(r.credential), sym_value])
+        return { error: pathError(r.required_field_missing, [sym_value], basePath) }
     }
     if (!(data instanceof Uint8Array)) {
-        return state.responseError = pathError(r.data_type_not_accepted, [getRegistrySymbol(r.credential), sym_value])
-    }
-    const accountIRI = c[getRegistrySymbol(r.reference)]
-    if (!accountIRI) {
-        return state.responseError = pathError(r.required_field_missing, [getRegistrySymbol(r.credential), getRegistrySymbol(r.reference)])
-    }
-    if (typeof accountIRI != 'string') {
-        return state.responseError = pathError(r.data_type_not_accepted, [getRegistrySymbol(r.credential), getRegistrySymbol(r.reference)])
+        return { error: pathError(r.data_type_not_accepted, [sym_value], basePath) }
     }
     const publicKey = c[getRegistrySymbol(r.public_key)]
     if (!publicKey) {
-        return state.responseError = pathError(r.required_field_missing, [getRegistrySymbol(r.credential), getRegistrySymbol(r.public_key)])
+        return { error: pathError(r.required_field_missing, [getRegistrySymbol(r.public_key)], basePath) }
     }
     if (!(publicKey instanceof Uint8Array)) {
-        return state.responseError = pathError(r.data_type_not_accepted, [getRegistrySymbol(r.credential), getRegistrySymbol(r.public_key)])
+        return { error: pathError(r.data_type_not_accepted, [getRegistrySymbol(r.public_key)], basePath) }
     }
-    const alg = c[getRegistrySymbol(r.algorithm)]
-    if (!alg) {
-        return state.responseError = pathError(r.required_field_missing, [getRegistrySymbol(r.credential), getRegistrySymbol(r.algorithm)])
+    const algorithm = c[getRegistrySymbol(r.algorithm)]
+    if (!algorithm) {
+        return { error: pathError(r.required_field_missing, [getRegistrySymbol(r.algorithm)], basePath) }
     }
-    if (alg == getRegistrySymbol(r.ed25519)) {
-        const k1 = await crypto.subtle.importKey('raw', publicKey, { name: "Ed25519" }, true, ['verify'])
-        if (!await crypto.subtle.verify({ name: "Ed25519" }, k1, sig, data)) {
-            return state.responseError = pathError(r.data_value_not_accepted, [getRegistrySymbol(r.credential), getRegistrySymbol(r.signature)])
+    if (algorithm == getRegistrySymbol(r.ed25519)) {
+        if (! await validateEd25519(publicKey, signature, data)) {
+            return { error: pathError(r.data_value_not_accepted, [getRegistrySymbol(r.signature)], basePath) }
         }
     }
     else {
-        return state.responseError = pathError(r.data_type_not_accepted, [getRegistrySymbol(r.credential), getRegistrySymbol(r.algorithm)])
+        return { error: pathError(r.data_type_not_accepted, [getRegistrySymbol(r.algorithm)], basePath) }
     }
+    const p = parseFull(data, true)
+    if (p.error) {
+        return { error: pathError(r.data_value_not_accepted, [sym_value], basePath) }
+    }
+    const refinedData = refineValues(unpack(p.root))
+    const user = refinedData[getRegistrySymbol(r.user)]
+    if (!user) {
+        return { error: pathError(r.required_field_missing, [sym_value, getRegistrySymbol(r.user)], basePath) }
+    }
+    if (!(user instanceof Uint8Array)) {
+        return { error: pathError(r.data_type_not_accepted, [sym_value, getRegistrySymbol(r.user)], basePath) }
+    }
+    const nonce = refinedData[getRegistrySymbol(r.nonce)]
+    if (!nonce) {
+        return { error: pathError(r.required_field_missing, [sym_value, getRegistrySymbol(r.nonce)], basePath) }
+    }
+    if (!(nonce instanceof Uint8Array)) {
+        return { error: pathError(r.data_type_not_accepted, [sym_value, getRegistrySymbol(r.nonce)], basePath) }
+    }
+    return { value: { type: 'signature', user, nonce, algorithm, publicKey } }
+}
+export const validateCredentialToken = (data: Uint8Array<ArrayBuffer>, basePath?: RefineType[]): Result<PreparedCredential, RefineObjectType<ArrayBuffer>> => {
+    const p = parseFull(data, true)
+    if (p.error) {
+        return { error: pathError(r.data_value_not_accepted, basePath) }
+    }
+    const refinedData = refineValues(unpack(p.root))
+    const user = refinedData[getRegistrySymbol(r.user)]
+    if (!user) {
+        return { error: pathError(r.required_field_missing, [getRegistrySymbol(r.user)], basePath) }
+    }
+    if (!(user instanceof Uint8Array)) {
+        return { error: pathError(r.data_type_not_accepted, [getRegistrySymbol(r.user)], basePath) }
+    }
+    const value = refinedData[sym_value]
+    if (!value) {
+        return { error: pathError(r.required_field_missing, [sym_value], basePath) }
+    }
+    if (!(value instanceof Uint8Array)) {
+        return { error: pathError(r.data_type_not_accepted, [sym_value], basePath) }
+    }
+    return { value: { type: 'token', user, value } }
 }
 export const isSignatureObject = <T extends ArrayBufferLike = ArrayBufferLike>(c: RefineType<T>): c is RefineObjectType<T> => typeof c == 'object' && c[getRegistrySymbol(r.signature)]
-export const validateCredential = async (state: ServeState) => {
-    if (hasError(state)) { return }
-    const c = state.refinedPreamble[getRegistrySymbol(r.credential)]
-    if (c !== undefined) {
-        if (c instanceof Uint8Array) {
-            validateCredentialToken(state, c)
-        }
-        else if (isSignatureObject(c)) {
-            await validateCredentialSignature(state, c)
-        }
-        else {
-            return state.responseError = pathError(r.data_type_not_accepted, [getRegistrySymbol(r.credential)])
+export const validateAuthHeader = async (state: ServeState) => {
+    if (serveCompleted(state)) { return }
+    const a = state.request.headers.get('Authorization')
+    if (typeof a == 'string') {
+        const parts = a.split(' ')
+        if (parts[0] == 'Bearer' && parts[1]) {
+            try {
+                const data = Uint8Array.fromBase64(parts[1])
+                const p = parseFull(data, true)
+                if (p.error) {
+                    return
+                }
+                const c = refineValues(unpack(p.root))
+                if (c instanceof Uint8Array) {
+                    const result = validateCredentialToken(c)
+                    if (result.error) {
+                        return
+                    }
+                    state.preparedCredential = result.value
+                }
+                else if (isSignatureObject(c)) {
+                    const result = await validateCredentialSignature(c)
+                    if (result.error) {
+                        return
+                    }
+                    state.preparedCredential = result.value
+                }
+            }
+            catch { }
         }
     }
 }
 export const small_body_max_bytes = 2 ** 16
 export const validateOperation = (state: ServeState) => {
-    if (hasError(state)) { return }
+    if (serveCompleted(state)) { return }
     const op = state.refinedPreamble[sym_operation]
     if (state.config.operationMap.has(op)) {
         state.opConfig = state.config.operationMap.get(op)
@@ -281,20 +306,25 @@ export const validateOperation = (state: ServeState) => {
     }
 }
 export const executeOperation = async (state: ServeState) => {
-    if (hasError(state)) { return }
+    if (serveCompleted(state)) { return }
     await state.opConfig.func(state, state.opConfig.deps)
 }
 export const validateResponse = (state: ServeState) => {
     if (!state.response) {
-        if (!state.responseError) {
+        if (state.responseError) {
+            state.response = responseFromError(state)
+        }
+        else if (state.refinedResponse) {
+            state.response = packResponse(state)
+        }
+        else {
             internalError(state, 'no response returned ' + state.refinedPreamble[sym_operation].toString())
         }
-        state.response = responseFromError(state)
     }
 }
-export const createConfig = (): ExecutionConfig => { return { preambleFields: [{ key: sym_operation, required: true }, { key: getRegistrySymbol(r.credential) }], operationMap: new Map() } }
+export const createConfig = (): ExecutionConfig => { return { preambleFields: [{ key: sym_operation, required: true }], operationMap: new Map() } }
 export const readBody = async (state: ServeState, maxBytes: number) => {
-    if (hasError(state) || state.opConfig.streamBody) { return }
+    if (serveCompleted(state) || state.opConfig.streamBody) { return }
     try {
         if (state.bodyType.children.length) {
             state.parser.nodeStack.pop()
@@ -331,7 +361,7 @@ export const readBody = async (state: ServeState, maxBytes: number) => {
 }
 export const refineBody = (state: ServeState) => {
     try {
-        if (hasError(state) || state.opConfig.streamBody) { return }
+        if (serveCompleted(state) || state.opConfig.streamBody) { return }
         state.refinedBody = refineValues(unpack(state.bodyNode)) as RefineObjectType<ArrayBuffer>
         return state.refinedBody
     }
@@ -343,13 +373,13 @@ export const executeRequest = async (request: Request, config: ExecutionConfig, 
     const state: ServeState = createServeState(request, config)
     state.env = env
     try {
+        await validateAuthHeader(state)
         await readPreamble(state, maxPreambleBytes)
-        await validatePreamble(state)
-        await validateOperation(state)
-        await validateCredential(state)
-        await validateBodyType(state)
+        validatePreamble(state)
+        validateOperation(state)
+        validateBodyType(state)
         await readBody(state, small_body_max_bytes)
-        await refineBody(state)
+        refineBody(state)
         await executeOperation(state)
     }
     catch (e) {

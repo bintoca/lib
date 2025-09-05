@@ -1,5 +1,5 @@
 import { writeNodeFull } from '@bintoca/dbuf-codec/encode'
-import { ServeState, hasError, executeRequest, responseFromError, createConfig, pathError, ttsig } from '@bintoca/dbuf-server/request'
+import { ServeState, executeRequest, createConfig, pathError } from '@bintoca/dbuf-server/request'
 import { getRegistrySymbol } from '@bintoca/dbuf-data/registry'
 import { r } from '@bintoca/dbuf-server/registry'
 import { type_map, root, map, parse_type_data, type_array, parse_bit_size, array, parse_align, type_choice, choice, writeTokens, writerPrefix, type_array_bit } from '@bintoca/dbuf-codec/encode'
@@ -17,17 +17,12 @@ const sym_data_type_not_accepted = getRegistrySymbol(r.data_type_not_accepted)
 const sym_preamble_max_size_exceeded = getRegistrySymbol(r.preamble_max_size_exceeded)
 const testConfig = createConfig()
 testConfig.operationMap.set(getRegistrySymbol(r.value), {
-    fields: [{ key: r.reference, required: true }], func: async (state: ServeState): Promise<Response> => {
-        if (hasError(state)) {
-            return responseFromError(state)
-        }
+    fields: [{ key: r.reference, required: true }], func: async (state: ServeState): Promise<void> => {
         if (typeof state.refinedBody[getRegistrySymbol(r.reference)] != 'string') {
             state.responseError = pathError(r.data_type_not_accepted, [getRegistrySymbol(r.reference)])
-            return responseFromError(state)
         }
     }
 })
-test('sig', async () => { await ttsig() })
 export type RefinedResponse = { status: number, ob: RefineType }
 const fetchRefine = async (req: Request): Promise<RefinedResponse> => {
     const r = await executeRequest(req, testConfig, null)

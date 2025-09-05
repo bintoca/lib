@@ -288,7 +288,7 @@ export const assembleMap = (v: RefineType[]) => {
 export type RefineType<T extends ArrayBufferLike = ArrayBufferLike> = number | bigint | symbol | string | boolean | Date | Uint8Array<T> | RefineType<T>[] | RefineObjectType<T>
 export type RefineObjectType<T extends ArrayBufferLike = ArrayBufferLike> = { [key: string | symbol]: RefineType<T> }
 export type RefineStack = { val: UnpackType, index: number }[]
-export const refineValues = (v: UnpackType) => {
+export const refineValues = <T extends ArrayBufferLike = ArrayBufferLike>(v: UnpackType<T>) => {
     const stack: RefineStack = [{ val: v, index: 0 }]
     const tempDV = new DataView(new ArrayBuffer(8))
     let last
@@ -343,5 +343,5 @@ export const refineValues = (v: UnpackType) => {
             last = refineVal(stack.pop().val)
         }
     }
-    return last as RefineType
+    return last as RefineType<T>
 }
