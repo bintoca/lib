@@ -1,5 +1,5 @@
 import { writeNodeFull } from '@bintoca/dbuf-codec/encode'
-import { ServeState, executeRequest, createConfig, pathError } from '@bintoca/dbuf-server/request'
+import { ServeState, executeRequest, createConfig, pathError, httpStatus } from '@bintoca/dbuf-server/serve'
 import { getRegistrySymbol } from '@bintoca/dbuf-data/registry'
 import { r } from '@bintoca/dbuf-server/registry'
 import { type_map, root, map, parse_type_data, type_array, parse_bit_size, array, parse_align, type_choice, choice, writeTokens, writerPrefix, type_array_bit } from '@bintoca/dbuf-codec/encode'
@@ -17,20 +17,18 @@ const sym_data_type_not_accepted = getRegistrySymbol(r.data_type_not_accepted)
 const sym_preamble_max_size_exceeded = getRegistrySymbol(r.preamble_max_size_exceeded)
 const testConfig = createConfig()
 testConfig.operationMap.set(getRegistrySymbol(r.value), {
-    fields: [{ key: r.reference, required: true }], func: async (state: ServeState): Promise<void> => {
-        if (typeof state.refinedBody[getRegistrySymbol(r.reference)] != 'string') {
-            state.responseError = pathError(r.data_type_not_accepted, [getRegistrySymbol(r.reference)])
-        }
+    func: async (state: ServeState): Promise<void> => {
+        
     }
 })
 export type RefinedResponse = { status: number, ob: RefineType }
 const fetchRefine = async (req: Request): Promise<RefinedResponse> => {
-    const r = await executeRequest(req, testConfig, null)
+    const r = await executeRequest(req.body, testConfig, null)
     if (r.internalError !== undefined) {
         console.log(r.internalError)
     }
-    const st = parseFull(new Uint8Array(await r.response.arrayBuffer()))
-    return { status: r.response.status, ob: refineValues(unpack(st.root)) }
+    const st = parseFull(r.responseBuffer)
+    return { status: httpStatus(r), ob: refineValues(unpack(st.root)) }
 }
 const createRequest = (n: Uint8Array | ReadableStream): Request => new Request('http://example.com', { body: n, method: 'post', duplex: 'half' } as any)
 const nodeFetchRefine = async (n: Node): Promise<RefinedResponse> => await fetchRefine(createRequest(writeNodeFull(n)))

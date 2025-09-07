@@ -23,6 +23,7 @@ export const enum r {
     false,
     true,
     value = 21,
+    bytes = 29,
     error = 32,
     operation = 45,
     reference = 46,

@@ -1,9 +1,10 @@
 import { getRegistryIndex, r } from '@bintoca/dbuf-data/registry'
 import { type_array, array, parse_type_data, bytes, string, type_map, map, root, isNotNonNegativeInteger } from '@bintoca/dbuf-codec/encode'
 import { Node, val } from '@bintoca/dbuf-codec/common'
+import { RefineType } from './refine'
 
 export type PackStack = { val, index: number, tempTypes: Node[], tempData: Node[] }[]
-export const pack = (v) => {
+export const pack = (v:RefineType) => {
     const stack: PackStack = [{ val: v, index: 0, tempTypes: [], tempData: [] }]
     let lastType: Node
     let lastData: Node
