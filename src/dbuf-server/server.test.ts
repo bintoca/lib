@@ -1,5 +1,5 @@
 import { writeNodeFull } from '@bintoca/dbuf-codec/encode'
-import { ServeState, executeRequest, createConfig, pathError, httpStatus } from '@bintoca/dbuf-server/serve'
+import { ServeState, executeStreamRequest, createConfig, pathError, httpStatus } from '@bintoca/dbuf-server/serve'
 import { getRegistrySymbol } from '@bintoca/dbuf-data/registry'
 import { r } from '@bintoca/dbuf-server/registry'
 import { type_map, root, map, parse_type_data, type_array, parse_bit_size, array, parse_align, type_choice, choice, writeTokens, writerPrefix, type_array_bit } from '@bintoca/dbuf-codec/encode'
@@ -23,7 +23,7 @@ testConfig.operationMap.set(getRegistrySymbol(r.value), {
 })
 export type RefinedResponse = { status: number, ob: RefineType }
 const fetchRefine = async (req: Request): Promise<RefinedResponse> => {
-    const r = await executeRequest(req.body, testConfig, null)
+    const r = await executeStreamRequest(req.body, testConfig, null)
     if (r.internalError !== undefined) {
         console.log(r.internalError)
     }

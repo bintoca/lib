@@ -18,7 +18,7 @@ export const registryError = (er: number) => { return { [getRegistrySymbol(r.err
 export type PreparedCredential = { type: 'token' | 'signature', user?: Uint8Array, nonce?: Uint8Array, value?: Uint8Array, publicKey?: Uint8Array, algorithm?: symbol }
 export type ErrorType = 'internal' | 'not_authenticated' | 'other'
 export type ServeState = {
-    parser?: ParseState, reader?: ReadableStreamDefaultReader<Uint8Array<ArrayBuffer>>, operation?: RefineType
+    parser?: ParseState, reader?: ReadableStreamDefaultReader<Uint8Array<ArrayBuffer>>, operation?: RefineType, request?: Request
     bytesType?: Node, postambleType?: Node, responseBuffer?: Uint8Array<ArrayBuffer>, responseStream?: ReadableStream, internalError?, preambleNode?: Node,
     env?, preparedCredential?: PreparedCredential, config: ExecutionConfig, serveCompleted?: boolean, errorType?: ErrorType
 }
@@ -239,13 +239,12 @@ export const validateCredentialToken = (data: Uint8Array<ArrayBuffer>, basePath?
 export const isSignatureObject = <T extends ArrayBufferLike = ArrayBufferLike>(c: RefineType<T>): c is RefineObjectType<T> => typeof c == 'object' && c[getRegistrySymbol(r.signature)]
 export const validateAuthHeader = async (state: ServeState) => {
     if (serveCompleted(state)) { return }
-    const a = null//state.request.headers.get('Authorization')
-    if (typeof a == 'string') {
+    const a = state.request.headers.get('Authorization')
+    if (a) {
         const parts = a.split(' ')
         if (parts[0] == 'Bearer' && parts[1]) {
             try {
-                const data = Uint8Array.fromBase64(parts[1])
-                const p = parseFull(data, true)
+                const p = parseFull(Uint8Array.fromBase64(parts[1]), true)
                 if (p.error) {
                     return
                 }
@@ -267,6 +266,20 @@ export const validateAuthHeader = async (state: ServeState) => {
             }
             catch { }
         }
+    }
+}
+export const operationFromHeader = async (state: ServeState) => {
+    if (serveCompleted(state)) { return }
+    const a = state.request.headers.get('dbuf-operation')
+    if (a) {
+        try {
+            const p = parseFull(Uint8Array.fromBase64(a), true)
+            if (p.error) {
+                return
+            }
+            state.operation = refineValues(unpack(p.root))
+        }
+        catch { }
     }
 }
 export const small_body_max_bytes = 2 ** 16
@@ -300,8 +313,22 @@ export const validateResponse = (state: ServeState) => {
     }
 }
 export const createConfig = (): ExecutionConfig => { return { operationMap: new Map() } }
-export const executeRequest = async (request: ReadableStream<Uint8Array<ArrayBuffer>>, config: ExecutionConfig, env): Promise<ServeState> => {
+export const executeStreamRequest = async (request: ReadableStream<Uint8Array<ArrayBuffer>>, config: ExecutionConfig, env): Promise<ServeState> => {
     const state: ServeState = createServeState(request, config)
+    state.env = env
+    try {
+        await readPreamble(state, maxPreambleBytes)
+        validateOperation(state)
+        await executeOperation(state)
+    }
+    catch (e) {
+        internalError(state, e)
+    }
+    validateResponse(state)
+    return state
+}
+export const executeHttpRequest = async (request: Request, config: ExecutionConfig, env): Promise<ServeState> => {
+    const state: ServeState = createServeState(null, config)
     state.env = env
     try {
         await readPreamble(state, maxPreambleBytes)
