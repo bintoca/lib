@@ -1,7 +1,8 @@
-import { string, char, bits_le, u8Text_chunks, parse_type_data, parse_align, array_no_children, type_array_bit, array_chunk, type_array_chunk, type_array_fixed, type_choice, type_optional, type_choice_select, type_choice_shared, type_choice_array, type_choice_shared_array, chunk, choice, map, choice_shared, choice_select, array, bits, align, array_bit, array_fixed, cycle, bytes, root, parse_type_data_immediate, parse_bit_size, type_map, type_array, byte_chunks } from '@bintoca/dbuf-codec/encode'
+import { bits_le, u8Text_chunks, parse_type_data, parse_align, array_no_children, type_array_bit, array_chunk, type_array_chunk, type_array_fixed, type_choice, type_optional, type_choice_select, type_choice_shared, type_choice_array, type_choice_shared_array, chunk, choice, map, choice_shared, choice_select, array, bits, align, array_bit, array_fixed, cycle, bytes, root, parse_type_data_immediate, parse_bit_size, type_map, type_array, byte_chunks } from '@bintoca/dbuf-codec/encode'
 import { bit_val, val_size, val, Node } from '@bintoca/dbuf-codec/common'
 import { getRegistrySymbol, r } from '@bintoca/dbuf-data/registry'
 import { valSymbol, bitSizeSymbol, cycleSymbol } from '@bintoca/dbuf-data/unpack'
+import { string, char } from '@bintoca/dbuf-data/text'
 
 const sym_value = getRegistrySymbol(r.value)
 const sym_denominator = getRegistrySymbol(r.denominator)

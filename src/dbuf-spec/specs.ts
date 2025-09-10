@@ -3,7 +3,8 @@ import { bit_val, val, littleEndianPrefix, magicNumberPrefix, Node, ParseMode } 
 import { createEncoder, finishWrite } from '@bintoca/dbuf-codec/encode'
 import { readFileSync } from 'fs'
 import * as pa from 'path'
-import { writeNode, type_array, type_choice, choice, array, root, type_map, map, parse_bit_size, parse_type_data_immediate, align, type_array_bit, array_bit, type_array_fixed, array_fixed, type_array_chunk, array_chunk, chunk, type_choice_shared, type_choice_select, choice_select, parse_align, choice_shared, string, type_choice_array, type_choice_shared_array, type_optional, parse_type_data, bytes } from '../dbuf-codec/encode'
+import { string } from '@bintoca/dbuf-data/text'
+import { writeNode, type_array, type_choice, choice, array, root, type_map, map, parse_bit_size, parse_type_data_immediate, align, type_array_bit, array_bit, type_array_fixed, array_fixed, type_array_chunk, array_chunk, chunk, type_choice_shared, type_choice_select, choice_select, parse_align, choice_shared, type_choice_array, type_choice_shared_array, type_optional, parse_type_data, bytes } from '../dbuf-codec/encode'
 
 export type RegistryLink = { rid: number }
 export type ParseModeLink = { pid: ParseMode }

@@ -561,7 +561,6 @@ export const parseCore = (st: ParseState) => {
                     case r.type_array_bit:
                     case r.type_array_fixed:
                     case r.type_array_chunk:
-                    case r.parse_align:
                         break
                     case r.type_choice:
                     case r.type_optional:
@@ -577,8 +576,8 @@ export const parseCore = (st: ParseState) => {
                     default:
                         if (top.type == NodeType.type_array
                             || top.type == NodeType.type_array_bit
-                            || top.type == NodeType.array_fixed
-                            || top.type == NodeType.array_chunk
+                            || top.type == NodeType.type_array_chunk
+                            || top.type == NodeType.type_array_fixed
                         ) {
                             st.codecError = r.registry_symbol_not_accepted_as_array_type
                             st.codecErrorValue = x

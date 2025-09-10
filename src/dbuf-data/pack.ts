@@ -1,5 +1,6 @@
 import { getRegistryIndex, r } from '@bintoca/dbuf-data/registry'
-import { type_array, array, parse_type_data, bytes, string, type_map, map, root, isNotNonNegativeInteger } from '@bintoca/dbuf-codec/encode'
+import { type_array, array, parse_type_data, bytes, type_map, map, root, isNotNonNegativeInteger } from '@bintoca/dbuf-codec/encode'
+import { string } from '@bintoca/dbuf-data/text'
 import { Node, val } from '@bintoca/dbuf-codec/common'
 import { RefineType } from './refine'
 

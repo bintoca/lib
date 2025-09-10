@@ -385,8 +385,6 @@ export const parse_align = (bitSize: number, a: NodeOrNum): Node => { return { t
 export const align = (bitSize: number, ...a: NodeOrNum[]): Node => { return { type: NodeType.align, children: nodeOrNums(a), bitSize } }
 export const cycle = (): Node => { return { type: NodeType.cycle, children: [] } }
 export const type_optional = (a: NodeOrNum): Node => { return { type: NodeType.type_optional, children: [nodeOrNumRegistry(a)], registry: r.type_optional } }
-export const string = (s: string): Node => u8Text(new TextEncoder().encode(s))
-export const char = (s: string): Node => map(s.codePointAt(0))
 export const bytes = (u8: Uint8Array): Node => { return { type: NodeType.bytes, u8 } }
 export const byte_chunks = (...a: Node[]): Node => { return { type: NodeType.byte_chunks, children: a } }
 export const u8Text = (u8: Uint8Array): Node => { return { type: NodeType.u8Text, u8 } }
