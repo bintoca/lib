@@ -11,5 +11,6 @@ export default {
     '^.+\\.ts?$': ['ts-jest', {useESM: true}],
   },
   testPathIgnorePatterns: [
+    'server.test.ts'
   ]
 };

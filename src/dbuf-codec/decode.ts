@@ -2,7 +2,7 @@ import { r } from '@bintoca/dbuf-codec/registry'
 import { Node, NodeType, ParseOp, ParseMode, magicNumberPrefix, littleEndianPrefix, val, val_size, bit_val } from '@bintoca/dbuf-codec/common'
 
 export type DecoderState<T extends ArrayBufferLike = ArrayBufferLike> = { dv: DataView<T>, dvOffset: number, partialBlock: number, partialBlockRemaining: number, bitNode?: Node, varintPrefix?: number, littleEndian?: boolean, initialized?: boolean, totalBitsRead: number, lastSize: number, endOfBuffer: boolean }
-export const createDecoder = (): DecoderState => {
+export const createDecoder = <T extends ArrayBufferLike = ArrayBufferLike>(): DecoderState<T> => {
     return { dv: undefined, dvOffset: 0, partialBlock: 0, partialBlockRemaining: 0, totalBitsRead: 0, lastSize: 0, endOfBuffer: false }
 }
 export const readVarint = (s: DecoderState): number => {
@@ -210,12 +210,15 @@ export const resolveParseOpArray = (x: Node): ParseOp => {
     }
     return op
 }
-export const getBytes = (s: ParseState, n: number): Uint8Array => {
+export const getBytes = <T extends ArrayBufferLike = ArrayBufferLike>(s: ParseState<T>, n: number, noCopy?: boolean): Uint8Array<T> => {
     s.decoder.partialBlockRemaining = 0
     const start = s.decoder.dv.byteOffset + s.decoder.dvOffset
     s.decoder.dvOffset += n
     s.decoder.totalBitsRead += n * 8
-    return new Uint8Array(s.decoder.dv.buffer.slice(start, start + n))
+    if (noCopy) {
+        return new Uint8Array(s.decoder.dv.buffer, start, n)
+    }
+    return new Uint8Array(s.decoder.dv.buffer.slice(start, start + n)) as Uint8Array<T>
 }
 export const topNode = (st: ParseState) => st.nodeStack[st.nodeStack.length - 1]
 export const pushNode = (s: Node, st: ParseState) => {
@@ -652,9 +655,9 @@ export const parseCore = (st: ParseState) => {
             throw { message: 'not implemented ParseType: ' + op.type, st }
     }
 }
-export const createParser = (liteProfile?: boolean): ParseState => {
-    const container: Node = { type: NodeType.array, children: [], op: { type: ParseMode.any } }
-    const root: Node = { type: NodeType.parse_type_data, children: [], needed: 2, op: { type: ParseMode.any } }
+export const createParser = <T extends ArrayBufferLike = ArrayBufferLike>(liteProfile?: boolean): ParseState<T> => {
+    const container: Node<T> = { type: NodeType.array, children: [], op: { type: ParseMode.any } }
+    const root: Node<T> = { type: NodeType.parse_type_data, children: [], needed: 2, op: { type: ParseMode.any } }
     return { container, root, nodeStack: [container, root], decoder: createDecoder(), sharedChoiceStack: [], liteProfile }
 }
 export const setParserBuffer = <T extends ArrayBufferLike = ArrayBufferLike>(b: ArrayBufferView<T>, st: ParseState<T>) => {
@@ -675,7 +678,7 @@ export const setParserBuffer = <T extends ArrayBufferLike = ArrayBufferLike>(b: 
     }
 }
 export const initParser = <T extends ArrayBufferLike = ArrayBufferLike>(b: ArrayBufferView<T>, liteProfile?: boolean): ParseState<T> => {
-    const st = createParser(liteProfile)
+    const st = createParser<T>(liteProfile)
     setParserBuffer(b, st)
-    return st as ParseState<T>
+    return st
 }

@@ -1,4 +1,4 @@
-import { ParseState, setParserBuffer, parseCore, resolveParseOp, initParser } from '@bintoca/dbuf-codec/decode'
+import { ParseState, setParserBuffer, parseCore, resolveParseOp, initParser, readVarint, alignDecoder, getBytes, readBits32 } from '@bintoca/dbuf-codec/decode'
 import { NodeType, Node, ParseMode } from '@bintoca/dbuf-codec/common'
 import { getRegistrySymbol } from '@bintoca/dbuf-data/registry'
 import { r } from '@bintoca/dbuf-server/registry'
@@ -12,14 +12,15 @@ export type Result<T, E> = { value?: T, error?: E }
 const sym_value = getRegistrySymbol(r.value)
 const sym_operation = getRegistrySymbol(r.operation)
 const sym_data_path = getRegistrySymbol(r.data_path)
-const sym_stream_position = getRegistrySymbol(r.stream_position)
 export const registryError = (er: number) => { return { [getRegistrySymbol(r.error)]: getRegistrySymbol(er) } }
 
 export type PreparedCredential = { type: 'token' | 'signature', user?: Uint8Array, nonce?: Uint8Array, value?: Uint8Array, publicKey?: Uint8Array, algorithm?: symbol }
 export type ErrorType = 'internal' | 'not_authenticated' | 'other'
 export type ServeState = {
-    parser?: ParseState, reader?: ReadableStreamDefaultReader<Uint8Array<ArrayBuffer>>, operation?: RefineType, request?: Request
-    bytesType?: Node, postambleType?: Node, responseBuffer?: Uint8Array<ArrayBuffer>, responseStream?: ReadableStream, internalError?, preambleNode?: Node,
+    reader?: ReadableStreamDefaultReader<Uint8Array<ArrayBuffer>>, operation?: RefineType,
+    bodyStream?: ReadableStream<Uint8Array<ArrayBuffer>>,
+    responseBuffer?: Uint8Array<ArrayBuffer>, responseStream?: ReadableStream,
+    internalError?, preambleNode?: Node, postambleNode?: Node, parser?: ParseState<ArrayBuffer>, bodyType?: Node,
     env?, preparedCredential?: PreparedCredential, config: ExecutionConfig, serveCompleted?: boolean, errorType?: ErrorType
 }
 export const internalError = (state: ServeState, e) => {
@@ -33,10 +34,11 @@ export const setError = (state: ServeState, err: RefineObjectType<ArrayBuffer>) 
 }
 export const pathError = (er: number, path: RefineType[], basePath?: RefineType[]): RefineObjectType<ArrayBuffer> => Object.assign(registryError(er), { [sym_data_path]: basePath ? basePath.concat(path) : path })
 export const serveCompleted = (state: ServeState) => state.errorType !== undefined || state.serveCompleted
-export const createServeState = (req: ReadableStream<Uint8Array<ArrayBuffer>>, config: ExecutionConfig): ServeState => {
-    return { config, reader: req.getReader() }
-}
-export const codecError = (state: ServeState): RefineObjectType<ArrayBuffer> => Object.assign(registryError(state.parser.codecError), { [sym_stream_position]: state.parser.decoder.totalBitsRead })
+export type OperationConfig = { func: (state: ServeState, deps) => Promise<void>, deps?}
+export type OperationMap = Map<RefineType, OperationConfig>
+export type ExecutionConfig = { operationMap: OperationMap }
+export const maxPreambleBytes = 2 ** 14
+export const codecError = (state: ServeState): RefineObjectType<ArrayBuffer> => Object.assign(registryError(state.parser.codecError), { [getRegistrySymbol(r.stream_position)]: state.parser.decoder.totalBitsRead })
 export const readPreamble = async (state: ServeState, maxBytes: number): Promise<void> => {
     if (serveCompleted(state)) { return }
     let read = await state.reader.read()
@@ -57,7 +59,7 @@ export const readPreamble = async (state: ServeState, maxBytes: number): Promise
             return setError(state, registryError(r.preamble_max_size_exceeded))
         }
         if (state.parser.decoder.endOfBuffer) {
-            let read = await state.reader.read()
+            const read = await state.reader.read()
             if (read.done) {
                 return setError(state, registryError(r.incomplete_stream))
             }
@@ -119,42 +121,15 @@ export const readPreamble = async (state: ServeState, maxBytes: number): Promise
                 const n = baseType.needed / 2
                 state.preambleNode = root(type_map(...(hasBytes ? baseType.children.slice(0, bytesIndex).concat(baseType.children.slice(n, n + bytesIndex)) : baseType.children)), baseMap)
                 if (hasBytes) {
-                    state.bytesType = baseType.children[n + bytesIndex]
-                    if (state.bytesType.registry == r.parse_bytes) { }
-                    else if (state.bytesType.registry == r.type_array_chunk && state.bytesType.children[0].registry == r.parse_bytes) { }
-                    else {
-                        return setError(state, pathError(r.data_type_not_accepted, [getRegistrySymbol(r.bytes)]))
-                    }
-                    state.postambleType = type_map(...baseType.children.slice(bytesIndex + 1, n).concat(baseType.children.slice(n + bytesIndex + 1, n + n)))
-                    state.postambleType.op = { type: ParseMode.map, ops: state.postambleType.children.map(x => resolveParseOp(x)).filter(x => x.type != ParseMode.none) }
+                    state.bodyType = baseType.children[n + bytesIndex]
+                    state.postambleNode = type_map(...baseType.children.slice(bytesIndex + 1, n).concat(baseType.children.slice(n + bytesIndex + 1, n + n)))
+                    state.postambleNode.op = { type: ParseMode.map, ops: state.postambleNode.children.map(x => resolveParseOp(x)).filter(x => x.type != ParseMode.none) }
                 }
                 break
             }
         }
     }
 }
-export const maxPreambleBytes = 2 ** 14
-export const contentTypeDBUF = 'application/dbuf'
-export const contentTypeHeaderName = 'Content-Type'
-export const httpStatus = (state: ServeState): number => {
-    if (state.errorType) {
-        switch (state.errorType) {
-            case 'internal':
-                return 500
-            case 'not_authenticated':
-                return 401
-            case 'other':
-                return 400
-            default:
-                throw 'not implemented'
-        }
-    }
-    return 200
-}
-//export const createResponse = (state: ServeState): Response => new Response(state.responseBuffer, { status: httpStatus(state), headers: { [contentTypeHeaderName]: contentTypeDBUF } })
-export type OperationConfig = { func: (state: ServeState, deps) => Promise<void>, deps?}
-export type OperationMap = Map<RefineType, OperationConfig>
-export type ExecutionConfig = { operationMap: OperationMap }
 export const validateEd25519 = async (publicKey: Uint8Array<ArrayBuffer>, signature: Uint8Array<ArrayBuffer>, data: Uint8Array<ArrayBuffer>): Promise<boolean> => {
     const k1 = await crypto.subtle.importKey('raw', publicKey, { name: "Ed25519" }, true, ['verify'])
     return await crypto.subtle.verify({ name: "Ed25519" }, k1, signature, data)
@@ -237,52 +212,6 @@ export const validateCredentialToken = (data: Uint8Array<ArrayBuffer>, basePath?
     return { value: { type: 'token', user, value } }
 }
 export const isSignatureObject = <T extends ArrayBufferLike = ArrayBufferLike>(c: RefineType<T>): c is RefineObjectType<T> => typeof c == 'object' && c[getRegistrySymbol(r.signature)]
-export const validateAuthHeader = async (state: ServeState) => {
-    if (serveCompleted(state)) { return }
-    const a = state.request.headers.get('Authorization')
-    if (a) {
-        const parts = a.split(' ')
-        if (parts[0] == 'Bearer' && parts[1]) {
-            try {
-                const p = parseFull(Uint8Array.fromBase64(parts[1]), true)
-                if (p.error) {
-                    return
-                }
-                const c = refineValues(unpack(p.root))
-                if (c instanceof Uint8Array) {
-                    const result = validateCredentialToken(c)
-                    if (result.error) {
-                        return
-                    }
-                    state.preparedCredential = result.value
-                }
-                else if (isSignatureObject(c)) {
-                    const result = await validateCredentialSignature(c)
-                    if (result.error) {
-                        return
-                    }
-                    state.preparedCredential = result.value
-                }
-            }
-            catch { }
-        }
-    }
-}
-export const operationFromHeader = async (state: ServeState) => {
-    if (serveCompleted(state)) { return }
-    const a = state.request.headers.get('dbuf-operation')
-    if (a) {
-        try {
-            const p = parseFull(Uint8Array.fromBase64(a), true)
-            if (p.error) {
-                return
-            }
-            state.operation = refineValues(unpack(p.root))
-        }
-        catch { }
-    }
-}
-export const small_body_max_bytes = 2 ** 16
 export const validateOperation = (state: ServeState) => {
     if (serveCompleted(state)) { return }
     for (let i = 0; i < state.preambleNode.children.length; i++) {
@@ -312,9 +241,8 @@ export const validateResponse = (state: ServeState) => {
         internalError(state, 'no response returned ' + state.operation.toString())
     }
 }
-export const createConfig = (): ExecutionConfig => { return { operationMap: new Map() } }
-export const executeStreamRequest = async (request: ReadableStream<Uint8Array<ArrayBuffer>>, config: ExecutionConfig, env): Promise<ServeState> => {
-    const state: ServeState = createServeState(request, config)
+export const executeRequest = async (request: ReadableStream<Uint8Array<ArrayBuffer>>, config: ExecutionConfig, env): Promise<ServeState> => {
+    const state: ServeState = { config, reader: request.getReader() }
     state.env = env
     try {
         await readPreamble(state, maxPreambleBytes)
@@ -327,17 +255,142 @@ export const executeStreamRequest = async (request: ReadableStream<Uint8Array<Ar
     validateResponse(state)
     return state
 }
-export const executeHttpRequest = async (request: Request, config: ExecutionConfig, env): Promise<ServeState> => {
-    const state: ServeState = createServeState(null, config)
-    state.env = env
-    try {
-        await readPreamble(state, maxPreambleBytes)
-        validateOperation(state)
-        await executeOperation(state)
+export const validateBody = (state: ServeState) => {
+    if (serveCompleted(state) || !state.bodyType) { return }
+    if (state.bodyType.registry == r.parse_bytes) {
+        state.bodyStream = getBodyStream(state)
     }
-    catch (e) {
-        internalError(state, e)
+    else if (state.bodyType.registry == r.type_array_chunk && state.bodyType.children[0].registry == r.parse_bytes) {
+        state.bodyStream = getBodyStream(state, state.bodyType.bitSize)
     }
-    validateResponse(state)
-    return state
+    else {
+        return setError(state, pathError(r.data_type_not_accepted, [getRegistrySymbol(r.bytes)]))
+    }
+}
+export const getBodyStream = (state: ServeState, chunkBits?: number) => {
+    if (chunkBits) {
+        let setupChunkLength = true
+        let setupChunkCount = true
+        let chunkCount = 0
+        let len = 0
+        return new ReadableStream<Uint8Array<ArrayBuffer>>({
+            async pull(controller) {
+                if (setupChunkCount) {
+                    while (true) {
+                        chunkCount = readBits32(state.parser.decoder, chunkBits)
+                        if (state.parser.decoder.endOfBuffer) {
+                            const read = await state.reader.read()
+                            if (read.done) {
+                                return setError(state, registryError(r.incomplete_stream))
+                            }
+                            setParserBuffer(read.value, state.parser)
+                        }
+                        else {
+                            if (chunkCount == 0) {
+                                controller.enqueue(new Uint8Array())
+                                controller.close()
+                                return
+                            }
+                            break
+                        }
+                    }
+                    setupChunkCount = false
+                }
+                if (setupChunkLength) {
+                    while (true) {
+                        len = readVarint(state.parser.decoder)
+                        if (state.parser.decoder.endOfBuffer) {
+                            const read = await state.reader.read()
+                            if (read.done) {
+                                return setError(state, registryError(r.incomplete_stream))
+                            }
+                            setParserBuffer(read.value, state.parser)
+                        }
+                        else {
+                            break
+                        }
+                    }
+                    alignDecoder(state.parser.decoder, 8)
+                    setupChunkLength = false
+                }
+                if (len == 0) {
+                    controller.enqueue(new Uint8Array())
+                }
+                else {
+                    if (state.parser.decoder.dv.byteLength == state.parser.decoder.dvOffset) {
+                        const read = await state.reader.read()
+                        if (read.done) {
+                            return setError(state, registryError(r.incomplete_stream))
+                        }
+                        setParserBuffer(read.value, state.parser)
+                    }
+                    const avail = state.parser.decoder.dv.byteLength - state.parser.decoder.dvOffset
+                    if (len <= avail) {
+                        controller.enqueue(getBytes(state.parser, len, true))
+                    }
+                    else {
+                        controller.enqueue(getBytes(state.parser, avail, true))
+                        len -= avail
+                    }
+                }
+                setupChunkLength = true
+                chunkCount--
+                if (!chunkCount) {
+                    setupChunkCount = true
+                }
+            },
+            cancel() {
+                state.reader.cancel()
+            },
+        })
+    }
+    else {
+        let setup = true
+        let len = 0
+        return new ReadableStream<Uint8Array<ArrayBuffer>>({
+            async pull(controller) {
+                if (setup) {
+                    while (true) {
+                        len = readVarint(state.parser.decoder)
+                        if (state.parser.decoder.endOfBuffer) {
+                            const read = await state.reader.read()
+                            if (read.done) {
+                                return setError(state, registryError(r.incomplete_stream))
+                            }
+                            setParserBuffer(read.value, state.parser)
+                        }
+                        else {
+                            break
+                        }
+                    }
+                    alignDecoder(state.parser.decoder, 8)
+                    setup = false
+                }
+                if (len == 0) {
+                    controller.enqueue(new Uint8Array())
+                    controller.close()
+                    return
+                }
+                if (state.parser.decoder.dv.byteLength == state.parser.decoder.dvOffset) {
+                    const read = await state.reader.read()
+                    if (read.done) {
+                        return setError(state, registryError(r.incomplete_stream))
+                    }
+                    setParserBuffer(read.value, state.parser)
+                }
+                const avail = state.parser.decoder.dv.byteLength - state.parser.decoder.dvOffset
+                if (len <= avail) {
+                    controller.enqueue(getBytes(state.parser, len, true))
+                    controller.close()
+                }
+                else {
+                    controller.enqueue(getBytes(state.parser, avail, true))
+                    len -= avail
+                }
+            },
+            cancel() {
+                state.reader.cancel()
+            },
+        })
+    }
 }

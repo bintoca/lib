@@ -1,5 +1,6 @@
 import { writeNodeFull } from '@bintoca/dbuf-codec/encode'
-import { ServeState, executeStreamRequest, createConfig, pathError, httpStatus } from '@bintoca/dbuf-server/serve'
+import { ExecutionConfig, ServeState, } from '@bintoca/dbuf-server/serve'
+import { executeRequest, httpStatus } from '@bintoca/dbuf-server/http'
 import { getRegistrySymbol } from '@bintoca/dbuf-data/registry'
 import { r } from '@bintoca/dbuf-server/registry'
 import { type_map, root, map, parse_type_data, type_array, parse_bit_size, array, parse_align, type_choice, choice, writeTokens, writerPrefix, type_array_bit } from '@bintoca/dbuf-codec/encode'
@@ -15,15 +16,15 @@ const sym_registry_symbol_not_accepted = getRegistrySymbol(r.registry_symbol_not
 const sym_registry_symbol_not_accepted_as_array_type = getRegistrySymbol(r.registry_symbol_not_accepted_as_array_type)
 const sym_data_type_not_accepted = getRegistrySymbol(r.data_type_not_accepted)
 const sym_preamble_max_size_exceeded = getRegistrySymbol(r.preamble_max_size_exceeded)
-const testConfig = createConfig()
+const testConfig: ExecutionConfig = { operationMap: new Map() }
 testConfig.operationMap.set(getRegistrySymbol(r.value), {
     func: async (state: ServeState): Promise<void> => {
-        
+
     }
 })
 export type RefinedResponse = { status: number, ob: RefineType }
 const fetchRefine = async (req: Request): Promise<RefinedResponse> => {
-    const r = await executeStreamRequest(req.body, testConfig, null)
+    const r = await executeRequest(req, testConfig, null)
     if (r.internalError !== undefined) {
         console.log(r.internalError)
     }
