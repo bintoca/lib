@@ -45,7 +45,7 @@ export const testGetBodyStream = (test, expect, getBodyStream: (state: ServeStat
     test.each([
         [['1130', 3, '00'], 3],
         [['10'], 0],
-        [['1130', 3, '2900', 16, '40', 4, '00'], 23],
+        [['1130', 3, '2900', 9, 7, '40', 4, '00'], 23],
     ])('getBodyStream_chunk(%#)', async (i, len) => {
         await f(i.map(x => typeof x == 'string' ? Uint8Array.fromHex(x) : new Uint8Array(x)), len, 4)
     })

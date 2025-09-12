@@ -327,16 +327,16 @@ export const getBodyStream = (state: ServeState, chunkBits?: number) => {
                     const avail = state.parser.decoder.dv.byteLength - state.parser.decoder.dvOffset
                     if (len <= avail) {
                         controller.enqueue(getBytes(state.parser, len, true))
+                        setupChunkLength = true
+                        chunkCount--
+                        if (!chunkCount) {
+                            setupChunkCount = true
+                        }
                     }
                     else {
                         controller.enqueue(getBytes(state.parser, avail, true))
                         len -= avail
                     }
-                }
-                setupChunkLength = true
-                chunkCount--
-                if (!chunkCount) {
-                    setupChunkCount = true
                 }
             },
             cancel() {
