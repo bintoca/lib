@@ -184,7 +184,8 @@ export const alignDecoder = (s: DecoderState, n: number) => {
         num <= 32 ? readBits32(s, num) : readBitsLarge(s, num)
     }
 }
-export type ParseState<T extends ArrayBufferLike = ArrayBufferLike> = { container: Node<T>, root: Node<T>, nodeStack: Node<T>[], decoder: DecoderState<T>, sharedChoiceStack: ParseOp[], liteProfile?: boolean, codecError?: number, codecErrorValue?}
+export type ValidateSymbolsFunc<T extends ArrayBufferLike = ArrayBufferLike> = (st: ParseState<T>, num: number) => void
+export type ParseState<T extends ArrayBufferLike = ArrayBufferLike> = { container: Node<T>, root: Node<T>, nodeStack: Node<T>[], decoder: DecoderState<T>, validateSymbols?: ValidateSymbolsFunc<T>, sharedChoiceStack: ParseOp[], codecError?: number, codecErrorValue?}
 export const resolveParseOp = (x: Node): ParseOp => {
     if (x.type != NodeType.val) {
         return x.op
@@ -553,39 +554,10 @@ export const parseCore = (st: ParseState) => {
         }
         case ParseMode.any: {
             const x = readNumber
-            if (st.liteProfile) {
-                switch (x) {
-                    case r.parse_varint:
-                    case r.parse_bit_size:
-                    case r.parse_text:
-                    case r.parse_bytes:
-                    case r.parse_type_data:
-                    case r.type_array:
-                    case r.type_array_bit:
-                    case r.type_array_fixed:
-                    case r.type_array_chunk:
-                        break
-                    case r.type_choice:
-                    case r.type_optional:
-                    case r.type_choice_shared:
-                    case r.type_choice_select:
-                    case r.nonexistent:
-                    case r.parse_type_data_immediate:
-                        {
-                            st.codecError = r.registry_symbol_not_accepted
-                            st.codecErrorValue = x
-                            return
-                        }
-                    default:
-                        if (top.type == NodeType.type_array
-                            || top.type == NodeType.type_array_bit
-                            || top.type == NodeType.type_array_chunk
-                            || top.type == NodeType.type_array_fixed
-                        ) {
-                            st.codecError = r.registry_symbol_not_accepted_as_array_type
-                            st.codecErrorValue = x
-                            return
-                        }
+            if (st.validateSymbols) {
+                st.validateSymbols(st, readNumber)
+                if (st.codecError) {
+                    return
                 }
             }
             switch (x) {
@@ -655,10 +627,46 @@ export const parseCore = (st: ParseState) => {
             throw { message: 'not implemented ParseType: ' + op.type, st }
     }
 }
-export const createParser = <T extends ArrayBufferLike = ArrayBufferLike>(liteProfile?: boolean): ParseState<T> => {
+export const validateSymbolsLite = <T extends ArrayBufferLike = ArrayBufferLike>(st: ParseState<T>, num: number) => {
+    const top = topNode(st)
+    switch (num) {
+        case r.parse_varint:
+        case r.parse_bit_size:
+        case r.parse_text:
+        case r.parse_bytes:
+        case r.parse_type_data:
+        case r.type_array:
+        case r.type_array_bit:
+        case r.type_array_fixed:
+        case r.type_array_chunk:
+            break
+        case r.type_choice:
+        case r.type_optional:
+        case r.type_choice_shared:
+        case r.type_choice_select:
+        case r.nonexistent:
+        case r.parse_type_data_immediate:
+            {
+                st.codecError = r.registry_symbol_not_accepted
+                st.codecErrorValue = num
+                return
+            }
+        default:
+            if (top.type == NodeType.type_array
+                || top.type == NodeType.type_array_bit
+                || top.type == NodeType.type_array_chunk
+                || top.type == NodeType.type_array_fixed
+            ) {
+                st.codecError = r.registry_symbol_not_accepted_as_array_type
+                st.codecErrorValue = num
+                return
+            }
+    }
+}
+export const createParser = <T extends ArrayBufferLike = ArrayBufferLike>(validateSymbols?: ValidateSymbolsFunc<T>): ParseState<T> => {
     const container: Node<T> = { type: NodeType.array, children: [], op: { type: ParseMode.any } }
     const root: Node<T> = { type: NodeType.parse_type_data, children: [], needed: 2, op: { type: ParseMode.any } }
-    return { container, root, nodeStack: [container, root], decoder: createDecoder(), sharedChoiceStack: [], liteProfile }
+    return { container, root, nodeStack: [container, root], decoder: createDecoder(), sharedChoiceStack: [], validateSymbols }
 }
 export const setParserBuffer = <T extends ArrayBufferLike = ArrayBufferLike>(b: ArrayBufferView<T>, st: ParseState<T>) => {
     st.decoder.dv = new DataView(b.buffer, b.byteOffset, b.byteLength)
@@ -677,8 +685,8 @@ export const setParserBuffer = <T extends ArrayBufferLike = ArrayBufferLike>(b: 
         }
     }
 }
-export const initParser = <T extends ArrayBufferLike = ArrayBufferLike>(b: ArrayBufferView<T>, liteProfile?: boolean): ParseState<T> => {
-    const st = createParser<T>(liteProfile)
+export const initParser = <T extends ArrayBufferLike = ArrayBufferLike>(b: ArrayBufferView<T>, validateSymbols?: ValidateSymbolsFunc<T>): ParseState<T> => {
+    const st = createParser<T>(validateSymbols)
     setParserBuffer(b, st)
     return st
 }

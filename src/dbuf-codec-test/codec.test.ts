@@ -1,5 +1,5 @@
 import { finishWrite, writeBits, alignEncoder, writeBytes, writeTokens, writeVarintChecked, writeNodeFull } from '@bintoca/dbuf-codec/encode'
-import { readVarint, setParserBuffer, readBits32, alignDecoder } from '@bintoca/dbuf-codec/decode'
+import { readVarint, setParserBuffer, readBits32, alignDecoder, validateSymbolsLite } from '@bintoca/dbuf-codec/decode'
 import { Node, } from '@bintoca/dbuf-codec/common'
 import { parseCoreLoop, initFullParser } from '@bintoca/dbuf-data/unpack'
 import { r } from '@bintoca/dbuf-codec/registry'
@@ -16,7 +16,7 @@ test('magicNumber', () => {
 testAlignDecoder(test, expect, alignDecoder)
 testAlignEncoder(test, expect, alignEncoder)
 export const parseError = (u8: Uint8Array): object => {
-    const st = initFullParser(u8, true)
+    const st = initFullParser(u8, validateSymbolsLite)
     parseCoreLoop(st)
     return st.error
 }

@@ -1,5 +1,5 @@
 import { getRegistrySymbol, r } from '@bintoca/dbuf-data/registry'
-import { parseCore, ParseState, resolveParseOp, initParser } from '@bintoca/dbuf-codec/decode'
+import { parseCore, ParseState, resolveParseOp, initParser, ValidateSymbolsFunc } from '@bintoca/dbuf-codec/decode'
 import { Node, NodeType, ParseMode, val, concatBuffers } from '@bintoca/dbuf-codec/common'
 
 const sym_nonexistent = getRegistrySymbol(r.nonexistent)
@@ -11,7 +11,7 @@ const sym_flatten_array = getRegistrySymbol(r.flatten_array)
 const sym_offset_add = getRegistrySymbol(r.offset_add)
 
 export type ParseFullState<T extends ArrayBufferLike = ArrayBufferLike> = ParseState<T> & { error?: object, internalError?: any }
-export const initFullParser = <T extends ArrayBufferLike = ArrayBufferLike>(b: ArrayBufferView<T>, liteProfile?: boolean): ParseFullState<T> => initParser(b, liteProfile)
+export const initFullParser = <T extends ArrayBufferLike = ArrayBufferLike>(b: ArrayBufferView<T>, validateSymbols?: ValidateSymbolsFunc<T>): ParseFullState<T> => initParser(b, validateSymbols)
 export const parseCoreLoop = (st: ParseFullState) => {
     try {
         while (true) {
@@ -37,8 +37,8 @@ export const parseCoreLoop = (st: ParseFullState) => {
         st.decoder.dv = undefined
     }
 }
-export const parseFull = <T extends ArrayBufferLike = ArrayBufferLike>(b: ArrayBufferView<T>, liteProfile?: boolean): ParseFullState<T> => {
-    const st = initFullParser(b, liteProfile)
+export const parseFull = <T extends ArrayBufferLike = ArrayBufferLike>(b: ArrayBufferView<T>, validateSymbols?: ValidateSymbolsFunc<T>): ParseFullState<T> => {
+    const st = initFullParser(b, validateSymbols)
     parseCoreLoop(st)
     return st
 }

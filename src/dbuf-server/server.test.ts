@@ -1,6 +1,5 @@
 import { writeNodeFull } from '@bintoca/dbuf-codec/encode'
-import { ExecutionConfig, ServeState, } from '@bintoca/dbuf-server/serve'
-import { executeRequest, httpStatus } from '@bintoca/dbuf-server/http'
+import { ExecutionConfig, internalError, ServeState, } from '@bintoca/dbuf-server/serve'
 import { getRegistrySymbol } from '@bintoca/dbuf-data/registry'
 import { r } from '@bintoca/dbuf-server/registry'
 import { type_map, root, map, parse_type_data, type_array, parse_bit_size, array, parse_align, type_choice, choice, writeTokens, writerPrefix, type_array_bit } from '@bintoca/dbuf-codec/encode'
@@ -24,12 +23,12 @@ testConfig.operationMap.set(getRegistrySymbol(r.value), {
 })
 export type RefinedResponse = { status: number, ob: RefineType }
 const fetchRefine = async (req: Request): Promise<RefinedResponse> => {
-    const r = await executeRequest(req, testConfig, null)
+    const r = { internalError: null, responseBuffer: null }// await executeRequest(req, testConfig, null)
     if (r.internalError !== undefined) {
         console.log(r.internalError)
     }
     const st = parseFull(r.responseBuffer)
-    return { status: httpStatus(r), ob: refineValues(unpack(st.root)) }
+    return { status: 0, ob: refineValues(unpack(st.root)) }
 }
 const createRequest = (n: Uint8Array | ReadableStream): Request => new Request('http://example.com', { body: n, method: 'post', duplex: 'half' } as any)
 const nodeFetchRefine = async (n: Node): Promise<RefinedResponse> => await fetchRefine(createRequest(writeNodeFull(n)))

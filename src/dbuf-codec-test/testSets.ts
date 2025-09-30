@@ -219,7 +219,7 @@ export const testReadBits32 = (test, expect, readBits32: (d: DecoderState, size:
         new Uint8Array([0xDF, 0xDF, 0xDF, 0xDF, littleEndianPrefix, 1, 2, 3, 4, 5, 6, 7, 8, 0, 0, 0]),
         new Uint8Array([0x10, 0x40, 24, 20, 16, 12, 16, 14]),
     ])('readBits32(%#)', (b) => {
-        const ps = initFullParser(b, true)
+        const ps = initFullParser(b)
         const d = ps.decoder
         expect(readBits32(d, 4)).toBe(1)
         expect(readBits32(d, 11)).toBe(32)

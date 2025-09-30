@@ -1,4 +1,4 @@
-import { ParseState, setParserBuffer, parseCore, resolveParseOp, initParser, readVarint, alignDecoder, getBytes, readBits32 } from '@bintoca/dbuf-codec/decode'
+import { ParseState, setParserBuffer, parseCore, resolveParseOp, initParser, readVarint, alignDecoder, getBytes, readBits32, validateSymbolsLite } from '@bintoca/dbuf-codec/decode'
 import { NodeType, Node, ParseMode } from '@bintoca/dbuf-codec/common'
 import { getRegistrySymbol } from '@bintoca/dbuf-data/registry'
 import { r } from '@bintoca/dbuf-server/registry'
@@ -19,7 +19,7 @@ export type ErrorType = 'internal' | 'not_authenticated' | 'other'
 export type ServeState = {
     reader?: ReadableStreamDefaultReader<Uint8Array<ArrayBuffer>>, operation?: RefineType,
     bodyStream?: ReadableStream<Uint8Array<ArrayBuffer>>,
-    responseBuffer?: Uint8Array<ArrayBuffer>, responseStream?: ReadableStream,
+    responseBuffer?: Uint8Array<ArrayBuffer>, responseError?: RefineObjectType<ArrayBuffer>, responseStream?: ReadableStream,
     internalError?, preambleNode?: Node, postambleNode?: Node, parser?: ParseState<ArrayBuffer>, bodyType?: Node,
     env?, preparedCredential?: PreparedCredential, config: ExecutionConfig, serveCompleted?: boolean, errorType?: ErrorType
 }
@@ -30,6 +30,7 @@ export const internalError = (state: ServeState, e) => {
 }
 export const setError = (state: ServeState, err: RefineObjectType<ArrayBuffer>) => {
     state.errorType = 'other'
+    state.responseError = err
     state.responseBuffer = writeNodeFull(pack(err))
 }
 export const pathError = (er: number, path: RefineType[], basePath?: RefineType[]): RefineObjectType<ArrayBuffer> => Object.assign(registryError(er), { [sym_data_path]: basePath ? basePath.concat(path) : path })
@@ -45,7 +46,7 @@ export const readPreamble = async (state: ServeState, maxBytes: number): Promise
     if (read.done) {
         return setError(state, registryError(r.incomplete_stream))
     }
-    state.parser = initParser(read.value, true)
+    state.parser = initParser(read.value, validateSymbolsLite)
     let stage = 0
     let baseType: Node
     let baseMap: Node
@@ -168,7 +169,7 @@ export const validateCredentialSignature = async (c: RefineObjectType<ArrayBuffe
     else {
         return { error: pathError(r.data_type_not_accepted, [getRegistrySymbol(r.algorithm)], basePath) }
     }
-    const p = parseFull(data, true)
+    const p = parseFull(data, validateSymbolsLite)
     if (p.error) {
         return { error: pathError(r.data_value_not_accepted, [sym_value], basePath) }
     }
@@ -190,7 +191,7 @@ export const validateCredentialSignature = async (c: RefineObjectType<ArrayBuffe
     return { value: { type: 'signature', user, nonce, algorithm, publicKey } }
 }
 export const validateCredentialToken = (data: Uint8Array<ArrayBuffer>, basePath?: RefineType[]): Result<PreparedCredential, RefineObjectType<ArrayBuffer>> => {
-    const p = parseFull(data, true)
+    const p = parseFull(data, validateSymbolsLite)
     if (p.error) {
         return { error: pathError(r.data_value_not_accepted, basePath) }
     }
@@ -393,4 +394,86 @@ export const getBodyStream = (state: ServeState, chunkBits?: number) => {
             },
         })
     }
+}
+export const frameTypeData = 1
+export const getFrameBodyStream = (state: ServeState) => {
+    let frame = true
+    let setLen = true
+    let frameIndex = 1
+    let len = 0
+    let frameType = 0
+    return new ReadableStream<Uint8Array<ArrayBuffer>>({
+        async pull(controller) {
+            if (frame) {
+                while (true) {
+                    frameType = readVarint(state.parser.decoder)
+                    if (state.parser.decoder.endOfBuffer) {
+                        const read = await state.reader.read()
+                        if (read.done) {
+                            controller.close()
+                            return
+                        }
+                        setParserBuffer(read.value, state.parser)
+                    }
+                    else {
+                        break
+                    }
+                }
+                const isPlaceholder = frameType == 7
+                if (frameType != frameTypeData && !isPlaceholder) {
+                    controller.close()
+                    return setError(state, pathError(r.data_value_not_accepted, [frameIndex, 'frame type']))
+                }
+                frame = false
+            }
+            if (setLen) {
+                while (true) {
+                    len = readVarint(state.parser.decoder)
+                    if (state.parser.decoder.endOfBuffer) {
+                        const read = await state.reader.read()
+                        if (read.done) {
+                            controller.close()
+                            return setError(state, registryError(r.incomplete_stream))
+                        }
+                        setParserBuffer(read.value, state.parser)
+                    }
+                    else {
+                        break
+                    }
+                }
+                alignDecoder(state.parser.decoder, 8)
+                setLen = false
+            }
+            if (len == 0) {
+                controller.enqueue(new Uint8Array())
+                frame = true
+                setLen = true
+            }
+            else {
+                if (state.parser.decoder.dv.byteLength == state.parser.decoder.dvOffset) {
+                    const read = await state.reader.read()
+                    if (read.done) {
+                        controller.close()
+                        return setError(state, registryError(r.incomplete_stream))
+                    }
+                    setParserBuffer(read.value, state.parser)
+                }
+                const avail = state.parser.decoder.dv.byteLength - state.parser.decoder.dvOffset
+                if (len <= avail) {
+                    const bytes = getBytes(state.parser, len, true)
+                    controller.enqueue(frameType == frameTypeData ? bytes : new Uint8Array())
+                    frame = true
+                    setLen = true
+                }
+                else {
+                    const bytes = getBytes(state.parser, avail, true)
+                    controller.enqueue(frameType == frameTypeData ? bytes : new Uint8Array())
+                    len -= avail
+                }
+            }
+        },
+        cancel() {
+            state.reader.cancel()
+        },
+    })
 }
