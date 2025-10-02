@@ -11,7 +11,7 @@ export const testGetBodyStream = (test, expect, getBodyStream: (state: ServeStat
                 if (!fullBuffers.length) { controller.close() }
             },
         })
-        const state: ServeState = { config: null, reader: fullStream.getReader() }
+        const state: ServeState = { config: null, reader: fullStream.getReader(), frameIndex: 0 }
         state.parser = createParser()
         setParserBuffer((await state.reader.read()).value, state.parser)
         while (true) {
@@ -59,7 +59,7 @@ export const testGetFrameBodyStream = (test, expect, getFrameBodyStream: (state:
                 if (!fullBuffers.length) { controller.close() }
             },
         })
-        const state: ServeState = { config: null, reader: fullStream.getReader() }
+        const state: ServeState = { config: null, reader: fullStream.getReader(), frameIndex: 0 }
         state.parser = createParser()
         setParserBuffer((await state.reader.read()).value, state.parser)
         const body = getFrameBodyStream(state).getReader()
@@ -83,7 +83,7 @@ export const testGetFrameBodyStream = (test, expect, getFrameBodyStream: (state:
                 if (!fullBuffers.length) { controller.close() }
             },
         })
-        const state: ServeState = { config: null, reader: fullStream.getReader() }
+        const state: ServeState = { config: null, reader: fullStream.getReader(), frameIndex: 0 }
         state.parser = createParser()
         setParserBuffer((await state.reader.read()).value, state.parser)
         const body = getFrameBodyStream(state).getReader()
@@ -102,7 +102,7 @@ export const testGetFrameBodyStream = (test, expect, getFrameBodyStream: (state:
     test.each([
         [['15', 5], 5],
         [['10'], 0],
-        [['72', 2], 0],
+        [['72', 2, '9730', 3, 'C10730', 3, 'E1000730', 3, 'F100000073', 3], 0],
         [['14', 4, '16', 6, '7900', 16, '17', 3, 4], 17],
     ])('getFrameBodyStream(%#)', async (i, len) => {
         await f(i.map(x => typeof x == 'string' ? Uint8Array.fromHex(x) : new Uint8Array(x)), len)
@@ -110,8 +110,53 @@ export const testGetFrameBodyStream = (test, expect, getFrameBodyStream: (state:
     test.each([
         [['15'], registryError(r.incomplete_stream)],
         [['19'], registryError(r.incomplete_stream)],
-        [['25'], pathError(r.data_value_not_accepted, [1, 'frame type'])],
-    ])('getFrameBodyStream_error(%#)', async (i, len) => {
-        await er(i.map(x => typeof x == 'string' ? Uint8Array.fromHex(x) : new Uint8Array(x)), len)
+        [['25'], pathError(r.data_value_not_accepted, [0, 'frame type'])],
+    ])('getFrameBodyStream_error(%#)', async (i, err) => {
+        await er(i.map(x => typeof x == 'string' ? Uint8Array.fromHex(x) : new Uint8Array(x)), err)
+    })
+}
+export const testGetStructuredFrame = (test, expect, getStructuredFrame: (state: ServeState) => Promise<Uint8Array<ArrayBuffer>>) => {
+    const f = async (fullBuffers: Uint8Array<ArrayBuffer>[], len: number) => {
+        const fullStream = new ReadableStream<Uint8Array<ArrayBuffer>>({
+            pull(controller) {
+                controller.enqueue(fullBuffers.shift())
+                if (!fullBuffers.length) { controller.close() }
+            },
+        })
+        const state: ServeState = { config: null, reader: fullStream.getReader(), frameIndex: 0 }
+        state.parser = createParser()
+        setParserBuffer((await state.reader.read()).value, state.parser)
+        const out = await getStructuredFrame(state)
+        expect(out.byteLength).toBe(len)
+    }
+    const er = async (fullBuffers: Uint8Array<ArrayBuffer>[], err) => {
+        const fullStream = new ReadableStream<Uint8Array<ArrayBuffer>>({
+            pull(controller) {
+                controller.enqueue(fullBuffers.shift())
+                if (!fullBuffers.length) { controller.close() }
+            },
+        })
+        const state: ServeState = { config: null, reader: fullStream.getReader(), frameIndex: 0 }
+        state.parser = createParser()
+        setParserBuffer((await state.reader.read()).value, state.parser)
+        const out = await getStructuredFrame(state)
+        expect(out).toBeUndefined()
+        expect(state.responseError).toStrictEqual(err)
+    }
+    test.each([
+        [['05', 5], 5],
+        [['00'], 0],
+        [['72', 2, '9730', 3, 'C10730', 3, 'E1000730', 3, 'F100000073', 3, '04', 4], 4],
+        [['07', 3, 4], 7],
+    ])('getStructuredFrame(%#)', async (i, len) => {
+        await f(i.map(x => typeof x == 'string' ? Uint8Array.fromHex(x) : new Uint8Array(x)), len)
+    })
+    test.each([
+        [['05'], registryError(r.incomplete_stream)],
+        [['09'], registryError(r.incomplete_stream)],
+        [['C1'], registryError(r.incomplete_stream)],
+        [['25'], pathError(r.data_value_not_accepted, [0, 'frame type'])],
+    ])('getStructuredFrame_error(%#)', async (i, err) => {
+        await er(i.map(x => typeof x == 'string' ? Uint8Array.fromHex(x) : new Uint8Array(x)), err)
     })
 }
