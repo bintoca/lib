@@ -42,13 +42,4 @@ export const enum r {
     field_order_not_accepted,
     preamble_max_size_exceeded,
     body_max_size_exceeded,
-
-    nonce = 97,
-
-    signature = 200,
-    algorithm = 201,
-    public_key = 202,
-    ed25519 = 203,
-    user = 204,
-    not_authenticated = 205,
 }

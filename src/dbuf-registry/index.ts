@@ -46,8 +46,8 @@ export const r = {
     prefix: 42,
     suffix: 43,
     prefix_delta: 44,
-    operation: 45,
-    reference: 46,
+    //operation: 45,
+    //reference: 46,
 
     error_internal: 64,
     incomplete_stream: 65,
@@ -74,23 +74,14 @@ export const r = {
     minute: 83,
     second: 84,
 
-    data_type_not_accepted: 85,
-    data_value_not_accepted: 86,
-    data_path: 87,
-    required_field_missing: 88,
-    field_not_accepted: 89,
-    field_order_not_accepted: 90,
-    preamble_max_size_exceeded: 91,
-    body_max_size_exceeded: 92,
-
-    nonce: 97,
-
-    signature: 200,
-    algorithm: 201,
-    public_key: 202,
-    ed25519: 203,
-    user: 204,
-    not_authenticated: 205,
+    // data_type_not_accepted: 85,
+    // data_value_not_accepted: 86,
+    // data_path: 87,
+    // required_field_missing: 88,
+    // field_not_accepted: 89,
+    // field_order_not_accepted: 90,
+    // preamble_max_size_exceeded: 91,
+    // body_max_size_exceeded: 92,
 
     magic_number: 8159,
 } as const
