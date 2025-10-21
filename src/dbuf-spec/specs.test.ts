@@ -23,8 +23,8 @@ export const strip = (x: Node): Node => {
     }
     return x
 }
-const renderSpecLinkOnIndex = (id): string => `[${registryEnum[id]}](./specs/${registryEnum[id]}.md)`
-const renderSpecLinkOnCodec = (id): string => `[${registryEnum[id]}](./registry/specs/${registryEnum[id]}.md)`
+const renderSpecLinkOnIndex = (id): string => `[${registryEnum[id]}](./${registryEnum[id]}.md)`
+const renderSpecLinkOnCodec = (id): string => `[${registryEnum[id]}](./registry/${registryEnum[id]}.md)`
 const renderSpecLink = (id): string => `[${registryEnum[id]}](./${registryEnum[id]}.md)`
 const renderNodeTypeLink = (n: string): string => n//`[${n}](../node_types/${n}.md)`
 const renderParseModeLink = (id): string => `[[parse mode ${parseModes[id]}]](../../codec.md)`
@@ -141,11 +141,12 @@ export const refineKeys = (v) => {
 }
 test('specs', () => {
     const folder = 'E:\\bintoca-gh\\dbuf\\'
-    const registryFolder = join(folder, 'registry')
-    const specsFolder = join(registryFolder, 'specs')
-    const dir = readdirSync(specsFolder)
+    const registryFolder = join(folder, 'specs', 'registry')
+    const specsFolder = join(folder, 'specs')
+    const registrySpecsFolder = registryFolder
+    const dir = readdirSync(registrySpecsFolder)
     for (let x of dir) {
-        unlinkSync(join(specsFolder, x))
+        unlinkSync(join(registrySpecsFolder, x))
     }
     let indexTxt = ''
     const missing = []
@@ -157,7 +158,7 @@ test('specs', () => {
     for (let k in registryEnum) {
         if (registry[k]) {
             indexTxt += `- ${k} - ${renderSpecLinkOnIndex(k)}\n`
-            const fn = join(specsFolder, registryEnum[k] + '.md')
+            const fn = join(registrySpecsFolder, registryEnum[k] + '.md')
             const sp = registry[k]
             const txt = `## ${registryEnum[k]}\n\nID: ${k}\n\n${sp.paragraphs.map(x => renderParagraph(x, renderSpecLink, renderParseModeLink)).join('\n\n')}\n\n### Examples\n\n<table><tr><th>Description</th><th>Binary</th><th>S-expression</th><th>Unpacked</th></tr>${sp.examples.map(x => `<tr><td>${x.description}</td><td>${dbufToHex(x.dbuf)}</td><td>${dbufToString(k, x.dbuf, renderSpecLinkHTML, renderNodeTypeLink)}</td><td>${x.unpack ? '<pre>' + JSON.stringify(dbufUnpack(k, x.dbuf, x.unpack), null, 2) + '</pre>' : noUnpack(k)}</td>`).join('\n')}</table>`
             writeFileSync(fn, txt)
@@ -182,6 +183,6 @@ test('specs', () => {
     for (let k in serverReg) {
         //expect(serverReg[k]).toBe(registryEnum[k])
     }
-    writeFileSync(join(registryFolder, 'index.md'), '# DBUF Symbol Registry\n\nSubject to change until core semantics are settled\n\n' + indexTxt)
-    writeFileSync(join(folder, 'codec.md'), codec.sections.map(x => renderSection(x, renderSpecLinkOnCodec, renderParseModeLink)).join('\n\n'))
+    writeFileSync(join(registryFolder, 'README.md'), '# DBUF Symbol Registry\n\nSubject to change until core semantics are settled\n\n' + indexTxt)
+    writeFileSync(join(specsFolder, 'codec.md'), codec.sections.map(x => renderSection(x, renderSpecLinkOnCodec, renderParseModeLink)).join('\n\n'))
 })
