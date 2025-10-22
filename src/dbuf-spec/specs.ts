@@ -15,12 +15,12 @@ export type Doc = { sections: Section[] }
 
 export const parseEnum = (fn: string, enumName: string) => {
     const txt = readFileSync(pa.join('./src', fn), 'utf8')
-    const syms = txt.split(`const enum ${enumName} {`)[1].split('}')[0].split(',').map(x => x.trim()).filter(x => x).map(x => {
+    const sym = txt.split(`const enum ${enumName} {`)[1].split('}')[0].split(',').map(x => x.trim()).filter(x => x).map(x => {
         const i = x.split('=')
         return { n: i[0].trim(), id: parseInt(i[1]) }
     })
     let i = 0
-    for (let x of syms) {
+    for (let x of sym) {
         if (x.id) {
             i = x.id
         }
@@ -30,7 +30,7 @@ export const parseEnum = (fn: string, enumName: string) => {
         i++
     }
     const symNamesById = {}
-    for (let x of syms) {
+    for (let x of sym) {
         symNamesById[x.id] = x.n
     }
     return symNamesById
@@ -74,7 +74,7 @@ export const registry: { [key: number]: { paragraphs: Paragraph[], parseRules?: 
             ['Defines a collection of key/value pairs.'],
             ['Consumes one varint specifying the number of pairs to parse. All the keys come first followed by all the values.'],
             ['When encountered in the parsing of a data component: Each key or value that has data component parsing rules is executed.'],
-            ['Type component values and data component values combine to form a logical map. If an array of maps all have the same value for a key, that value can be specified once in the type component and omittted in the data component.'],
+            ['Type component values and data component values combine to form a logical map. If an array of maps all have the same value for a key, that value can be specified once in the type component and omitted in the data component.'],
             ['If the same key is specified more than once, the unpacking procedure combines the values into an array. If the first value is an array, the following values are appended to the first array. If following values are arrays, they are appended as nested, not flattened into the first array.'],
         ],
         parseRules: true,
@@ -241,7 +241,7 @@ export const registry: { [key: number]: { paragraphs: Paragraph[], parseRules?: 
             ['The values for number of options use offsets so that the minimum number of options is one. This is to avoid ambiguities in the meaning of a choice with zero options.'],
             ['When encountered in the parsing of a data component: If number of options equals one, consumes zero bits and selects the single option, otherwise consumes the least number of bits that can represent the number of options. ',
                 'The value consumed is a zero based index into the options. If the index is greater than the index of the last option, the last option is selected. ',
-                'Then the list is pushed on to the shared choice stack, which is subsequently poped after the data component rules of the selected option have been executed.']
+                'Then the list is pushed on to the shared choice stack, which is subsequently popped after the data component rules of the selected option have been executed.']
         ],
         parseRules: true,
         examples: [
@@ -396,7 +396,7 @@ export const registry: { [key: number]: { paragraphs: Paragraph[], parseRules?: 
     },
     [r.denominator]: {
         paragraphs: [
-            ['Used for the denomiator term in rational numbers.'],
+            ['Used for the denominator term in rational numbers.'],
             ['The ', { rid: r.value }, ' symbol is used for the numerator.']
         ],
         examples: [
@@ -496,7 +496,7 @@ export const registry: { [key: number]: { paragraphs: Paragraph[], parseRules?: 
     },
     [r.delta]: {
         paragraphs: [
-            ['Used for compression of similar values in arrays by specifing the change from the previous item.'],
+            ['Used for compression of similar values in arrays by specifying the change from the previous item.'],
         ],
         examples: [
             { description: 'Array with values (100, 102)', dbuf: root(type_array(type_choice(r.parse_varint, type_map(r.delta, r.parse_varint))), array(choice(bit_val(0, 1), 100), choice(bit_val(1, 1), map(2)))), unpack: [100, 102] },
@@ -504,7 +504,7 @@ export const registry: { [key: number]: { paragraphs: Paragraph[], parseRules?: 
     },
     [r.delta_double]: {
         paragraphs: [
-            ['Used for compression of similar values in arrays by specifing the change of the delta from the previous item.'],
+            ['Used for compression of similar values in arrays by specifying the change of the delta from the previous item.'],
         ],
         examples: [
             { description: 'Array with values (100, 210, 320)', dbuf: root(type_array(type_choice(r.parse_varint, type_map(r.delta_double, r.parse_varint))), array(choice(bit_val(0, 1), 100), choice(bit_val(1, 1), map(10)), choice(bit_val(1, 1), map(0)))), unpack: [100, 210, 320] },
@@ -540,8 +540,8 @@ export const registry: { [key: number]: { paragraphs: Paragraph[], parseRules?: 
     },
     [r.implied_interval]: {
         paragraphs: [
-            ['Used for describing a nested entity as an interval in a singluar way instead of a start and end.'],
-            ['The boundary sementics are inclusive at the start, exclusive at the end. (E.g. 2019-01-01T00:00:00 <= [Interval of year 2019] < 2020-01-01T00:00:00)']
+            ['Used for describing a nested entity as an interval in a singular way instead of a start and end.'],
+            ['The boundary semantics are inclusive at the start, exclusive at the end. (E.g. 2019-01-01T00:00:00 <= [Interval of year 2019] < 2020-01-01T00:00:00)']
         ],
         examples: [
             { description: 'Interval from 2 to 3 seconds after the start of a minute', dbuf: root(type_map(r.implied_interval, type_map(r.second, r.parse_varint)), map(map(2))), unpack: { [getReg(r.implied_interval)]: { [getReg(r.second)]: 2 } } },
@@ -742,7 +742,7 @@ export const registry: { [key: number]: { paragraphs: Paragraph[], parseRules?: 
         paragraphs: [
             ['Describes a data format.'],
             ['When used in a map with ', { rid: r.value }, ' describes the format of that value.'],
-            ['If the format value is a fixed bit width unsigned integer or an array of fixed bit width unsigned integers, the bits are interpreted as the type component of a distinct DBUF stream. Any associated ', { rid: r.value }, ' is interpeted as the data component of a DBUF stream.'],
+            ['If the format value is a fixed bit width unsigned integer or an array of fixed bit width unsigned integers, the bits are interpreted as the type component of a distinct DBUF stream. Any associated ', { rid: r.value }, ' is interpreted as the data component of a DBUF stream.'],
             ['If the format value is the ', { rid: r.format }, ' symbol, the format is a complete DBUF stream.'],
         ],
         examples: [
@@ -805,7 +805,7 @@ export const registry: { [key: number]: { paragraphs: Paragraph[], parseRules?: 
             ['When used in a map with ', { rid: r.value }, ' the unpacked value is a concatenation of the bytes of the previous value in the array minus the number of bytes specified by the delta and value'],
         ],
         examples: [
-            { description: 'Array of strings with partial shared prefixes', dbuf: root(type_array(type_map(r.prefix_delta, r.value, r.parse_varint, r.parse_text)), array(map(0, string('abcd')), map(1, string('efgh')), map(5, string('ijk')))), unpack: ['abcd', 'abcefgh', 'abijk'] },
+            { description: 'Array of strings with partial shared prefixes', dbuf: root(type_array(type_map(r.prefix_delta, r.value, r.parse_varint, r.parse_text)), array(map(0, string('abcd')), map(1, string('_fun')), map(5, string('-ijk')))), unpack: ['abcd', 'abc_fun', 'ab-ijk'] },
         ]
     },
     // [r.preamble_max_size_exceeded]: {
@@ -867,7 +867,7 @@ export const registry: { [key: number]: { paragraphs: Paragraph[], parseRules?: 
     // },
     // [r.field_order_not_accepted]: {
     //     paragraphs: [
-    //         ['Symbol for validation errors caused by fields appearing out of order according to some specication.'],
+    //         ['Symbol for validation errors caused by fields appearing out of order according to some specification.'],
     //     ],
     //     examples: [
     //         { description: 'Error stating the position of the operation field is not accepted', dbuf: root(type_map(r.error, r.data_path, r.field_order_not_accepted, type_array(r.parse_type_data)), map(array(parse_type_data(val(r.operation, true))))), unpack: { [getReg(r.error)]: getReg(r.field_order_not_accepted), [getReg(r.data_path)]: [getReg(r.operation)] } },
@@ -909,11 +909,11 @@ export const codec: Doc = {
         {
             title: 'Optional Prefixes', heading: 2, id: [2], paragraphs: [
                 ['The first 4 bytes of a stream may contain the magic number 0x' + magicNumberPrefix.toString(16).toUpperCase() + '. This value is unique among publicly known magic numbers and will not collide with any valid unicode encoding. ',
-                    'It is also the same as two consecutive instances of the most significant bit encoding of ', { rid: r.magic_number }, ' so it will not collide with any valid DBUF data. Any other occurences of ',
+                    'It is also the same as two consecutive instances of the most significant bit encoding of ', { rid: r.magic_number }, ' so it will not collide with any valid DBUF data. Any other occurrences of ',
                 { rid: r.magic_number }, ' are treated as a normal symbol without special semantics.'],
                 ['The first byte (or fifth byte if the 4 byte magic number was present) may contain the value 0x' + littleEndianPrefix.toString(16).toUpperCase() + '. The presence of this value indicates a bit order of least significant bit first.',
                 ' The absence of this value indicates a bit order of most significant bit first. 0x' + littleEndianPrefix.toString(16).toUpperCase() + ' is the most significant bit encoding of ', { rid: r.little_endian_marker },
-                    ' so it will not collide with any valid DBUF data. Any other occurences of ', { rid: r.little_endian_marker }, ' are treated as a normal symbol without special semantics.']
+                    ' so it will not collide with any valid DBUF data. Any other occurrences of ', { rid: r.little_endian_marker }, ' are treated as a normal symbol without special semantics.']
             ]
         },
         {
