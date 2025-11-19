@@ -259,7 +259,7 @@ export const collapseNode = (x: Node, st: ParseState) => {
                 case NodeType.type_choice:
                 case NodeType.type_optional:
                 case NodeType.type_choice_shared: {
-                    const ops = t.choiceArray ? t.children[0].children[1].children.map(x => resolveParseOp(x)).concat(t.children.slice(1).map(x => resolveParseOp(x))) : t.children.map(x => resolveParseOp(x))
+                    const ops = t.choiceArray ? t.children[0].children.map(x => resolveParseOp(x)).concat(t.children[1].children[1].children.map(x => resolveParseOp(x))) : t.children.map(x => resolveParseOp(x))
                     if (t.type == NodeType.type_optional) {
                         ops.unshift({ type: ParseMode.none })
                     }
@@ -292,6 +292,11 @@ export const collapseNode = (x: Node, st: ParseState) => {
             }
             else if (t.type == NodeType.map) {
                 t.op = t.ops[t.children.length]
+                break
+            }
+            else if (t.choiceArray) {
+                pushNode({ type: NodeType.parse_type_data, registry: r.parse_type_data_immediate, needed: 2, children: [], op: { type: ParseMode.any } }, st)
+                pushNode({ type: NodeType.type_array, registry: r.type_array, needed: 1, children: [], op: { type: ParseMode.any }, arrayOffset: 1 }, st)
                 break
             }
             else {
@@ -485,9 +490,8 @@ export const parseCore = (st: ParseState) => {
                 case NodeType.type_choice:
                 case NodeType.type_choice_shared: {
                     if (top.choiceArray) {
-                        top.needed = s + 1
-                        pushNode({ type: NodeType.parse_type_data, registry: r.parse_type_data_immediate, needed: 2, children: [], op: { type: ParseMode.any } }, st)
-                        pushNode({ type: NodeType.type_array, registry: r.type_array, needed: 1, children: [], op: { type: ParseMode.any }, arrayOffset: 1 }, st)
+                        top.needed = 2
+                        pushNode({ type: NodeType.array, needed: s, children: [], op: { type: ParseMode.any } }, st)
                     }
                     else {
                         if (s) {

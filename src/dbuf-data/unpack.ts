@@ -275,6 +275,7 @@ export const unpack = <T extends ArrayBufferLike = ArrayBufferLike>(n: Node<T>, 
     let lastNode: NodeIndex<T>
     while (state.nodeStack.length) {
         const top = state.nodeStack[state.nodeStack.length - 1]
+        const topParent = state.nodeStack[state.nodeStack.length - 2]
         const mo = state.modeStack[state.modeStack.length - 1]
         const ty = mo?.typeStack[mo?.typeStack.length - 1]
         const ob = mo?.objectStack[mo.objectStack.length - 1]
@@ -329,7 +330,7 @@ export const unpack = <T extends ArrayBufferLike = ArrayBufferLike>(n: Node<T>, 
                     const o = []
                     mo.objectStack.push(o)
                     if (top.node.children?.length) {
-                        if (top.node.type != NodeType.chunk) {
+                        if (top.node.type != NodeType.chunk && (!topParent || !topParent.node.choiceArray)) {
                             mo.typeStack.push({ node: ty.node.children[0] })
                         }
                     }
@@ -348,18 +349,21 @@ export const unpack = <T extends ArrayBufferLike = ArrayBufferLike>(n: Node<T>, 
                     state.nodeStack.pop()
                     const index = top.node.children[0].val
                     if (ty.node.choiceArray) {
-                        const choiceArrayLength = ty.node.children[0].children[1].children.length
-                        if (index < choiceArrayLength) {
-                            state.nodeStack.push({ node: ty.node.children[0].children[1].children[index] })
-                            mo.typeStack.push({ node: ty.node.children[0].children[0].children[0] })
-                        }
-                        else if (top.node.children?.length == 2) {
-                            top.itemIndex = 1
-                            state.nodeStack.push({ node: top.node.children[1] })
-                            mo.typeStack.push({ node: ty.node.children[index - choiceArrayLength + 1] })
+                        const choicesLength = ty.node.children[0].children.length
+
+                        if (index < choicesLength) {
+                            if (top.node.children?.length == 2) {
+                                top.itemIndex = 1
+                                state.nodeStack.push({ node: top.node.children[1] })
+                                mo.typeStack.push({ node: ty.node.children[0].children[index] })
+                            }
+                            else {
+                                assignPropNode(ob, ty.node.children[0].children[index], state)
+                            }
                         }
                         else {
-                            assignPropNode(ob, ty.node.children[index - choiceArrayLength + 1], state)
+                            state.nodeStack.push({ node: ty.node.children[1].children[1].children[index - choicesLength] })
+                            mo.typeStack.push({ node: ty.node.children[1].children[0].children[0] })
                         }
                     }
                     else if (top.node.children?.length == 2) {

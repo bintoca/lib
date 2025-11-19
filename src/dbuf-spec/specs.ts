@@ -111,7 +111,7 @@ export const registry: { [key: number]: { paragraphs: Paragraph[], parseRules?: 
         examples: [
             { description: 'Array of integers with different sizes', dbuf: root(type_array(type_choice(parse_bit_size(3), parse_bit_size(16))), array(choice(bit_val(0, 1), bit_val(5, 3)), choice(bit_val(1, 1), bit_val(20000, 16)))), unpack: [5, 20000] },
             { description: 'Index greater than the number of options', dbuf: root(type_array(type_choice(r.value, r.parse_varint, parse_bit_size(7))), array(choice(bit_val(3, 2), bit_val(120, 7)))), unpack: [120] },
-            { description: 'Array of unsigned integers with options sharing a common type (x equals zero pattern in above specs)', dbuf: root(type_array(type_choice_array(r.parse_varint, [4, 5, 6], r.describe_no_value)), array(choice(bit_val(1, 2)))), unpack: [5] }
+            { description: 'Array of unsigned integers with options sharing a common type (x equals zero pattern in above specs)', dbuf: root(type_array(type_choice_array(r.parse_varint, [4, 5, 6], r.describe_no_value)), array(choice(bit_val(2, 2)))), unpack: [5] }
         ]
     },
     [r.type_optional]: {
@@ -248,7 +248,7 @@ export const registry: { [key: number]: { paragraphs: Paragraph[], parseRules?: 
             { description: 'Index greater than the number of options', dbuf: root(type_array(type_choice_shared(r.value, r.parse_varint, parse_bit_size(7))), array(choice_shared(bit_val(3, 2), bit_val(120, 7)))), unpack: [120] },
             { description: 'Recursive array', dbuf: root(type_choice_shared(type_array(type_choice(r.parse_varint, type_choice_select(0)))), choice_shared(bit_val(0, 0), array(choice(bit_val(1, 1), choice_select(array(choice(bit_val(0, 1), 5))))))), unpack: [[5]] },
             { description: 'Recursive map', dbuf: root(type_choice_shared(type_map(r.value, type_choice(type_choice_select(0), type_choice_select(1))), r.parse_varint), choice_shared(bit_val(0, 1), map(choice(bit_val(0, 1), choice_select(map(choice(bit_val(1, 1), choice_select(6)))))))), unpack: { [getReg(r.value)]: { [getReg(r.value)]: 6 } } },
-            { description: 'Array of unsigned integer with options sharing a common type', dbuf: root(type_array(type_choice_shared_array(r.parse_varint, [4, 5, 6], r.describe_no_value)), array(choice_shared(bit_val(1, 2)))), unpack: [5] },
+            { description: 'Array of unsigned integer with options sharing a common type', dbuf: root(type_array(type_choice_shared_array(r.parse_varint, [4, 5, 6], r.describe_no_value)), array(choice_shared(bit_val(2, 2)))), unpack: [5] },
         ]
     },
     [r.type_choice_select]: {
