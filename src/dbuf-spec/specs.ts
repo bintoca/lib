@@ -101,16 +101,16 @@ export const registry: { [key: number]: { paragraphs: Paragraph[], parseRules?: 
         paragraphs: [
             ['Defines a list of options that can be selected by an index.'],
             ['Consumes one varint "x"'],
-            ['If x equals zero, consume one varint "y", then consume one symbol specifying the type of options to follow, then consume one varint specifying the number of options to follow offset by one, then consume the options, then consume y symbols as additional options.'],
+            ['If x equals zero, consume one varint "y", then consume y symbols as initial options, then consume one symbol "t" specifying the type of options to follow, then consume one varint "z", then consume z plus one of type t as the additional options.'],
             ['If x is not zero, consume x plus one symbols as the options.'],
             ['The values for number of options use offsets so that the minimum number of options is one. This is to avoid ambiguities in the meaning of a choice with zero options.'],
             ['When encountered in the parsing of a data component: Consumes the least number of bits that can represent the number of options. ',
-                'The value consumed is a zero based index into the options. If the index is greater than the index of the last option, the last option is selected.']
+                'The value consumed is a zero based index into the options. If the index is greater than the index of the last option, the selection is interpreted as ', { rid: r.nonexistent }]
         ],
         parseRules: true,
         examples: [
             { description: 'Array of integers with different sizes', dbuf: root(type_array(type_choice(parse_bit_size(3), parse_bit_size(16))), array(choice(bit_val(0, 1), bit_val(5, 3)), choice(bit_val(1, 1), bit_val(20000, 16)))), unpack: [5, 20000] },
-            { description: 'Index greater than the number of options', dbuf: root(type_array(type_choice(r.value, r.parse_varint, parse_bit_size(7))), array(choice(bit_val(3, 2), bit_val(120, 7)))), unpack: [120] },
+            //{ description: 'Index greater than the number of options', dbuf: root(type_array(type_choice(r.value, r.parse_varint, parse_bit_size(7))), array(choice(bit_val(3, 2), bit_val(120, 7)))), unpack: [120] },
             { description: 'Array of unsigned integers with options sharing a common type (x equals zero pattern in above specs)', dbuf: root(type_array(type_choice_array(r.parse_varint, [4, 5, 6], r.describe_no_value)), array(choice(bit_val(2, 2)))), unpack: [5] }
         ]
     },
@@ -236,16 +236,16 @@ export const registry: { [key: number]: { paragraphs: Paragraph[], parseRules?: 
             ['Defines a list of options that can be selected by an index.'],
             ['Functions nearly identically to ', { rid: r.type_choice }, ' except the options can interact with ', { rid: r.type_choice_select }, ' to create recursive structures.'],
             ['Consumes one varint "x"'],
-            ['If x equals zero, consume one varint "y", then consume one symbol specifying the type of options to follow, then consume one varint specifying the number of options to follow offset by one, then consume the options, then consume y symbols as additional options.'],
+            ['If x equals zero, consume one varint "y", then consume y symbols as initial options, then consume one symbol "t" specifying the type of options to follow, then consume one varint "z", then consume z plus one of type t as the additional options.'],
             ['If x is not zero, consume x symbols as the options.'],
             ['The values for number of options use offsets so that the minimum number of options is one. This is to avoid ambiguities in the meaning of a choice with zero options.'],
             ['When encountered in the parsing of a data component: If number of options equals one, consumes zero bits and selects the single option, otherwise consumes the least number of bits that can represent the number of options. ',
-                'The value consumed is a zero based index into the options. If the index is greater than the index of the last option, the last option is selected. ',
-                'Then the list is pushed on to the shared choice stack, which is subsequently popped after the data component rules of the selected option have been executed.']
+                'The value consumed is a zero based index into the options. If the index is greater than the index of the last option, the selection is interpreted as ', { rid: r.nonexistent },
+                ' Then the list is pushed on to the shared choice stack, which is subsequently popped after the data component rules of the selected option have been executed.']
         ],
         parseRules: true,
         examples: [
-            { description: 'Index greater than the number of options', dbuf: root(type_array(type_choice_shared(r.value, r.parse_varint, parse_bit_size(7))), array(choice_shared(bit_val(3, 2), bit_val(120, 7)))), unpack: [120] },
+            //{ description: 'Index greater than the number of options', dbuf: root(type_array(type_choice_shared(r.value, r.parse_varint, parse_bit_size(7))), array(choice_shared(bit_val(3, 2), bit_val(120, 7)))), unpack: [120] },
             { description: 'Recursive array', dbuf: root(type_choice_shared(type_array(type_choice(r.parse_varint, type_choice_select(0)))), choice_shared(bit_val(0, 0), array(choice(bit_val(1, 1), choice_select(array(choice(bit_val(0, 1), 5))))))), unpack: [[5]] },
             { description: 'Recursive map', dbuf: root(type_choice_shared(type_map(r.value, type_choice(type_choice_select(0), type_choice_select(1))), r.parse_varint), choice_shared(bit_val(0, 1), map(choice(bit_val(0, 1), choice_select(map(choice(bit_val(1, 1), choice_select(6)))))))), unpack: { [getReg(r.value)]: { [getReg(r.value)]: 6 } } },
             { description: 'Array of unsigned integer with options sharing a common type', dbuf: root(type_array(type_choice_shared_array(r.parse_varint, [4, 5, 6], r.describe_no_value)), array(choice_shared(bit_val(2, 2)))), unpack: [5] },

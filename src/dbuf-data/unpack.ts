@@ -350,7 +350,6 @@ export const unpack = <T extends ArrayBufferLike = ArrayBufferLike>(n: Node<T>, 
                     const index = top.node.children[0].val
                     if (ty.node.choiceArray) {
                         const choicesLength = ty.node.children[0].children.length
-
                         if (index < choicesLength) {
                             if (top.node.children?.length == 2) {
                                 top.itemIndex = 1
@@ -362,8 +361,17 @@ export const unpack = <T extends ArrayBufferLike = ArrayBufferLike>(n: Node<T>, 
                             }
                         }
                         else {
-                            state.nodeStack.push({ node: ty.node.children[1].children[1].children[index - choicesLength] })
-                            mo.typeStack.push({ node: ty.node.children[1].children[0].children[0] })
+                            const choiceArray = ty.node.children[1].children[1]
+                            const indexChoice = index - choicesLength
+                            if (indexChoice < choiceArray.children.length) {
+                                state.nodeStack.push({ node: choiceArray.children[indexChoice] })
+                                mo.typeStack.push({ node: ty.node.children[1].children[0].children[0] })
+                            }
+                            else {
+                                const arraySize = choiceArray.arraySize || 0
+                                const arrayNoneValue = indexChoice < arraySize ? ty.node.children[1].children[0].children[0] : val(r.nonexistent, true)
+                                assignPropNode(ob, arrayNoneValue, state)
+                            }
                         }
                     }
                     else if (top.node.children?.length == 2) {

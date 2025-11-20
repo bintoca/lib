@@ -260,10 +260,11 @@ export const collapseNode = (x: Node, st: ParseState) => {
                 case NodeType.type_optional:
                 case NodeType.type_choice_shared: {
                     const ops = t.choiceArray ? t.children[0].children.map(x => resolveParseOp(x)).concat(t.children[1].children[1].children.map(x => resolveParseOp(x))) : t.children.map(x => resolveParseOp(x))
+                    const extraArraySize = t.choiceArray ? t.children[1].children[1].arraySize || 0 : 0
                     if (t.type == NodeType.type_optional) {
                         ops.unshift({ type: ParseMode.none })
                     }
-                    t.op = { type: ParseMode.choice, ops, bitSize: (32 - Math.clz32(ops.length - 1)), shared: t.type == NodeType.type_choice_shared }
+                    t.op = { type: ParseMode.choice, ops, bitSize: (32 - Math.clz32(ops.length + extraArraySize - 1)), shared: t.type == NodeType.type_choice_shared }
                     break
                 }
                 case NodeType.type_map: {
@@ -377,9 +378,8 @@ export const parseCore = (st: ParseState) => {
             if (op.shared) {
                 st.sharedChoiceStack.push(op)
             }
-            const index = op.ops.length <= c ? op.ops.length - 1 : c
-            const selectedOp = op.ops[index]
-            if (selectedOp.type == ParseMode.none) {
+            const selectedOp = op.ops[c]
+            if (!selectedOp || selectedOp.type == ParseMode.none) {
                 collapseNode({ type: NodeType.choice, needed: 1, children: [bit_val(c, op.bitSize)], op: selectedOp, choiceShared: op.shared }, st)
             }
             else {
