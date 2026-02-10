@@ -104,6 +104,15 @@ export const refineObject = (ob: UnpackType[], tempDV: DataView, stack: RefineSt
             setNumberToDV(tempDV, alignNumber(getUnsignedIntVal(v), v[bitSizeSymbol], 64))
             return tempDV.getFloat64(0)
         }
+        else if (k === sym_exponent_base2 && isUnsignedInt(v)) {
+            let n = BigInt(1023 - 2) << 52n
+            n = n | (BigInt(v[valSymbol]) << BigInt(52 - v[bitSizeSymbol]))
+            tempDV.setBigUint64(0, n)
+            return tempDV.getFloat64(0)
+        }
+        else if (k === sym_exponent_base10 && isUnsignedInt(v)) {
+            return Number(getUnsignedIntVal(v)) * (10 ** (-2))
+        }
         else if (k === sym_text && Array.isArray(v) && v.every(x => isUnsignedInt2(x) && getUnsignedIntVal(x) < 256)) {
             return new TextDecoder().decode(new Uint8Array([...v.map(x => getUnsignedIntVal(x))]))
         }
@@ -168,11 +177,11 @@ export const refineObject = (ob: UnpackType[], tempDV: DataView, stack: RefineSt
         }
     }
     else {
+        const r_sign = getValueFromUnrefinedMap(ob, sym_sign)
+        const hasSign = r_sign !== undefined ? 2 : 0
+        const signFlag = hasSign ? refineValues(r_sign) ? true : false : false
         const r_value = getValueFromUnrefinedMap(ob, sym_value)
         if (r_value !== undefined) {
-            const r_sign = getValueFromUnrefinedMap(ob, sym_sign)
-            const hasSign = r_sign !== undefined ? 2 : 0
-            const signFlag = hasSign ? refineValues(r_sign) ? true : false : false
             if (hasSign && ob.length == 5) {
                 if (isUnsignedInt(r_value)) {
                     return signFlag ? -r_value[valSymbol] : r_value[valSymbol]
@@ -183,7 +192,7 @@ export const refineObject = (ob: UnpackType[], tempDV: DataView, stack: RefineSt
                 const ex = refineValues(r_exp2)
                 if (isInt(ex) && ex < 1024 && ex > -1023 && isUnsignedInt(r_value) && r_value[bitSizeSymbol] < 53 && ob.length == 5 + hasSign) {
                     let n = (signFlag ? 1n : 0n) << 11n
-                    n = (n | BigInt(ex + 1023)) << 52n
+                    n = (n | BigInt(ex + 1023 - 7)) << 52n
                     n = n | (BigInt(r_value[valSymbol]) << BigInt(52 - r_value[bitSizeSymbol]))
                     tempDV.setBigUint64(0, n)
                     return tempDV.getFloat64(0)
@@ -196,7 +205,7 @@ export const refineObject = (ob: UnpackType[], tempDV: DataView, stack: RefineSt
             if (r_exp10 !== undefined) {
                 const ex = refineValues(r_exp10)
                 if (isInt(ex) && ex < 10 && ex > -10 && isUnsignedInt(r_value) && r_value[bitSizeSymbol] < 53 && ob.length == 5 + hasSign) {
-                    return Number(r_value[valSymbol]) * (10 ** ex) * (signFlag ? -1 : 1)
+                    return Number(r_value[valSymbol]) * (10 ** (ex - 7)) * (signFlag ? -1 : 1)
                 }
                 else {
                     return assembleMap(ob)
@@ -241,7 +250,6 @@ export const refineObject = (ob: UnpackType[], tempDV: DataView, stack: RefineSt
                     return assembleMap(ob)
                 }
             }
-
         }
     }
 }

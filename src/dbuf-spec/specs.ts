@@ -435,19 +435,23 @@ export const registry: { [key: number]: { paragraphs: Paragraph[], parseRules?: 
     [r.exponent_base2]: {
         paragraphs: [
             ['Used for the exponent of binary floating point numbers with arbitrary range and precision.'],
-            ['A binary floating point number is structured as a map with ', { rid: r.value }, ' representing the mantissa of the number.']
+            ['If used as the only key in a map, or structured in a map only with ', { rid: r.sign }, ' the value is interpreted with a base2 exponent of -2'],
+            ['If structured in a map with ', { rid: r.value }, ' the value is the base2 exponent offset by 7'],
         ],
         examples: [
-            { description: 'Binary floating point with value 2.125', dbuf: root(type_map(r.exponent_base2, r.value, type_map(r.integer_signed, r.parse_varint), parse_bit_size(5)), map(map(0b001), bit_val(0b00010, 5))), unpack: 2.125 }
+            { description: 'Binary floating point with value 0.375 with single key', dbuf: root(type_map(r.exponent_base2, parse_bit_size(5)), map(bit_val(0b10000, 5))), unpack: 0.375 },
+            { description: 'Binary floating point with value 2.125 with two keys', dbuf: root(type_map(r.exponent_base2, r.value, r.parse_varint, parse_bit_size(5)), map(8, bit_val(0b00010, 5))), unpack: 2.125 }
         ]
     },
     [r.exponent_base10]: {
         paragraphs: [
             ['Used for the exponent of decimal floating point numbers with arbitrary range and precision.'],
-            ['A decimal floating point number is structured as a map with ', { rid: r.value }, ' representing the mantissa of the number.']
+            ['If used as the only key in a map, or structured in a map only with ', { rid: r.sign }, ' the value is interpreted with a base10 exponent of -2'],
+            ['If structured in a map with ', { rid: r.value }, ' the value is the base10 exponent offset by 7'],
         ],
         examples: [
-            { description: 'Decimal floating point with value 1.01', dbuf: root(type_map(r.exponent_base10, r.value, type_map(r.integer_signed, r.parse_varint), parse_bit_size(8)), map(map(0b110), bit_val(101, 8))), unpack: 1.01 }
+            { description: 'Decimal floating point with value 1.01 with single key', dbuf: root(type_map(r.exponent_base10, parse_bit_size(8)), map(bit_val(101, 8))), unpack: 1.01 },
+            { description: 'Decimal floating point with value 1.01 with two keys', dbuf: root(type_map(r.exponent_base10, r.value, r.parse_varint, parse_bit_size(8)), map(5, bit_val(101, 8))), unpack: 1.01 }
         ]
     },
     [r.sign]: {
