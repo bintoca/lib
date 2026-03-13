@@ -45,7 +45,6 @@ export const enum r {
     epoch_seconds_continuous,
     registry,
     error,
-    copyable,
     copy_length,
     copy_distance,
     flatten_array,

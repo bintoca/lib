@@ -51,24 +51,6 @@ for (let k in r) {
 }
 const getReg = (r: number) => registryEnum[r]
 export const registry: { [key: number]: { paragraphs: Paragraph[], parseRules?: boolean, examples: { description: string, dbuf: Node, unpack?}[] } } = {
-    [r.nonexistent]: {
-        paragraphs: [
-            ['Used as a placeholder for sparse arrays and optional map keys.'],
-            ['When used as a value in a key/value pair of a ', { rid: r.type_map }, ', it is equivalent to the key being absent from that entity. If an empty value that preserves the key\'s presence is desired, use ', { rid: r.describe_no_value }, ' instead.']
-        ],
-        examples: [
-            { description: 'Sparse array', dbuf: root(type_array(type_choice(r.nonexistent, r.parse_varint)), array(choice(bit_val(0, 1)), choice(bit_val(1, 1), 5))), unpack: [, 5] },
-            { description: 'Map with optional key', dbuf: root(type_map(r.value, type_choice(r.nonexistent, r.true)), map(choice(bit_val(0, 1)))), unpack: {} }
-        ]
-    },
-    [r.true]: {
-        paragraphs: [
-            ['Boolean true value.'],
-        ],
-        examples: [
-            { description: 'Map with optional key', dbuf: root(type_map(r.value, type_choice(r.nonexistent, r.true)), map(choice(bit_val(1, 1)))), unpack: { [getReg(r.value)]: true } }
-        ]
-    },
     [r.type_map]: {
         paragraphs: [
             ['Defines a collection of key/value pairs.'],
@@ -162,36 +144,14 @@ export const registry: { [key: number]: { paragraphs: Paragraph[], parseRules?: 
             { description: 'String of text', dbuf: root(r.parse_text, string('hello world')), unpack: 'hello world' },
         ]
     },
-    [r.text]: {
+    [r.parse_type_data_immediate]: {
         paragraphs: [
-            ['Used to describe a nested entity as text.'],
-            ['Semantically equivalent to ', { rid: r.parse_text }, ' but provides more flexibility in encoding options.'],
-            ['If the nested entity is an array of non-negative integers less than 256, it is interpreted as a string of UTF8 bytes.'],
-            ['If the nested entity is a single non-negative integer, it is interpreted as a Unicode code point.'],
-        ],
-        examples: [
-            { description: 'Text as array of integers corresponding to UTF8 bytes', dbuf: root(type_map(r.text, type_array(r.parse_varint)), map(array(81, 82, 83))), unpack: 'QRS' },
-            { description: 'Single integer corresponding to unicode code point', dbuf: root(type_map(r.text, r.parse_varint), map(0x1f601)), unpack: '😁' },
-        ]
-    },
-    [r.parse_bytes]: {
-        paragraphs: [
-            ['Symbol for parsing binary data as a sequence of bytes.'],
-            ['When encountered in the parsing of a data component: Consumes one varint specifying the length in bytes, then the number of bytes starting from the next 8-bit alignment.'],
+            ['Defines a parsing context that begins with a type component followed by a data component conforming to that type. The parsing context begins immediately after this symbol.'],
+            ['The semantics are identical to the root structure of a DBUF stream.'],
         ],
         parseRules: true,
         examples: [
-            { description: '3 bytes', dbuf: root(r.parse_bytes, bytes(new Uint8Array([1, 2, 3]))), unpack: new Uint8Array([1, 2, 3]) },
-        ]
-    },
-    [r.bytes]: {
-        paragraphs: [
-            ['Used to describe a nested entity as bytes.'],
-            ['Semantically equivalent to ', { rid: r.parse_bytes }, ' but provides more flexibility in encoding options.'],
-            ['If the nested entity is an array of non-negative integers less than 256, it is interpreted as a sequence bytes.'],
-        ],
-        examples: [
-            { description: 'Bytes as array of integers', dbuf: root(type_map(r.bytes, type_array(r.parse_varint)), map(array(81, 82, 83))), unpack: new Uint8Array([81, 82, 83]) },
+            { description: 'Map with its second value defined in the type component', dbuf: root(type_map(r.denominator, r.value, r.parse_varint, parse_type_data_immediate(r.parse_varint, 4)), map(3)), unpack: { [getReg(r.denominator)]: 3, [getReg(r.value)]: 4 } },
         ]
     },
     [r.type_array_bit]: {
@@ -266,16 +226,6 @@ export const registry: { [key: number]: { paragraphs: Paragraph[], parseRules?: 
             { description: 'Missing shared', dbuf: root(type_map(r.denominator, type_choice_select(1)), map(choice_select())), unpack: {} },
         ]
     },
-    [r.parse_type_data_immediate]: {
-        paragraphs: [
-            ['Defines a parsing context that begins with a type component followed by a data component conforming to that type. The parsing context begins immediately after this symbol.'],
-            ['The semantics are identical to the root structure of a DBUF stream.'],
-        ],
-        parseRules: true,
-        examples: [
-            { description: 'Map with its second value defined in the type component', dbuf: root(type_map(r.denominator, r.value, r.parse_varint, parse_type_data_immediate(r.parse_varint, 4)), map(3)), unpack: { [getReg(r.denominator)]: 3, [getReg(r.value)]: 4 } },
-        ]
-    },
     [r.parse_align]: {
         paragraphs: [
             ['Defines an instruction to align the parser to a multiple of bits.'],
@@ -298,6 +248,16 @@ export const registry: { [key: number]: { paragraphs: Paragraph[], parseRules?: 
             { description: 'Map with type information not known until the data component', dbuf: root(type_map(r.denominator, r.parse_type_data), map(parse_type_data(r.parse_varint, 3))), unpack: { [getReg(r.denominator)]: 3 } },
         ]
     },
+    [r.parse_bytes]: {
+        paragraphs: [
+            ['Symbol for parsing binary data as a sequence of bytes.'],
+            ['When encountered in the parsing of a data component: Consumes one varint specifying the length in bytes, then the number of bytes starting from the next 8-bit alignment.'],
+        ],
+        parseRules: true,
+        examples: [
+            { description: '3 bytes', dbuf: root(r.parse_bytes, bytes(new Uint8Array([1, 2, 3]))), unpack: new Uint8Array([1, 2, 3]) },
+        ]
+    },
     [r.little_endian_marker]: {
         paragraphs: [
             ['Placeholder symbol to avoid collisions with the bit order optional prefix at the beginning of a stream.'],
@@ -305,6 +265,46 @@ export const registry: { [key: number]: { paragraphs: Paragraph[], parseRules?: 
         examples: [
             { description: 'Stream with prefix', dbuf: root(type_map(r.denominator, r.parse_varint), map(3), true), unpack: { [getReg(r.denominator)]: 3 } },
             { description: 'Normal symbol usage', dbuf: root(type_map(r.denominator, r.little_endian_marker), map()), unpack: { [getReg(r.denominator)]: getReg(r.little_endian_marker) } },
+        ]
+    },
+    [r.nonexistent]: {
+        paragraphs: [
+            ['Used as a placeholder for sparse arrays and optional map keys.'],
+            ['When used as a value in a key/value pair of a ', { rid: r.type_map }, ', it is equivalent to the key being absent from that entity. If an empty value that preserves the key\'s presence is desired, use ', { rid: r.describe_no_value }, ' instead.']
+        ],
+        examples: [
+            { description: 'Sparse array', dbuf: root(type_array(type_choice(r.nonexistent, r.parse_varint)), array(choice(bit_val(0, 1)), choice(bit_val(1, 1), 5))), unpack: [, 5] },
+            { description: 'Map with optional key', dbuf: root(type_map(r.value, type_choice(r.nonexistent, r.true)), map(choice(bit_val(0, 1)))), unpack: {} }
+        ]
+    },
+    [r.true]: {
+        paragraphs: [
+            ['Boolean true value.'],
+        ],
+        examples: [
+            { description: 'Map with optional key', dbuf: root(type_map(r.value, type_choice(r.nonexistent, r.true)), map(choice(bit_val(1, 1)))), unpack: { [getReg(r.value)]: true } }
+        ]
+    },
+    [r.text]: {
+        paragraphs: [
+            ['Used to describe a nested entity as text.'],
+            ['Semantically equivalent to ', { rid: r.parse_text }, ' but provides more flexibility in encoding options.'],
+            ['If the nested entity is an array of non-negative integers less than 256, it is interpreted as a string of UTF8 bytes.'],
+            ['If the nested entity is a single non-negative integer, it is interpreted as a Unicode code point.'],
+        ],
+        examples: [
+            { description: 'Text as array of integers corresponding to UTF8 bytes', dbuf: root(type_map(r.text, type_array(r.parse_varint)), map(array(81, 82, 83))), unpack: 'QRS' },
+            { description: 'Single integer corresponding to unicode code point', dbuf: root(type_map(r.text, r.parse_varint), map(0x1f601)), unpack: '😁' },
+        ]
+    },
+    [r.bytes]: {
+        paragraphs: [
+            ['Used to describe a nested entity as bytes.'],
+            ['Semantically equivalent to ', { rid: r.parse_bytes }, ' but provides more flexibility in encoding options.'],
+            ['If the nested entity is an array of non-negative integers less than 256, it is interpreted as a sequence bytes.'],
+        ],
+        examples: [
+            { description: 'Bytes as array of integers', dbuf: root(type_map(r.bytes, type_array(r.parse_varint)), map(array(81, 82, 83))), unpack: new Uint8Array([81, 82, 83]) },
         ]
     },
     [r.describe_no_value]: {
@@ -662,74 +662,43 @@ export const registry: { [key: number]: { paragraphs: Paragraph[], parseRules?: 
             { description: 'Array of numbers with a size of 2 bits in one section and a size of 16 bits in another section', dbuf: root(type_array(type_map(r.flatten_array, type_choice(type_array(parse_bit_size(2)), type_array(parse_bit_size(16))))), array(map(choice(bit_val(0, 1), array(bit_val(1, 2), bit_val(2, 2)))), map(choice(bit_val(1, 1), array(bit_val(10000, 16), bit_val(20000, 16)))))), unpack: [1, 2, 10000, 20000] },
         ]
     },
-    [r.copyable]: {
-        paragraphs: [
-            ['Signifies a nested entity may be repeated later in the DBUF stream.'],
-            ['The sequence of copyable entities form a logical buffer that can be referenced by ', { rid: r.copy_distance }, ' and ' + { rid: r.copy_length }],
-        ],
-        examples: [
-            {
-                description: 'Copying 3 values, skipping non-copyable values.', dbuf: root(type_array(type_choice(r.parse_varint, type_map(r.copyable, r.parse_varint), type_map(r.copy_length, r.parse_varint))),
-                    array(choice(bit_val(1, 2), map(2)), choice(bit_val(1, 2), map(3)), choice(bit_val(1, 2), map(4)), choice(bit_val(0, 2), 5), choice(bit_val(2, 2), map(2)))),
-                unpack: [2, 3, 4, 5, 4, 4, 4]
-            },
-            {
-                description: 'Copy 4 values', dbuf: root(type_array(type_choice(type_map(r.copyable, r.parse_varint), type_map(r.copy_distance, r.copy_length, r.parse_varint, r.parse_varint))),
-                    array(choice(bit_val(0, 1), map(2)), choice(bit_val(0, 1), map(3)), choice(bit_val(0, 1), map(4)), choice(bit_val(1, 1), map(1, 3)))),
-                unpack: [2, 3, 4, 3, 4, 3, 4]
-            },
-        ]
-    },
     [r.copy_length]: {
         paragraphs: [
-            ['Specifies a count of values to copy from the ', { rid: r.copyable }, ' buffer of a stream.'],
+            ['Specifies a count of values to copy from the current array.'],
             ['Nested value must be an unsigned integer.'],
             ['Count is offset by one.'],
-            ['Copying begins from the most recent', { rid: r.copyable }, ' item.'],
-            ['Copied values are also appended to the ', { rid: r.copyable }, ' buffer.'],
             ['Can be composed with ', { rid: r.copy_distance }, ' for copying a range of values.'],
         ],
         examples: [
             {
-                description: 'Copying 3 values, skipping non-copyable values.', dbuf: root(type_array(type_choice(r.parse_varint, type_map(r.copyable, r.parse_varint), type_map(r.copy_length, r.parse_varint))),
-                    array(choice(bit_val(1, 2), map(2)), choice(bit_val(1, 2), map(3)), choice(bit_val(1, 2), map(4)), choice(bit_val(0, 2), 5), choice(bit_val(2, 2), map(2)))),
-                unpack: [2, 3, 4, 5, 4, 4, 4]
-            },
-            {
-                description: 'Copy 4 values', dbuf: root(type_array(type_choice(type_map(r.copyable, r.parse_varint), type_map(r.copy_distance, r.copy_length, r.parse_varint, r.parse_varint))),
-                    array(choice(bit_val(0, 1), map(2)), choice(bit_val(0, 1), map(3)), choice(bit_val(0, 1), map(4)), choice(bit_val(1, 1), map(1, 3)))),
+                description: 'Copy 4 values', dbuf: root(type_array(type_choice(r.parse_varint, type_map(r.copy_distance, r.copy_length, r.parse_varint, r.parse_varint))),
+                    array(choice(bit_val(0, 1), 2), choice(bit_val(0, 1), 3), choice(bit_val(0, 1), 4), choice(bit_val(1, 1), map(1, 3)))),
                 unpack: [2, 3, 4, 3, 4, 3, 4]
             },
         ]
     },
     [r.copy_distance]: {
         paragraphs: [
-            ['Specifies an offset into the ', { rid: r.copyable }, ' buffer of a stream.'],
+            ['Specifies an offset into the current array'],
             ['Nested value must be an unsigned integer.'],
-            ['A value of zero refers to the most recent ', { rid: r.copyable }, ' item.'],
-            ['Copied values are also appended to the ', { rid: r.copyable }, ' buffer.'],
-            ['If offset exceeds the size of the ', { rid: r.copyable }, ' buffer, the copied value is interpreted as ', { rid: r.nonexistent }],
+            ['A value of zero refers to the most recent item.'],
+            ['If offset exceeds the size of the current array, the copied value is interpreted as ', { rid: r.nonexistent }],
             ['Can be composed with ', { rid: r.copy_length }, ' for copying a range of values.'],
         ],
         examples: [
             {
-                description: 'Copying a value at a distance of 2, skipping non-copyable values.', dbuf: root(type_array(type_choice(r.parse_varint, type_map(r.copyable, r.parse_varint), type_map(r.copy_distance, r.parse_varint))),
-                    array(choice(bit_val(1, 2), map(2)), choice(bit_val(1, 2), map(3)), choice(bit_val(1, 2), map(4)), choice(bit_val(0, 2), 5), choice(bit_val(2, 2), map(2)))),
-                unpack: [2, 3, 4, 5, 2]
-            },
-            {
-                description: 'Copying a previously copied value', dbuf: root(type_array(type_choice(type_map(r.copyable, r.parse_varint), type_map(r.copy_distance, r.parse_varint))),
-                    array(choice(bit_val(0, 1), map(2)), choice(bit_val(0, 1), map(3)), choice(bit_val(0, 1), map(4)), choice(bit_val(1, 1), map(2)), choice(bit_val(1, 1), map(0)))),
+                description: 'Copying a previously copied value', dbuf: root(type_array(type_choice(r.parse_varint, type_map(r.copy_distance, r.parse_varint))),
+                    array(choice(bit_val(0, 1), 2), choice(bit_val(0, 1), 3), choice(bit_val(0, 1), 4), choice(bit_val(1, 1), map(2)), choice(bit_val(1, 1), map(0)))),
                 unpack: [2, 3, 4, 2, 2]
             },
             {
-                description: 'Copy distance out of range', dbuf: root(type_array(type_choice(type_map(r.copyable, r.parse_varint), type_map(r.copy_distance, r.parse_varint))),
-                    array(choice(bit_val(0, 1), map(2)), choice(bit_val(0, 1), map(3)), choice(bit_val(1, 1), map(5)), choice(bit_val(0, 1), map(4)))),
+                description: 'Copy distance out of range', dbuf: root(type_array(type_choice(r.parse_varint, type_map(r.copy_distance, r.parse_varint))),
+                    array(choice(bit_val(0, 1), 2), choice(bit_val(0, 1), 3), choice(bit_val(1, 1), map(5)), choice(bit_val(0, 1), 4))),
                 unpack: [2, 3, , 4]
             },
             {
-                description: 'Copy 4 values', dbuf: root(type_array(type_choice(type_map(r.copyable, r.parse_varint), type_map(r.copy_distance, r.copy_length, r.parse_varint, r.parse_varint))),
-                    array(choice(bit_val(0, 1), map(2)), choice(bit_val(0, 1), map(3)), choice(bit_val(0, 1), map(4)), choice(bit_val(1, 1), map(1, 3)))),
+                description: 'Copy 4 values', dbuf: root(type_array(type_choice(r.parse_varint, type_map(r.copy_distance, r.copy_length, r.parse_varint, r.parse_varint))),
+                    array(choice(bit_val(0, 1), 2), choice(bit_val(0, 1), 3), choice(bit_val(0, 1), 4), choice(bit_val(1, 1), map(1, 3)))),
                 unpack: [2, 3, 4, 3, 4, 3, 4]
             },
         ]

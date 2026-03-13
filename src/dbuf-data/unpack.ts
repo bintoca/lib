@@ -4,7 +4,6 @@ import { Node, NodeType, ParseMode, val, concatBuffers } from '@bintoca/dbuf-cod
 
 const sym_nonexistent = getRegistrySymbol(r.nonexistent)
 const sym_value = getRegistrySymbol(r.value)
-const sym_copyable = getRegistrySymbol(r.copyable)
 const sym_copy_length = getRegistrySymbol(r.copy_length)
 const sym_copy_distance = getRegistrySymbol(r.copy_distance)
 const sym_flatten_array = getRegistrySymbol(r.flatten_array)
@@ -46,7 +45,7 @@ export const enum UnpackMode { type, data }
 export type UnpackNode<T extends ArrayBufferLike = ArrayBufferLike> = Node<T> & { ob?: UnpackType<T> }
 export type NodeIndex<T extends ArrayBufferLike = ArrayBufferLike> = { node: UnpackNode<T>, itemIndex?: number }
 export type ModeIndex<T extends ArrayBufferLike = ArrayBufferLike> = { mode: UnpackMode, typeStack: NodeIndex<T>[], objectStack: UnpackType<T>[][] }
-export type UnpackState<T extends ArrayBufferLike = ArrayBufferLike> = { nodeStack: NodeIndex<T>[], modeStack: ModeIndex<T>[], sharedChoiceStack: NodeIndex<T>[], copyBuffer: any[], unsafeExpand?: boolean }
+export type UnpackState<T extends ArrayBufferLike = ArrayBufferLike> = { nodeStack: NodeIndex<T>[], modeStack: ModeIndex<T>[], sharedChoiceStack: NodeIndex<T>[], unsafeExpand?: boolean }
 export type UnpackType<T extends ArrayBufferLike = ArrayBufferLike> = { [valSymbol]?: number | bigint, [bitSizeSymbol]?: number, [u8Symbol]?: Uint8Array<T>, [u8TextSymbol]?: Uint8Array<T> } | symbol | UnpackType<T>[]
 export const bitSizeSymbol = Symbol.for('bitSizeSymbol')
 export const valSymbol = Symbol.for('valSymbol')
@@ -135,16 +134,14 @@ export const getValueFromUnrefinedMap = (a: UnpackType[], key) => {
     }
 }
 export const isUnrefinedMap = (a: UnpackType): a is UnpackType[] => Array.isArray(a) && a[0] === mapMarkerSymbol
-export const copyLenDist = (state: UnpackState, dest: UnpackType[], len: number, dist: number) => {
-    const mark = state.copyBuffer.length - dist
+export const copyLenDist = (dest: UnpackType[], len: number, dist: number) => {
+    const mark = dest.length - dist
     for (let i = mark - 1; i < mark + len; i++) {
         if (i < 0) {
             dest.push(sym_nonexistent)
-            state.copyBuffer.push(sym_nonexistent)
         }
         else {
-            dest.push(state.copyBuffer[i])
-            state.copyBuffer.push(state.copyBuffer[i])
+            dest.push(dest[i])
         }
     }
 }
@@ -155,11 +152,11 @@ export const assignProp = (ob: UnpackType[], v: UnpackType, state: UnpackState) 
             case 3: {
                 const kv = v[2]
                 if (v[1] === sym_copy_length && isUnsignedInt2(kv) && state.unsafeExpand) {
-                    copyLenDist(state, ob, getUnsignedIntVal(kv), 0)
+                    copyLenDist(ob, getUnsignedIntVal(kv), 0)
                     push = false
                 }
                 else if (v[1] === sym_copy_distance && isUnsignedInt2(kv)) {
-                    copyLenDist(state, ob, 0, getUnsignedIntVal(kv))
+                    copyLenDist(ob, 0, getUnsignedIntVal(kv))
                     push = false
                 }
                 break
@@ -168,7 +165,7 @@ export const assignProp = (ob: UnpackType[], v: UnpackType, state: UnpackState) 
                 const r_copyLength = getValueFromUnrefinedMap(v, sym_copy_length)
                 const r_copyDistance = getValueFromUnrefinedMap(v, sym_copy_distance)
                 if (isUnsignedInt2(r_copyLength) && isUnsignedInt2(r_copyDistance)) {
-                    copyLenDist(state, ob, getUnsignedIntVal(r_copyLength), getUnsignedIntVal(r_copyDistance))
+                    copyLenDist(ob, getUnsignedIntVal(r_copyLength), getUnsignedIntVal(r_copyDistance))
                     push = false
                 }
                 break
@@ -222,10 +219,7 @@ export const cycleTypeStack = (state: UnpackState) => {
 }
 export const createObject = (a: UnpackType, state: UnpackState) => {
     if (isUnrefinedMap(a)) {
-        if (a.length == 3 && a[1] === sym_copyable) {
-            state.copyBuffer.push(a[2])
-            return a[2]
-        }
+    
     }
     else if (Array.isArray(a)) {
         if (a.some(x => isUnrefinedMap(x) && Array.isArray(getValueFromUnrefinedMap(x, sym_flatten_array)))) {
@@ -271,7 +265,7 @@ export const selectChoiceShared = (state: UnpackState, index: number): Node => {
     }
 }
 export const unpack = <T extends ArrayBufferLike = ArrayBufferLike>(n: Node<T>, unsafeExpand?: boolean): UnpackType<T> => {
-    const state: UnpackState<T> = { nodeStack: [{ node: n }], modeStack: [], sharedChoiceStack: [], copyBuffer: [], unsafeExpand }
+    const state: UnpackState<T> = { nodeStack: [{ node: n }], modeStack: [], sharedChoiceStack: [], unsafeExpand }
     let lastNode: NodeIndex<T>
     while (state.nodeStack.length) {
         const top = state.nodeStack[state.nodeStack.length - 1]
