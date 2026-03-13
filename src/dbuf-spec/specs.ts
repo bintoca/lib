@@ -50,7 +50,7 @@ for (let k in r) {
     registryEnum[r[k]] = k
 }
 const getReg = (r: number) => registryEnum[r]
-export const registry: { [key: number]: { paragraphs: Paragraph[], parseRules?: boolean, examples: { description: string, dbuf: Node, unpack?}[] } } = {
+export const registry: { [key: number]: { paragraphs: Paragraph[], parseRules?: boolean, packRules?: boolean, examples: { description: string, dbuf: Node, unpack?}[] } } = {
     [r.type_map]: {
         paragraphs: [
             ['Defines a collection of key/value pairs.'],
@@ -147,7 +147,7 @@ export const registry: { [key: number]: { paragraphs: Paragraph[], parseRules?: 
     [r.parse_type_data_immediate]: {
         paragraphs: [
             ['Defines a parsing context that begins with a type component followed by a data component conforming to that type. The parsing context begins immediately after this symbol.'],
-            ['The semantics are identical to the root structure of a DBUF stream.'],
+            ['The semantics are identical to the root structure of a packed stream.'],
         ],
         parseRules: true,
         examples: [
@@ -240,7 +240,7 @@ export const registry: { [key: number]: { paragraphs: Paragraph[], parseRules?: 
     [r.parse_type_data]: {
         paragraphs: [
             ['Defines a parsing context that begins with a type component followed by a data component conforming to that type.'],
-            ['When encountered in the parsing of a data component: Consumes a type and data component with semantics identical to the root structure of a DBUF stream.'],
+            ['When encountered in the parsing of a data component: Consumes a type and data component with semantics identical to the root structure of a packed stream.'],
             ['Useful for values that can be of any type.']
         ],
         parseRules: true,
@@ -262,6 +262,7 @@ export const registry: { [key: number]: { paragraphs: Paragraph[], parseRules?: 
         paragraphs: [
             ['Placeholder symbol to avoid collisions with the bit order optional prefix at the beginning of a stream.'],
         ],
+        parseRules: true,
         examples: [
             { description: 'Stream with prefix', dbuf: root(type_map(r.denominator, r.parse_varint), map(3), true), unpack: { [getReg(r.denominator)]: 3 } },
             { description: 'Normal symbol usage', dbuf: root(type_map(r.denominator, r.little_endian_marker), map()), unpack: { [getReg(r.denominator)]: getReg(r.little_endian_marker) } },
@@ -492,7 +493,7 @@ export const registry: { [key: number]: { paragraphs: Paragraph[], parseRules?: 
     },
     [r.incomplete_stream]: {
         paragraphs: [
-            ['Error for a DBUF stream that ended without completing the semantic root structure.'],
+            ['Error for a DBUF stream that ended without completing the semantic structure.'],
         ],
         examples: [
             { description: 'Incomplete stream error', dbuf: root(type_map(r.error, r.incomplete_stream), map()), unpack: { [getReg(r.error)]: getReg(r.incomplete_stream) } },
@@ -502,6 +503,7 @@ export const registry: { [key: number]: { paragraphs: Paragraph[], parseRules?: 
         paragraphs: [
             ['Used for compression of similar values in arrays by specifying the change from the previous item.'],
         ],
+        packRules: true,
         examples: [
             { description: 'Array with values (100, 102)', dbuf: root(type_array(type_choice(r.parse_varint, type_map(r.delta, r.parse_varint))), array(choice(bit_val(0, 1), 100), choice(bit_val(1, 1), map(2)))), unpack: [100, 102] },
         ]
@@ -510,6 +512,7 @@ export const registry: { [key: number]: { paragraphs: Paragraph[], parseRules?: 
         paragraphs: [
             ['Used for compression of similar values in arrays by specifying the change of the delta from the previous item.'],
         ],
+        packRules: true,
         examples: [
             { description: 'Array with values (100, 210, 320)', dbuf: root(type_array(type_choice(r.parse_varint, type_map(r.delta_double, r.parse_varint))), array(choice(bit_val(0, 1), 100), choice(bit_val(1, 1), map(10)), choice(bit_val(1, 1), map(0)))), unpack: [100, 210, 320] },
         ]
@@ -649,6 +652,7 @@ export const registry: { [key: number]: { paragraphs: Paragraph[], parseRules?: 
             ['When used in a map with ', { rid: r.value }, ' describes a number that must be added to obtain the actual value.'],
             ['Useful for compressing values in a narrow range.']
         ],
+        packRules: true,
         examples: [
             { description: 'Array of numbers near 100', dbuf: root(type_array(type_map(r.offset_add, r.value, parse_type_data_immediate(r.parse_varint, 100), r.parse_varint)), array(map(2), map(3))), unpack: [102, 103] },
         ]
@@ -658,6 +662,7 @@ export const registry: { [key: number]: { paragraphs: Paragraph[], parseRules?: 
             ['Signifies a nested array should be interpreted as flattened into the parent array.'],
             ['Useful for compression of a large array when sections of the array have greater commonality.']
         ],
+        packRules: true,
         examples: [
             { description: 'Array of numbers with a size of 2 bits in one section and a size of 16 bits in another section', dbuf: root(type_array(type_map(r.flatten_array, type_choice(type_array(parse_bit_size(2)), type_array(parse_bit_size(16))))), array(map(choice(bit_val(0, 1), array(bit_val(1, 2), bit_val(2, 2)))), map(choice(bit_val(1, 1), array(bit_val(10000, 16), bit_val(20000, 16)))))), unpack: [1, 2, 10000, 20000] },
         ]
@@ -669,6 +674,7 @@ export const registry: { [key: number]: { paragraphs: Paragraph[], parseRules?: 
             ['Count is offset by one.'],
             ['Can be composed with ', { rid: r.copy_distance }, ' for copying a range of values.'],
         ],
+        packRules: true,
         examples: [
             {
                 description: 'Copy 4 values', dbuf: root(type_array(type_choice(r.parse_varint, type_map(r.copy_distance, r.copy_length, r.parse_varint, r.parse_varint))),
@@ -685,6 +691,7 @@ export const registry: { [key: number]: { paragraphs: Paragraph[], parseRules?: 
             ['If offset exceeds the size of the current array, the copied value is interpreted as ', { rid: r.nonexistent }],
             ['Can be composed with ', { rid: r.copy_length }, ' for copying a range of values.'],
         ],
+        packRules: true,
         examples: [
             {
                 description: 'Copying a previously copied value', dbuf: root(type_array(type_choice(r.parse_varint, type_map(r.copy_distance, r.parse_varint))),
@@ -758,6 +765,7 @@ export const registry: { [key: number]: { paragraphs: Paragraph[], parseRules?: 
             ['Used for compression of strings that begin with the same substring.'],
             ['When used in a map with ', { rid: r.value }, ' the unpacked value is a concatenation of the bytes of prefix and value'],
         ],
+        packRules: true,
         examples: [
             { description: 'String "world" with prefix "hello "', dbuf: root(type_map(r.prefix, r.value, r.parse_text, r.parse_text), map(string('hello '), string('world'))), unpack: 'hello world' },
         ]
@@ -767,6 +775,7 @@ export const registry: { [key: number]: { paragraphs: Paragraph[], parseRules?: 
             ['Used for compression of strings that end with the same substring.'],
             ['When used in a map with ', { rid: r.value }, ' the unpacked value is a concatenation of the bytes of value and suffix'],
         ],
+        packRules: true,
         examples: [
             { description: 'String "hello " with suffix "world"', dbuf: root(type_map(r.value, r.suffix, r.parse_text, r.parse_text), map(string('hello '), string('world'))), unpack: 'hello world' },
             { description: 'String "wo" with prefix "hello " and suffix "rld"', dbuf: root(type_map(r.prefix, r.value, r.suffix, r.parse_text, r.parse_text, r.parse_text), map(string('hello '), string('wo'), string('rld'))), unpack: 'hello world' },
@@ -777,6 +786,7 @@ export const registry: { [key: number]: { paragraphs: Paragraph[], parseRules?: 
             ['Used for compression of an array of strings that begin with similar substrings.'],
             ['When used in a map with ', { rid: r.value }, ' the unpacked value is a concatenation of the bytes of the previous value in the array minus the number of bytes specified by the delta and value'],
         ],
+        packRules: true,
         examples: [
             { description: 'Array of strings with partial shared prefixes', dbuf: root(type_array(type_map(r.prefix_delta, r.value, r.parse_varint, r.parse_text)), array(map(0, string('abcd')), map(1, string('_fun')), map(5, string('-ijk')))), unpack: ['abcd', 'abc_fun', 'ab-ijk'] },
         ]
@@ -867,14 +877,14 @@ export const registry: { [key: number]: { paragraphs: Paragraph[], parseRules?: 
 export const codec: Doc = {
     sections: [
         {
-            title: 'DBUF Codec', heading: 1, id: [], paragraphs: [
-                ['DBUF is structured as a stream of binary integers. The first few values in a stream correspond to symbols in the [Registry](./registry/README.md) that describe the size and meaning of values later in the stream. ',
+            title: 'Packed Encoding', heading: 1, id: [], paragraphs: [
+                ['A DBUF packed stream is structured as a sequence of binary integers. The first few values in a stream correspond to symbols in the [Registry](./registry/README.md) that describe the size and meaning of values later in the stream. ',
                     'The symbols also compose in ways that can describe nested or repeating patterns with dense packing.'],
             ]
         },
         {
             title: 'Varints', heading: 2, id: [1], paragraphs: [
-                ['Several areas of the DBUF spec refer to a default variable length integer encoding or "varint" for short. The following bit patterns specify the 5 possible bit widths:'],
+                ['Several areas of the packed encoding spec refer to a default variable length integer encoding or "varint" for short. The following bit patterns specify the 5 possible bit widths:'],
                 [{ item: ['Leading bit 0 - 3 data bits'] }, { item: ['Leading bits 10 - 6 data bits'] }, { item: ['Leading bits 110 - 13 data bits'] }, { item: ['Leading bits 1110 - 20 data bits'] }, { item: ['Leading bits 1111 - 32 data bits'] }],
                 ['The leading bits may be the most or least significant bits as defined by the optional prefixes at the beginning of the stream. Likewise, the data bits will follow the same convention of most or least significant first.']
             ]
@@ -891,16 +901,21 @@ export const codec: Doc = {
         },
         {
             title: 'Root Structure', heading: 2, id: [3], paragraphs: [
-                ['After the optional prefixes, a DBUF stream consists of two parts, a type component that defines a structure and a data component with data that conforms to the type component.'],
+                ['After the optional prefixes, a packed stream consists of two parts, a type component that defines a structure and a data component with data that conforms to the type component.'],
                 ['Some symbols consume additional bits and/or additional symbols which create nested structures. The type component consists of one symbol and its nested children. ',
                     'The data component begins directly after, following the rules of the root symbol of the type component.'],
-                ['The end of the data component is considered the end of the DBUF stream. Any data in the bit stream after this point MUST be ignored. ',
-                    'A DBUF stream contains exactly one type component and one data component, never a sequence of type/data components. If a sequence is desired, the type component should use an appropriate structure such as ', { rid: r.type_array }]
+                ['The end of the data component is considered the end of the packed stream. Any data in the bit stream after this point MUST be ignored. ',
+                    'A packed stream contains exactly one type component and one data component, never a sequence of type/data components. If a sequence is desired, the type component should use an appropriate structure such as ', { rid: r.type_array }]
             ]
         },
         {
             title: 'Symbols with unique parsing rules', heading: 2, id: [4], paragraphs: [
                 Object.keys(registry).sort((a, b) => parseInt(a) - parseInt(b)).filter(x => registry[x].parseRules).map(x => { return { item: [], registry: parseInt(x) } }),
+            ]
+        },
+        {
+            title: 'Symbols with second level packing rules', heading: 2, id: [5], paragraphs: [
+                Object.keys(registry).sort((a, b) => parseInt(a) - parseInt(b)).filter(x => registry[x].packRules).map(x => { return { item: [], registry: parseInt(x) } }),
             ]
         },
     ]

@@ -194,5 +194,5 @@ test('specs', () => {
         //expect(serverReg[k]).toBe(registryEnum[k])
     }
     writeFileSync(join(registryFolder, 'README.md'), '# DBUF Symbol Registry\n\nSubject to change until core semantics are settled\n\n' + indexTxt + '\n\n## Packed Encoding\n\n' + packedIndexTxt)
-    writeFileSync(join(specsFolder, 'codec.md'), codec.sections.map(x => renderSection(x, renderSpecLinkOnCodec, renderParseModeLink)).join('\n\n'))
+    writeFileSync(join(specsFolder, 'packed.md'), codec.sections.map(x => renderSection(x, renderSpecLinkOnCodec, renderParseModeLink)).join('\n\n'))
 })
