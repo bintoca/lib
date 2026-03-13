@@ -18,12 +18,10 @@ export const enum r {
     parse_bytes,
     little_endian_marker,
 
-    nonexistent,
-    error = 32,
-    error_internal = 64,
-    incomplete_stream = 65,
-    registry_symbol_not_accepted = 66,
-    registry_symbol_not_accepted_as_array_type = 67,
-    denominator = 70,
+    nonexistent = 26,
+    error = 91,
+    error_internal = 95,
+    incomplete_stream = 96,
+    denominator = 98,
     magic_number = 8159,
 }

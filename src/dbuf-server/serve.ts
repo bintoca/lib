@@ -1,4 +1,4 @@
-import { ParseState, setParserBuffer, parseCore, resolveParseOp, initParser, readVarint, alignDecoder, getBytes, readBits32, validateSymbolsLite } from '@bintoca/dbuf-codec/decode'
+import { ParseState, setParserBuffer, parseCore, resolveParseOp, initParser, readVarint, alignDecoder, getBytes, readBits32 } from '@bintoca/dbuf-codec/decode'
 import { NodeType, Node, ParseMode, concatBuffers } from '@bintoca/dbuf-codec/common'
 import { getRegistrySymbol } from '@bintoca/dbuf-data/registry'
 import { r } from '@bintoca/dbuf-server/registry'

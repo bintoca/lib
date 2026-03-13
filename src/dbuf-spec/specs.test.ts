@@ -149,18 +149,28 @@ test('specs', () => {
         unlinkSync(join(registrySpecsFolder, x))
     }
     let indexTxt = ''
+    let packedIndexTxt = ''
     const missing = []
     function noUnpack(k) {
         missing.push('no unpack ' + registryEnum[k])
         return ''
     }
+    const packedEncodingOffset = 26
     let symText = ''
     for (let k in registryEnum) {
         if (registry[k]) {
-            indexTxt += `- ${k} - ${renderSpecLinkOnIndex(k)}\n`
+            const ki = parseInt(k)
+            const isPackedSymbol = ki < packedEncodingOffset
+            const regID = ki - packedEncodingOffset
+            if (isPackedSymbol) {
+                packedIndexTxt += `- ${k} - ${renderSpecLinkOnIndex(k)}\n`
+            }
+            else {
+                indexTxt += `- ${regID} - ${renderSpecLinkOnIndex(k)}\n`
+            }
             const fn = join(registrySpecsFolder, registryEnum[k] + '.md')
             const sp = registry[k]
-            const txt = `## ${registryEnum[k]}\n\nID: ${k}\n\n${sp.paragraphs.map(x => renderParagraph(x, renderSpecLink, renderParseModeLink)).join('\n\n')}\n\n### Examples\n\n<table><tr><th>Description</th><th>Binary</th><th>S-expression</th><th>Unpacked</th></tr>${sp.examples.map(x => `<tr><td>${x.description}</td><td>${dbufToHex(x.dbuf)}</td><td>${dbufToString(k, x.dbuf, renderSpecLinkHTML, renderNodeTypeLink)}</td><td>${x.unpack ? '<pre>' + JSON.stringify(dbufUnpack(k, x.dbuf, x.unpack), null, 2) + '</pre>' : noUnpack(k)}</td>`).join('\n')}</table>`
+            const txt = `## ${registryEnum[k]}\n\n${!isPackedSymbol ? 'Registry ID: ' + regID + '\n\n' : ''}Packed Encoding ID: ${k}\n\n${sp.paragraphs.map(x => renderParagraph(x, renderSpecLink, renderParseModeLink)).join('\n\n')}\n\n### Packed Encoding Examples\n\n<table><tr><th>Description</th><th>Binary</th><th>S-expression</th><th>Unpacked</th></tr>${sp.examples.map(x => `<tr><td>${x.description}</td><td>${dbufToHex(x.dbuf)}</td><td>${dbufToString(k, x.dbuf, renderSpecLinkHTML, renderNodeTypeLink)}</td><td>${x.unpack ? '<pre>' + JSON.stringify(dbufUnpack(k, x.dbuf, x.unpack), null, 2) + '</pre>' : noUnpack(k)}</td>`).join('\n')}</table>`
             writeFileSync(fn, txt)
         }
         else {
@@ -183,6 +193,6 @@ test('specs', () => {
     for (let k in serverReg) {
         //expect(serverReg[k]).toBe(registryEnum[k])
     }
-    writeFileSync(join(registryFolder, 'README.md'), '# DBUF Symbol Registry\n\nSubject to change until core semantics are settled\n\n' + indexTxt)
+    writeFileSync(join(registryFolder, 'README.md'), '# DBUF Symbol Registry\n\nSubject to change until core semantics are settled\n\n' + indexTxt + '\n\n## Packed Encoding\n\n' + packedIndexTxt)
     writeFileSync(join(specsFolder, 'codec.md'), codec.sections.map(x => renderSection(x, renderSpecLinkOnCodec, renderParseModeLink)).join('\n\n'))
 })

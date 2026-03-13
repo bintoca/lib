@@ -711,48 +711,48 @@ export const registry: { [key: number]: { paragraphs: Paragraph[], parseRules?: 
             { description: '2 meters', dbuf: root(type_map(r.unit, r.value, r.second, r.parse_varint), map(2)), unpack: { [getReg(r.unit)]: getReg(r.second), [getReg(r.value)]: 2 } },
         ]
     },
-    [r.format]: {
-        paragraphs: [
-            ['Describes a data format.'],
-            ['When used in a map with ', { rid: r.value }, ' describes the format of that value.'],
-            ['If the format value is a fixed bit width unsigned integer or an array of fixed bit width unsigned integers, the bits are interpreted as the type component of a distinct DBUF stream. Any associated ', { rid: r.value }, ' is interpreted as the data component of a DBUF stream.'],
-            ['If the format value is the ', { rid: r.format }, ' symbol, the format is a complete DBUF stream.'],
-        ],
-        examples: [
-            { description: 'Format for a DBUF type_array of varints', dbuf: root(type_map(r.format, r.parse_bytes), map(dbufWriteToArray8(type_array(r.parse_varint)))), unpack: { [getReg(r.format)]: new Uint8Array([20]) } },
-            { description: 'Format for a DBUF type_array of varints with array of varints (1,2,3) packed as bytes', dbuf: root(type_map(r.format, r.value, r.parse_bytes, r.parse_bytes), map(dbufWriteToArray8(type_array(r.parse_varint)), dbufWriteToArray8(array(1, 2, 3)))), unpack: { [getReg(r.format)]: new Uint8Array([20]), [getReg(r.value)]: new Uint8Array([49, 35]) } },
-            { description: 'Format for a DBUF stream', dbuf: root(type_map(r.format, r.format), map()), unpack: { [getReg(r.format)]: getReg(r.format) } },
-            { description: 'Format for a DBUF stream with type and array of varints (1,2,3) packed as bytes', dbuf: root(type_map(r.format, r.value, r.format, r.parse_bytes), map(dbufWriteToArray8(root(type_array(r.parse_varint), array(1, 2, 3))))), unpack: { [getReg(r.format)]: getReg(r.format), [getReg(r.value)]: new Uint8Array([20, 49, 35]) } },
-        ]
-    },
-    [r.stream_position]: {
-        paragraphs: [
-            ['Symbol for describing a position in a data stream as a number of bits.'],
-        ],
-        examples: [
-            { description: '5 bits from the start of a stream', dbuf: root(type_map(r.stream_position, r.parse_varint), map(5)), unpack: { [getReg(r.stream_position)]: 5 } },
-        ]
-    },
-    [r.registry_symbol_not_accepted]: {
-        paragraphs: [
-            ['Symbol for validation errors caused by a specific registry symbol during parsing.'],
-            ['Specifications may limit accepted registry symbols to reduce parser complexity and resource usage.'],
-            ['A related stream position includes the bits of the offending symbol.']
-        ],
-        examples: [
-            { description: 'Error stating a symbol is not accepted at bit position 12', dbuf: root(type_map(r.error, r.stream_position, r.registry_symbol_not_accepted, r.parse_varint), map(12)), unpack: { [getReg(r.error)]: getReg(r.registry_symbol_not_accepted), [getReg(r.stream_position)]: 12 } },
-        ]
-    },
-    [r.registry_symbol_not_accepted_as_array_type]: {
-        paragraphs: [
-            ['Symbol for validation errors caused by a specific registry symbol during parsing of array types.'],
-            ['Specifications may limit accepted registry symbols to reduce parser complexity and resource usage.'],
-            ['A related stream position includes the bits of the offending symbol.']
-        ],
-        examples: [
-            { description: 'Error stating a symbol is not accepted at bit position 12', dbuf: root(type_map(r.error, r.stream_position, r.registry_symbol_not_accepted_as_array_type, r.parse_varint), map(12)), unpack: { [getReg(r.error)]: getReg(r.registry_symbol_not_accepted_as_array_type), [getReg(r.stream_position)]: 12 } },
-        ]
-    },
+    // [r.format]: {
+    //     paragraphs: [
+    //         ['Describes a data format.'],
+    //         ['When used in a map with ', { rid: r.value }, ' describes the format of that value.'],
+    //         ['If the format value is a fixed bit width unsigned integer or an array of fixed bit width unsigned integers, the bits are interpreted as the type component of a distinct DBUF stream. Any associated ', { rid: r.value }, ' is interpreted as the data component of a DBUF stream.'],
+    //         ['If the format value is the ', { rid: r.format }, ' symbol, the format is a complete DBUF stream.'],
+    //     ],
+    //     examples: [
+    //         { description: 'Format for a DBUF type_array of varints', dbuf: root(type_map(r.format, r.parse_bytes), map(dbufWriteToArray8(type_array(r.parse_varint)))), unpack: { [getReg(r.format)]: new Uint8Array([20]) } },
+    //         { description: 'Format for a DBUF type_array of varints with array of varints (1,2,3) packed as bytes', dbuf: root(type_map(r.format, r.value, r.parse_bytes, r.parse_bytes), map(dbufWriteToArray8(type_array(r.parse_varint)), dbufWriteToArray8(array(1, 2, 3)))), unpack: { [getReg(r.format)]: new Uint8Array([20]), [getReg(r.value)]: new Uint8Array([49, 35]) } },
+    //         { description: 'Format for a DBUF stream', dbuf: root(type_map(r.format, r.format), map()), unpack: { [getReg(r.format)]: getReg(r.format) } },
+    //         { description: 'Format for a DBUF stream with type and array of varints (1,2,3) packed as bytes', dbuf: root(type_map(r.format, r.value, r.format, r.parse_bytes), map(dbufWriteToArray8(root(type_array(r.parse_varint), array(1, 2, 3))))), unpack: { [getReg(r.format)]: getReg(r.format), [getReg(r.value)]: new Uint8Array([20, 49, 35]) } },
+    //     ]
+    // },
+    // [r.stream_position]: {
+    //     paragraphs: [
+    //         ['Symbol for describing a position in a data stream as a number of bits.'],
+    //     ],
+    //     examples: [
+    //         { description: '5 bits from the start of a stream', dbuf: root(type_map(r.stream_position, r.parse_varint), map(5)), unpack: { [getReg(r.stream_position)]: 5 } },
+    //     ]
+    // },
+    // [r.registry_symbol_not_accepted]: {
+    //     paragraphs: [
+    //         ['Symbol for validation errors caused by a specific registry symbol during parsing.'],
+    //         ['Specifications may limit accepted registry symbols to reduce parser complexity and resource usage.'],
+    //         ['A related stream position includes the bits of the offending symbol.']
+    //     ],
+    //     examples: [
+    //         { description: 'Error stating a symbol is not accepted at bit position 12', dbuf: root(type_map(r.error, r.stream_position, r.registry_symbol_not_accepted, r.parse_varint), map(12)), unpack: { [getReg(r.error)]: getReg(r.registry_symbol_not_accepted), [getReg(r.stream_position)]: 12 } },
+    //     ]
+    // },
+    // [r.registry_symbol_not_accepted_as_array_type]: {
+    //     paragraphs: [
+    //         ['Symbol for validation errors caused by a specific registry symbol during parsing of array types.'],
+    //         ['Specifications may limit accepted registry symbols to reduce parser complexity and resource usage.'],
+    //         ['A related stream position includes the bits of the offending symbol.']
+    //     ],
+    //     examples: [
+    //         { description: 'Error stating a symbol is not accepted at bit position 12', dbuf: root(type_map(r.error, r.stream_position, r.registry_symbol_not_accepted_as_array_type, r.parse_varint), map(12)), unpack: { [getReg(r.error)]: getReg(r.registry_symbol_not_accepted_as_array_type), [getReg(r.stream_position)]: 12 } },
+    //     ]
+    // },
     [r.prefix]: {
         paragraphs: [
             ['Used for compression of strings that begin with the same substring.'],

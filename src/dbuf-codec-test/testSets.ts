@@ -72,18 +72,6 @@ export const testAlignEncoder = (test, expect, alignEncoder) => {
 export const testParseError = (test, expect, parseError: (u8: Uint8Array) => object) => {
     test.each([
         [[r.type_map, 33], r.incomplete_stream],
-        [[r.type_array, tm(1, r.error, r.error)], r.registry_symbol_not_accepted_as_array_type],
-        [[r.type_array, r.parse_align, 5], r.registry_symbol_not_accepted_as_array_type],
-        [[r.type_array, r.denominator], r.registry_symbol_not_accepted_as_array_type],
-        [[r.type_choice], r.registry_symbol_not_accepted],
-        [[r.type_choice_shared], r.registry_symbol_not_accepted],
-        [[r.type_choice_select], r.registry_symbol_not_accepted],
-        [[r.type_array_chunk, 2, tm(1, r.error, r.error)], r.registry_symbol_not_accepted_as_array_type],
-        [[r.type_array_bit, 2, tm(1, r.error, r.error)], r.registry_symbol_not_accepted_as_array_type],
-        [[r.type_array_fixed, 2, tm(1, r.error, r.error)], r.registry_symbol_not_accepted_as_array_type],
-        [[r.type_optional], r.registry_symbol_not_accepted],
-        [[r.parse_type_data_immediate], r.registry_symbol_not_accepted],
-        [[r.nonexistent], r.registry_symbol_not_accepted],
     ])('parseError(%#)', (i, o) => {
         function f(le) {
             const er = parseError(writeTokens(writerPrefix(i, le)).buffers[0])
