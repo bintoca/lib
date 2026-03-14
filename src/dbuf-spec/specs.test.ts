@@ -1,6 +1,6 @@
 import { writeFileSync, readdirSync, unlinkSync } from 'fs'
 import { join } from 'path'
-import { Section, registry, codec, Paragraph, parseEnum, registryEnum, dbufWrite } from './specs'
+import { Section, registry, packedDoc, basicDoc, Paragraph, parseEnum, registryEnum, dbufWrite } from './specs'
 import { finishWrite, createEncoder, writeNode } from '@bintoca/dbuf-codec/encode'
 import { Node, NodeType } from '@bintoca/dbuf-codec/common'
 import { getRegistryIndex } from '@bintoca/dbuf-data/registry'
@@ -194,5 +194,6 @@ test('specs', () => {
         //expect(serverReg[k]).toBe(registryEnum[k])
     }
     writeFileSync(join(registryFolder, 'README.md'), '# DBUF Symbol Registry\n\nSubject to change until core semantics are settled\n\n' + indexTxt + '\n\n## Packed Encoding\n\n' + packedIndexTxt)
-    writeFileSync(join(specsFolder, 'packed.md'), codec.sections.map(x => renderSection(x, renderSpecLinkOnCodec, renderParseModeLink)).join('\n\n'))
+    writeFileSync(join(specsFolder, 'packed.md'), packedDoc.sections.map(x => renderSection(x, renderSpecLinkOnCodec, renderParseModeLink)).join('\n\n'))
+    writeFileSync(join(specsFolder, 'basic.md'), basicDoc.sections.map(x => renderSection(x, renderSpecLinkOnCodec, renderParseModeLink)).join('\n\n'))
 })

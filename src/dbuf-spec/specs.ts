@@ -874,7 +874,7 @@ export const registry: { [key: number]: { paragraphs: Paragraph[], parseRules?: 
     //     ]
     // },
 }
-export const codec: Doc = {
+export const packedDoc: Doc = {
     sections: [
         {
             title: 'Packed Encoding', heading: 1, id: [], paragraphs: [
@@ -916,6 +916,42 @@ export const codec: Doc = {
         {
             title: 'Symbols with second level packing rules', heading: 2, id: [5], paragraphs: [
                 Object.keys(registry).sort((a, b) => parseInt(a) - parseInt(b)).filter(x => registry[x].packRules).map(x => { return { item: [], registry: parseInt(x) } }),
+            ]
+        },
+    ]
+}
+export const basicDoc: Doc = {
+    sections: [
+        {
+            title: 'Basic Encoding', heading: 1, id: [], paragraphs: [
+                ['The DBUF basic format is a type-length-value structure designed for compactness and low complexity of encoding/decoding.'],
+            ]
+        },
+        {
+            title: 'Type Prefix', heading: 2, id: [], paragraphs: [
+                ['The most significant 3 bits of a byte define the type of DBUF item. The 8 possible values are:'],
+                [{ item: ['0 - unsigned integer'] },
+                { item: ['1 - unsigned integer bytes'] },
+                { item: ['2 - utf8'] },
+                { item: ['3 - bytes'] },
+                { item: ['4 - array - contains nested DBUF items'] },
+                { item: ['5 - map - contains nested DBUF items interpreted as key-value pairs'] },
+                { item: ['6 - registry symbol - IDs from the [Registry](./registry/README.md)'] },
+                { item: ['7 - registry symbol bytes'] },
+                ]
+            ]
+        },
+        {
+            title: 'Length and Value', heading: 2, id: [], paragraphs: [
+                ['The remaining 5 bits of a byte form a variable length integer (varint). For type 0 and 6 the varint is the value. For all other types the varint is the length of the value in bytes.'],
+                ['Varint encoding rules of the 5 bits (32 possible values):'],
+                [{ item: ['0-23 - the value itself, no additional bytes'] },
+                { item: ['24-27 - combine the 2 least significant bits with one additional byte to form a 10-bit unsigned integer'] },
+                { item: ['28-29 - combine the 1 least significant bit with two additional bytes to form a 17-bit unsigned integer'] },
+                { item: ['30 - take 3 additional bytes as a 24-bit unsigned integer'] },
+                { item: ['31 - take 4 additional bytes as a 32-bit unsigned integer'] },
+                ],
+                ['Additional bytes are in big endian byte order']
             ]
         },
     ]
