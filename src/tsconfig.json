@@ -6,14 +6,17 @@
             "DOM",
             "WebWorker",
         ],
+        "types": ["node", "jest"],
         "module": "es2020",
         "target": "es2024",
         "esModuleInterop": true,
         "skipLibCheck": true,
         "sourceMap": true,
         "declarationMap": true,
-        "moduleResolution": "node",
+        "moduleResolution": "bundler",
         "declaration": true,
+        "noImplicitAny": false,
+        "strict": false,
         "paths": {
             "@bintoca/*": [
                 "./*"

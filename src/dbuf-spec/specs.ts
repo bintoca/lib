@@ -45,12 +45,12 @@ export const dbufWriteToArray8 = (d: Node) => {
     const b = dbufWrite(d)
     return bytes(b)
 }
-export const registryEnum = {}
-for (let k in r) {
-    registryEnum[r[k]] = k
+export const registryEnum: { [key: string | number | symbol]: string } = {}
+for (let k of Object.entries(r)) {
+    registryEnum[k[1]] = k[0]
 }
 const getReg = (r: number) => registryEnum[r]
-export const registry: { [key: number]: { paragraphs: Paragraph[], parseRules?: boolean, packRules?: boolean, examples: { description: string, dbuf: Node, unpack?}[] } } = {
+export const registry: { [key: string]: { paragraphs: Paragraph[], parseRules?: boolean, packRules?: boolean, examples: { description: string, dbuf: Node, unpack?: any }[] } } = {
     [r.type_map]: {
         paragraphs: [
             ['Defines a collection of key/value pairs.'],
