@@ -11,7 +11,7 @@ test('magicNumber', () => {
     dv.setUint8(1, 0xDF)
     dv.setUint8(2, 0xDF)
     dv.setUint8(3, 0xDF)
-    expect(new Uint8Array(dv.buffer)).toEqual(writeTokens([r.magic_number, r.magic_number]).buffers[0].slice(0, 4))
+    expect(new Uint8Array(dv.buffer)).toEqual(writeTokens([r.magic_number_packed, r.magic_number_packed]).buffers[0].slice(0, 4))
 })
 testAlignDecoder(test, expect, alignDecoder)
 testAlignEncoder(test, expect, alignEncoder)

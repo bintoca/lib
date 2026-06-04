@@ -172,18 +172,18 @@ export const writeTokens = (x: WriterToken) => {
 export const writerPrefix = (x: WriterToken, le: boolean, magic?: boolean): WriterToken => {
     if (le) {
         if (magic) {
-            return [r.magic_number, r.magic_number, r.little_endian_marker, x]
+            return [r.magic_number_packed, r.magic_number_packed, r.little_endian_marker, x]
         }
         return [r.little_endian_marker, x]
     }
     if (magic) {
-        return [r.magic_number, r.magic_number, x]
+        return [r.magic_number_packed, r.magic_number_packed, x]
     }
     return x
 }
 export const writeTokensCore = (x: WriterToken, es: EncoderState) => {
     if (Array.isArray(x)) {
-        if (x[0] === r.magic_number && x[1] === r.magic_number) {
+        if (x[0] === r.magic_number_packed && x[1] === r.magic_number_packed) {
             es.dv.setUint32(0, magicNumberPrefix)
             es.offset = 4
             es.bitsWritten += 32

@@ -41,6 +41,9 @@ export const r = {
     epoch_seconds_continuous: 36,
     unit: 37,
 
+    reference: 14 + 26,
+    operation: 16 + 26,
+
     exponent_base2: 90,
     error: 91,
     text: 92,
@@ -69,5 +72,25 @@ export const r = {
     minute: 111,
     second: 112,
 
-    magic_number: 8159,
+    data_error: 128 + 26,
+    data_type_not_accepted: 129 + 26,
+    data_value_not_accepted: 130 + 26,
+    data_key_not_accepted: 131 + 26,
+    data_key_missing: 132 + 26,
+    end_marker: 133 + 26,
+    data_path: 134 + 26,
+    identity: 135 + 26,
+    identity_key: 136 + 26,
+    identity_recovery: 137 + 26,
+    deliver_message: 138 + 26,
+    ed25519: 139 + 26,
+    body_length: 140 + 26,
+    stream_group: 141 + 26,
+    header: 142 + 26,
+    body: 143 + 26,
+    footer: 144 + 26,
+    not_authenticated: 145 + 26,
+
+    magic_number_packed: 8159,
+    magic_number_basic: 14606046 + 26
 } as const

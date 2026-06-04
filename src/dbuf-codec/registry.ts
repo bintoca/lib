@@ -23,5 +23,5 @@ export const enum r {
     error_internal = 95,
     incomplete_stream = 96,
     denominator = 98,
-    magic_number = 8159,
+    magic_number_packed = 8159,
 }

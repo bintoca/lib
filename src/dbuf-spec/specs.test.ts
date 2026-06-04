@@ -1,6 +1,6 @@
 import { writeFileSync, readdirSync, unlinkSync } from 'fs'
 import { join } from 'path'
-import { Section, registry, packedDoc, basicDoc, Paragraph, parseEnum, registryEnum, dbufWrite } from './specs'
+import { Section, registry, packedDoc, basicDoc, Paragraph, parseEnum, registryEnum, dbufWrite, protocolDoc, protocolDesign } from './specs'
 import { finishWrite, createEncoder, writeNode } from '@bintoca/dbuf-codec/encode'
 import { Node, NodeType } from '@bintoca/dbuf-codec/common'
 import { getRegistryIndex } from '@bintoca/dbuf-data/registry'
@@ -143,6 +143,7 @@ test('specs', () => {
     const folder = 'E:\\bintoca-gh\\dbuf\\'
     const registryFolder = join(folder, 'specs', 'registry')
     const specsFolder = join(folder, 'specs')
+    const designFolder = join(folder, 'design')
     const registrySpecsFolder = registryFolder
     const dir = readdirSync(registrySpecsFolder)
     for (let x of dir) {
@@ -170,7 +171,7 @@ test('specs', () => {
             }
             const fn = join(registrySpecsFolder, registryEnum[k] + '.md')
             const sp = registry[k]
-            const txt = `## ${registryEnum[k]}\n\n${!isPackedSymbol ? 'Registry ID: ' + regID + '\n\n' : ''}Packed Encoding ID: ${k}\n\n${sp.paragraphs.map(x => renderParagraph(x, renderSpecLink, renderParseModeLink)).join('\n\n')}\n\n### Packed Encoding Examples\n\n<table><tr><th>Description</th><th>Binary</th><th>S-expression</th><th>Unpacked</th></tr>${sp.examples.map(x => `<tr><td>${x.description}</td><td>${dbufToHex(x.dbuf)}</td><td>${dbufToString(k, x.dbuf, renderSpecLinkHTML, renderNodeTypeLink)}</td><td>${x.unpack ? '<pre>' + JSON.stringify(dbufUnpack(k, x.dbuf, x.unpack), null, 2) + '</pre>' : noUnpack(k)}</td>`).join('\n')}</table>`
+            const txt = `## ${registryEnum[k]}\n\n${!isPackedSymbol ? 'Registry ID: ' + regID + '\n\n' : ''}Packed Encoding ID: ${k}\n\n${sp.paragraphs.map(x => renderParagraph(x, renderSpecLink, renderParseModeLink)).join('\n\n')}${sp.examples ? '\n\n### Packed Encoding Examples\n\n<table><tr><th>Description</th><th>Binary</th><th>S-expression</th><th>Unpacked</th></tr>' : ''}${sp.examples ? sp.examples.map(x => `<tr><td>${x.description}</td><td>${dbufToHex(x.dbuf)}</td><td>${dbufToString(k, x.dbuf, renderSpecLinkHTML, renderNodeTypeLink)}</td><td>${x.unpack ? '<pre>' + JSON.stringify(dbufUnpack(k, x.dbuf, x.unpack), null, 2) + '</pre>' : noUnpack(k)}</td>`).join('\n'): ''}</table>`
             writeFileSync(fn, txt)
         }
         else {
@@ -196,4 +197,6 @@ test('specs', () => {
     writeFileSync(join(registryFolder, 'README.md'), '# DBUF Symbol Registry\n\nSubject to change until core semantics are settled\n\n' + indexTxt + '\n\n## Packed Encoding\n\n' + packedIndexTxt)
     writeFileSync(join(specsFolder, 'packed.md'), packedDoc.sections.map(x => renderSection(x, renderSpecLinkOnCodec, renderParseModeLink)).join('\n\n'))
     writeFileSync(join(specsFolder, 'basic.md'), basicDoc.sections.map(x => renderSection(x, renderSpecLinkOnCodec, renderParseModeLink)).join('\n\n'))
+    writeFileSync(join(specsFolder, 'protocol.md'), protocolDoc.sections.map(x => renderSection(x, renderSpecLinkOnCodec, renderParseModeLink)).join('\n\n'))
+    writeFileSync(join(designFolder, 'protocol.md'), protocolDesign.sections.map(x => renderSection(x, renderSpecLinkOnCodec, renderParseModeLink)).join('\n\n'))
 })

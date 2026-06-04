@@ -50,7 +50,7 @@ for (let k of Object.entries(r)) {
     registryEnum[k[1]] = k[0]
 }
 const getReg = (r: number) => registryEnum[r]
-export const registry: { [key: string]: { paragraphs: Paragraph[], parseRules?: boolean, packRules?: boolean, examples: { description: string, dbuf: Node, unpack?: any }[] } } = {
+export const registry: { [key: string]: { paragraphs: Paragraph[], parseRules?: boolean, packRules?: boolean, examples?: { description: string, dbuf: Node, unpack?: any }[] } } = {
     [r.type_map]: {
         paragraphs: [
             ['Defines a collection of key/value pairs.'],
@@ -638,14 +638,19 @@ export const registry: { [key: string]: { paragraphs: Paragraph[], parseRules?: 
             { description: 'Interval of year 2019', dbuf: root(type_map(r.implied_interval, type_map(r.year, r.parse_varint)), map(map(1))), unpack: { [getReg(r.implied_interval)]: { [getReg(r.year)]: 1 } } },
         ]
     },
-    [r.magic_number]: {
+    [r.magic_number_packed]: {
         paragraphs: [
-            ['Placeholder symbol to avoid collisions with the magic number optional prefix at the beginning of a stream.'],
+            ['Placeholder symbol to avoid collisions with the magic number optional prefix at the beginning of a packed stream.'],
         ],
         examples: [
             { description: 'Stream with prefix', dbuf: root(type_map(r.value, r.parse_varint), map(2), false, true), unpack: { [getReg(r.value)]: 2 } },
-            { description: 'Normal symbol usage', dbuf: root(type_map(r.value, r.magic_number), map()), unpack: { [getReg(r.value)]: getReg(r.magic_number) } },
+            { description: 'Normal symbol usage', dbuf: root(type_map(r.value, r.magic_number_packed), map()), unpack: { [getReg(r.value)]: getReg(r.magic_number_packed) } },
         ]
+    },
+    [r.magic_number_basic]: {
+        paragraphs: [
+            ['Placeholder symbol to avoid collisions with the magic number optional prefix at the beginning of a basic stream.'],
+        ],
     },
     [r.offset_add]: {
         paragraphs: [
@@ -740,26 +745,6 @@ export const registry: { [key: string]: { paragraphs: Paragraph[], parseRules?: 
     //         { description: '5 bits from the start of a stream', dbuf: root(type_map(r.stream_position, r.parse_varint), map(5)), unpack: { [getReg(r.stream_position)]: 5 } },
     //     ]
     // },
-    // [r.registry_symbol_not_accepted]: {
-    //     paragraphs: [
-    //         ['Symbol for validation errors caused by a specific registry symbol during parsing.'],
-    //         ['Specifications may limit accepted registry symbols to reduce parser complexity and resource usage.'],
-    //         ['A related stream position includes the bits of the offending symbol.']
-    //     ],
-    //     examples: [
-    //         { description: 'Error stating a symbol is not accepted at bit position 12', dbuf: root(type_map(r.error, r.stream_position, r.registry_symbol_not_accepted, r.parse_varint), map(12)), unpack: { [getReg(r.error)]: getReg(r.registry_symbol_not_accepted), [getReg(r.stream_position)]: 12 } },
-    //     ]
-    // },
-    // [r.registry_symbol_not_accepted_as_array_type]: {
-    //     paragraphs: [
-    //         ['Symbol for validation errors caused by a specific registry symbol during parsing of array types.'],
-    //         ['Specifications may limit accepted registry symbols to reduce parser complexity and resource usage.'],
-    //         ['A related stream position includes the bits of the offending symbol.']
-    //     ],
-    //     examples: [
-    //         { description: 'Error stating a symbol is not accepted at bit position 12', dbuf: root(type_map(r.error, r.stream_position, r.registry_symbol_not_accepted_as_array_type, r.parse_varint), map(12)), unpack: { [getReg(r.error)]: getReg(r.registry_symbol_not_accepted_as_array_type), [getReg(r.stream_position)]: 12 } },
-    //     ]
-    // },
     [r.prefix]: {
         paragraphs: [
             ['Used for compression of strings that begin with the same substring.'],
@@ -791,63 +776,31 @@ export const registry: { [key: string]: { paragraphs: Paragraph[], parseRules?: 
             { description: 'Array of strings with partial shared prefixes', dbuf: root(type_array(type_map(r.prefix_delta, r.value, r.parse_varint, r.parse_text)), array(map(0, string('abcd')), map(1, string('_fun')), map(5, string('-ijk')))), unpack: ['abcd', 'abc_fun', 'ab-ijk'] },
         ]
     },
-    // [r.preamble_max_size_exceeded]: {
-    //     paragraphs: [
-    //         ['Symbol for a size validation error of a server request preamble.'],
-    //     ],
-    //     examples: [
-    //         { description: 'Error stating the request preamble is too large', dbuf: root(type_map(r.error, r.preamble_max_size_exceeded), map()), unpack: { [getReg(r.error)]: getReg(r.preamble_max_size_exceeded) } },
-    //     ]
-    // },
-    // [r.body_max_size_exceeded]: {
-    //     paragraphs: [
-    //         ['Symbol for a size validation error of a server request body.'],
-    //     ],
-    //     examples: [
-    //         { description: 'Error stating the request body is too large', dbuf: root(type_map(r.error, r.body_max_size_exceeded), map()), unpack: { [getReg(r.error)]: getReg(r.body_max_size_exceeded) } },
-    //     ]
-    // },
-    // [r.data_type_not_accepted]: {
-    //     paragraphs: [
-    //         ['Symbol for data type validation errors.'],
-    //     ],
-    //     examples: [
-    //         { description: 'Error stating the data type of the operation field is not accepted', dbuf: root(type_map(r.error, r.data_path, r.data_type_not_accepted, type_array(r.parse_type_data)), map(array(parse_type_data(val(r.operation, true))))), unpack: { [getReg(r.error)]: getReg(r.data_type_not_accepted), [getReg(r.data_path)]: [getReg(r.operation)] } },
-    //     ]
-    // },
-    // [r.data_value_not_accepted]: {
-    //     paragraphs: [
-    //         ['Symbol for data value validation errors.'],
-    //     ],
-    //     examples: [
-    //         { description: 'Error stating the data value of the operation field is not accepted', dbuf: root(type_map(r.error, r.data_path, r.data_value_not_accepted, type_array(r.parse_type_data)), map(array(parse_type_data(val(r.operation, true))))), unpack: { [getReg(r.error)]: getReg(r.data_value_not_accepted), [getReg(r.data_path)]: [getReg(r.operation)] } },
-    //     ]
-    // },
-    // [r.data_path]: {
-    //     paragraphs: [
-    //         ['Symbol for describing a position in a hierarchy of nested maps and arrays as an array of map keys and array indexes.'],
-    //         ['An empty array signifies the root object.'],
-    //     ],
-    //     examples: [
-    //         { description: 'Error stating the data type of the operation field is not accepted', dbuf: root(type_map(r.error, r.data_path, r.data_type_not_accepted, type_array(r.parse_type_data)), map(array(parse_type_data(val(r.operation, true))))), unpack: { [getReg(r.error)]: getReg(r.data_type_not_accepted), [getReg(r.data_path)]: [getReg(r.operation)] } },
-    //     ]
-    // },
-    // [r.required_field_missing]: {
-    //     paragraphs: [
-    //         ['Symbol for missing field validation errors'],
-    //     ],
-    //     examples: [
-    //         { description: 'Error stating the operation field is missing', dbuf: root(type_map(r.error, r.data_path, r.required_field_missing, type_array(r.parse_type_data)), map(array(parse_type_data(val(r.operation, true))))), unpack: { [getReg(r.error)]: getReg(r.required_field_missing), [getReg(r.data_path)]: [getReg(r.operation)] } },
-    //     ]
-    // },
-    // [r.field_not_accepted]: {
-    //     paragraphs: [
-    //         ['Symbol for validation errors caused by extraneous fields.'],
-    //     ],
-    //     examples: [
-    //         { description: 'Error stating the operation field is not accepted', dbuf: root(type_map(r.error, r.data_path, r.field_not_accepted, type_array(r.parse_type_data)), map(array(parse_type_data(val(r.operation, true))))), unpack: { [getReg(r.error)]: getReg(r.field_not_accepted), [getReg(r.data_path)]: [getReg(r.operation)] } },
-    //     ]
-    // },
+    [r.data_type_not_accepted]: {
+        paragraphs: [
+            ['Symbol for data type validation errors.'],
+        ],
+    },
+    [r.data_value_not_accepted]: {
+        paragraphs: [
+            ['Symbol for data value validation errors.'],
+        ],
+    },
+    [r.data_path]: {
+        paragraphs: [
+            ['Symbol for describing a position segment in a hierarchy of nested maps and arrays'],
+        ],
+    },
+    [r.data_key_missing]: {
+        paragraphs: [
+            ['Symbol for missing field validation errors'],
+        ],
+    },
+    [r.data_key_not_accepted]: {
+        paragraphs: [
+            ['Symbol for validation errors caused by extraneous fields.'],
+        ],
+    },
     // [r.field_order_not_accepted]: {
     //     paragraphs: [
     //         ['Symbol for validation errors caused by fields appearing out of order according to some specification.'],
@@ -856,23 +809,81 @@ export const registry: { [key: string]: { paragraphs: Paragraph[], parseRules?: 
     //         { description: 'Error stating the position of the operation field is not accepted', dbuf: root(type_map(r.error, r.data_path, r.field_order_not_accepted, type_array(r.parse_type_data)), map(array(parse_type_data(val(r.operation, true))))), unpack: { [getReg(r.error)]: getReg(r.field_order_not_accepted), [getReg(r.data_path)]: [getReg(r.operation)] } },
     //     ]
     // },
-    // [r.reference]: {
-    //     paragraphs: [
-    //         ['Used for describing a resolvable reference.'],
-    //         ['Text values are considered IRI references.']
-    //     ],
-    //     examples: [
-    //         { description: 'Reference to https://example.com/hey', dbuf: root(type_map(r.reference, r.parse_text), map(string('https://example.com/hey'))), unpack: { [getReg(r.reference)]: 'https://example.com/hey' } },
-    //     ]
-    // },
-    // [r.operation]: {
-    //     paragraphs: [
-    //         ['Used for specifying an operation in a request'],
-    //     ],
-    //     examples: [
-    //         { description: 'Operation 3 with parameter 5', dbuf: root(type_map(r.operation, r.value, r.parse_varint, r.parse_varint), map(3, 5)), unpack: { [getReg(r.operation)]: 3, [getReg(r.value)]: 5 } },
-    //     ]
-    // },
+    [r.reference]: {
+        paragraphs: [
+            ['Used for describing a resolvable reference.'],
+        ],
+    },
+    [r.operation]: {
+        paragraphs: [
+            ['Used for specifying an operation in a request'],
+        ],
+    },
+    [r.data_error]: {
+        paragraphs: [
+            ['Symbol for validation errors in input data.'],
+        ],
+    },
+    [r.end_marker]: {
+        paragraphs: [
+            ['Symbol to mark the end of an indefinite length stream.'],
+        ],
+    },
+    [r.identity]: {
+        paragraphs: [
+            ['Symbol for routing a request to an identity setup procedure.'],
+        ],
+    },
+    [r.identity_key]: {
+        paragraphs: [
+            ['Symbol for describing data as an authentication key for an identity.'],
+        ],
+    },
+    [r.identity_recovery]: {
+        paragraphs: [
+            ['Symbol for describing data as a recovery mechanism for an identity.'],
+        ],
+    },
+    [r.deliver_message]: {
+        paragraphs: [
+            ['Symbol for routing a request to a message delivery procedure.'],
+        ],
+    },
+    [r.ed25519]: {
+        paragraphs: [
+            ['Symbol for the Ed25519 signature algorithm.'],
+        ],
+    },
+    [r.body_length]: {
+        paragraphs: [
+            ['Symbol for describing the length of a request body.'],
+        ],
+    },
+    [r.stream_group]: {
+        paragraphs: [
+            ['Symbol for describing data as a stream group identifier in a multi-stream protocol.'],
+        ],
+    },
+    [r.header]: {
+        paragraphs: [
+            ['Symbol for describing data as a request header.'],
+        ],
+    },
+    [r.body]: {
+        paragraphs: [
+            ['Symbol for describing data as a request body.'],
+        ],
+    },
+    [r.footer]: {
+        paragraphs: [
+            ['Symbol for describing data as a request footer.'],
+        ],
+    },
+    [r.not_authenticated]: {
+        paragraphs: [
+            ['Symbol for validation errors caused by missing authentication.'],
+        ],
+    },
 }
 export const packedDoc: Doc = {
     sections: [
@@ -892,8 +903,8 @@ export const packedDoc: Doc = {
         {
             title: 'Optional Prefixes', heading: 2, id: [2], paragraphs: [
                 ['The first 4 bytes of a stream may contain the magic number 0x' + magicNumberPrefix.toString(16).toUpperCase() + '. This value is unique among publicly known magic numbers and will not collide with any valid unicode encoding. ',
-                    'It is also the same as two consecutive instances of the most significant bit encoding of ', { rid: r.magic_number }, ' so it will not collide with any valid DBUF data. Any other occurrences of ',
-                { rid: r.magic_number }, ' are treated as a normal symbol without special semantics.'],
+                    'It is also the same as two consecutive instances of the most significant bit encoding of ', { rid: r.magic_number_packed }, ' so it will not collide with any valid DBUF data. Any other occurrences of ',
+                { rid: r.magic_number_packed }, ' are treated as a normal symbol without special semantics.'],
                 ['The first byte (or fifth byte if the 4 byte magic number was present) may contain the value 0x' + littleEndianPrefix.toString(16).toUpperCase() + '. The presence of this value indicates a bit order of least significant bit first.',
                 ' The absence of this value indicates a bit order of most significant bit first. 0x' + littleEndianPrefix.toString(16).toUpperCase() + ' is the most significant bit encoding of ', { rid: r.little_endian_marker },
                     ' so it will not collide with any valid DBUF data. Any other occurrences of ', { rid: r.little_endian_marker }, ' are treated as a normal symbol without special semantics.']
@@ -952,6 +963,55 @@ export const basicDoc: Doc = {
                 { item: ['31 - take 4 additional bytes as a 32-bit unsigned integer'] },
                 ],
                 ['Additional bytes are in big endian byte order']
+            ]
+        },
+    ]
+}
+export const protocolDoc: Doc = {
+    sections: [
+        {
+            title: 'DBUF Protocol', heading: 1, id: [], paragraphs: [
+                ['An application layer protocol defining structures for requests, responses, stream management and authentication.'],
+            ]
+        },
+        {
+            title: 'Transport Layer', heading: 2, id: [], paragraphs: [
+                ['For internet wide connections, the standard transport layer is QUIC on port 443. The TLS ALPN value for current research and prototyping is "dbuf/demo". Another ALPN value will be published when core semantics are settled.']
+            ]
+        },
+        {
+            title: 'Stream Format', heading: 2, id: [], paragraphs: [
+                ['A protocol stream is a series of DBUF items encoded with the basic encoding.'],
+                ['A stream optionally begins with a stream group identifier. If the first item\'s basic type is unsigned integer or unsigned integer bytes, it is interpreted as the stream group identifier.' +
+                    'If the stream group identifier is omitted it is implied to be zero. Stream group semantics will be defined in a future specification.'
+                ],
+                [''],
+            ]
+        },
+    ]
+}
+export const protocolDesign: Doc = {
+    sections: [
+        {
+            title: 'DBUF Protocol Design Decisions', heading: 1, id: [], paragraphs: [
+                
+            ]
+        },
+        {
+            title: 'Transport Layer', heading: 2, id: [], paragraphs: [
+                ['QUIC is a modern transport layer with many advanced features. DBUF aims to take full advantage of QUIC\'s capabilities while remaining adaptable to other transports.']
+                ['Alternative transport layers may be suitable if they share the following general characteristics of QUIC.'],
+                [{ item: ['A connection can encompass multiple streams.'] },
+                { item: ['Streams can be bidirectional or unidirectional.'] },
+                { item: ['Unreliable datagrams are supported.'] },
+                { item: ['An error code can be transmitted for a stream that fails to send its complete payload.'] },
+                { item: ['Cryptographic keying material can be synthesized from the underlying secure connection.'] },
+                ],
+            ]
+        },
+        {
+            title: 'Length and Value', heading: 2, id: [], paragraphs: [
+                
             ]
         },
     ]
