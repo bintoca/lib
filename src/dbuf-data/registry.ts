@@ -44,13 +44,14 @@ export const enum r {
     false,
     true,
     value,
-    integer_signed,
-    IEEE_754_binary16,
-    IEEE_754_binary32,
-    IEEE_754_binary64,
     exponent_base10,
     epoch_seconds_continuous,
     unit,
+    
+    integer_signed = 50,
+    IEEE_754_binary16,
+    IEEE_754_binary32,
+    IEEE_754_binary64,
 
     exponent_base2 = 90,
     error,

@@ -941,20 +941,20 @@ export const basicDoc: Doc = {
         {
             title: 'Type Prefix', heading: 2, id: [], paragraphs: [
                 ['The most significant 3 bits of a byte define the type of DBUF item. The 8 possible values are:'],
-                [{ item: ['0 - unsigned integer'] },
-                { item: ['1 - unsigned integer bytes'] },
+                [{ item: ['0 - integer'] },
+                { item: ['1 - float'] },
                 { item: ['2 - utf8'] },
                 { item: ['3 - bytes'] },
                 { item: ['4 - array - contains nested DBUF items'] },
                 { item: ['5 - map - contains nested DBUF items interpreted as key-value pairs'] },
                 { item: ['6 - registry symbol - IDs from the [Registry](./registry/README.md)'] },
-                { item: ['7 - registry symbol bytes'] },
+                { item: ['7 - unsigned integer - max 32-bit'] },
                 ]
             ]
         },
         {
             title: 'Length and Value', heading: 2, id: [], paragraphs: [
-                ['The remaining 5 bits of a byte form a variable length integer (varint). For type 0 and 6 the varint is the value. For all other types the varint is the length of the value in bytes.'],
+                ['The remaining 5 bits of a byte form a variable length integer (varint). For type 6 and 7 the varint is the value. For all other types the varint is the length of the value in bytes.'],
                 ['Varint encoding rules of the 5 bits (32 possible values):'],
                 [{ item: ['0-23 - the value itself, no additional bytes'] },
                 { item: ['24-27 - combine the 2 least significant bits with one additional byte to form a 10-bit unsigned integer'] },
@@ -963,6 +963,28 @@ export const basicDoc: Doc = {
                 { item: ['31 - take 4 additional bytes as a 32-bit unsigned integer'] },
                 ],
                 ['Additional bytes are in big endian byte order']
+            ]
+        },
+        {
+            title: 'Integer Type - 0', heading: 2, id: [], paragraphs: [
+                ['Integers are encoded as a two\'s complement byte array with big endian byte order.'],
+                ['A zero length byte array is interpreted as -1.']
+            ]
+        },
+        {
+            title: 'Float Type - 1', heading: 2, id: [], paragraphs: [
+                ['Float encoding is based on the length of the value. All variations are big endian byte order.'],
+                [{ item: ['A zero length value is interpreted as NaN.'] },
+                { item: ['A 1 byte value is interpreted as IEE754_binary16 with an implied second byte of 0.'] },
+                { item: ['A 2 byte value is interpreted as IEE754_binary16.'] },
+                { item: ['A 3 byte value is interpreted as IEE754_binary32 with an implied fourth byte of 0.'] },
+                { item: ['A 4 byte value is interpreted as IEE754_binary32.'] },
+                { item: ['A 5 byte value is interpreted as IEE754_binary64 with implied sixth, seventh and eighth bytes of 0.'] },
+                { item: ['A 6 byte value is interpreted as IEE754_binary64 with implied seventh and eighth bytes of 0.'] },
+                { item: ['A 7 byte value is interpreted as IEE754_binary64 with an implied eighth byte of 0.'] },
+                { item: ['A 8 byte value is interpreted as IEE754_binary64.'] },
+                { item: ['All other lengths are reserved for future specification.'] },
+                ]
             ]
         },
     ]
@@ -985,7 +1007,6 @@ export const protocolDoc: Doc = {
                 ['A stream optionally begins with a stream group identifier. If the first item\'s basic type is unsigned integer or unsigned integer bytes, it is interpreted as the stream group identifier.' +
                     'If the stream group identifier is omitted it is implied to be zero. Stream group semantics will be defined in a future specification.'
                 ],
-                [''],
             ]
         },
     ]
@@ -994,24 +1015,19 @@ export const protocolDesign: Doc = {
     sections: [
         {
             title: 'DBUF Protocol Design Decisions', heading: 1, id: [], paragraphs: [
-                
+
             ]
         },
         {
             title: 'Transport Layer', heading: 2, id: [], paragraphs: [
-                ['QUIC is a modern transport layer with many advanced features. DBUF aims to take full advantage of QUIC\'s capabilities while remaining adaptable to other transports.']
+                ['QUIC is a modern transport layer with many advanced features. DBUF aims to take full advantage of QUIC\'s capabilities while remaining adaptable to other transports.'],
                 ['Alternative transport layers may be suitable if they share the following general characteristics of QUIC.'],
                 [{ item: ['A connection can encompass multiple streams.'] },
                 { item: ['Streams can be bidirectional or unidirectional.'] },
                 { item: ['Unreliable datagrams are supported.'] },
                 { item: ['An error code can be transmitted for a stream that fails to send its complete payload.'] },
                 { item: ['Cryptographic keying material can be synthesized from the underlying secure connection.'] },
-                ],
-            ]
-        },
-        {
-            title: 'Length and Value', heading: 2, id: [], paragraphs: [
-                
+                ]
             ]
         },
     ]
