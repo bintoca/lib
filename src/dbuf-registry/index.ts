@@ -38,6 +38,9 @@ export const r = {
     unit: 33,
     reference: 34,
     operation: 35,
+    authority_marker: 36,
+    host: 37,
+    header_store: 38,
 
     integer_signed: 50,
     IEEE_754_binary16: 51,
@@ -90,6 +93,8 @@ export const r = {
     body: 143 + 26,
     footer: 144 + 26,
     not_authenticated: 145 + 26,
+    stream_id: 146 + 26,
+    port: 147 + 26,
 
     magic_number_packed: 8159,
     magic_number_basic: 14606046 + 26

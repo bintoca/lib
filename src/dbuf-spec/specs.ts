@@ -884,6 +884,31 @@ export const registry: { [key: string]: { paragraphs: Paragraph[], parseRules?: 
             ['Symbol for validation errors caused by missing authentication.'],
         ],
     },
+    [r.stream_id]: {
+        paragraphs: [
+            ['Symbol for an identifier of a transport stream.'],
+        ],
+    },
+    [r.authority_marker]: {
+        paragraphs: [
+            ['Symbol for separating the authority and sub path portions of a resolvable reference.'],
+        ],
+    },
+    [r.host]: {
+        paragraphs: [
+            ['Symbol for expressing that the following item in a resolvable reference is a host.'],
+        ],
+    },
+    [r.header_store]: {
+        paragraphs: [
+            ['Symbol for expressing stream payload header storage operations.'],
+        ],
+    },
+    [r.port]: {
+        paragraphs: [
+            ['Symbol for a network port as used in TCP and UDP.'],
+        ],
+    },
 }
 export const packedDoc: Doc = {
     sections: [
@@ -943,7 +968,7 @@ export const basicDoc: Doc = {
                 ['The most significant 3 bits of a byte define the type of DBUF item. The 8 possible values are:'],
                 [{ item: ['0 - integer'] },
                 { item: ['1 - float'] },
-                { item: ['2 - utf8'] },
+                { item: ['2 - text - utf8 encoded'] },
                 { item: ['3 - bytes'] },
                 { item: ['4 - array - contains nested DBUF items'] },
                 { item: ['5 - map - contains nested DBUF items interpreted as key-value pairs'] },
@@ -1004,9 +1029,62 @@ export const protocolDoc: Doc = {
         {
             title: 'Stream Format', heading: 2, id: [], paragraphs: [
                 ['A protocol stream is a series of DBUF items encoded with the basic encoding.'],
-                ['A stream optionally begins with a stream group identifier. If the first item\'s basic type is unsigned integer or unsigned integer bytes, it is interpreted as the stream group identifier.' +
+                ['A stream optionally begins with a stream group identifier. If the first item\'s basic type is unsigned integer, it is interpreted as the stream group identifier.' +
                     'If the stream group identifier is omitted it is implied to be zero. Stream group semantics will be defined in a future specification.'
                 ],
+                ['Next, a stream consists of a series of payloads. A payload consists of headers, an optional body and optional footers.'],
+                ['Headers are encoded as a DBUF map. The body may be embedded in the headers using ', { rid: r.value }, ' as the map key. ',
+                    'If ', { rid: r.body_length }, ' is present in the headers, it expresses the byte length of the body or ', { rid: r.describe_no_value }, ' indicates the body will end with a ', { rid: r.end_marker }, ' item. '
+                    + 'The body may consist of multiple DBUF items.'],
+                ['If ', { rid: r.body_length }, ' is present in the headers, the footers are represented by one DBUF item after the body.']
+            ]
+        },
+        {
+            title: 'Header Store', heading: 2, id: [], paragraphs: [
+                ['The receiving side of a connection can store data to be reused in headers across streams and payloads.'],
+                [{ rid: r.header_store }, ' has the following semantics when present in headers:'],
+                [{
+                    item: ['If value is an unsigned integer, specifies the id of store data to be used in this payload. If id has not been previously set, return an error. '
+                        + 'If id exists, merge stored headers with payload headers. If ', { rid: r.reference }, ' exists in both stored and payload headers, append payload reference to stored reference. '
+                    + 'If any other headers exist in both stored and payload headers, return an error.'
+                    ]
+                },
+                {
+                    item: ['If value is an array, the first item is an unsigned integer specifying the id of the store data. The second item is a map of headers to be stored. ' +
+                        'If the array contains more than two items, the third item is an ', { rid: r.identity }, ' id and the fourth item is an ', { rid: r.identity_key }, ' id. ' +
+                        'Any additional items are parameters for authentication according to the configured algorithm of the ', { rid: r.identity_key }]
+                }]
+            ]
+        },
+        {
+            title: 'Addressing', heading: 2, id: [], paragraphs: [
+                ['A globally resolvable ', { rid: r.reference }, ' consists of an array of DBUF items. Registry symbols provide standardized elements within the array.'],
+                ['When the first item is ', { rid: r.host }, ' and the second item is type text, the second item is interpreted as a DNS name. ' +
+                    'If ', { rid: r.port }, ' is the third item, an unsigned integer in the fourth item is interpreted as the port number.'],
+                [{ rid: r.authority_marker }, ' separates the authority and subpath portions of a reference. Any items between the host/port and ', { rid: r.authority_marker }, ' designate a sub authority.'],
+                ['A ', { rid: r.reference }, ' is included in the headers of a payload for routing purposes.']
+            ]
+        },
+        {
+            title: 'Errors', heading: 2, id: [], paragraphs: [
+                ['If an error occurs in a request before sending response headers, the error is encoded in an ', { rid: r.error }, ' header and the response will not have a body.'],
+                ['If an error occurs after a response body has begun streaming, the stream is cancelled and the numeric value of ', { rid: r.error }, ' is signalled through the transport layer. ' +
+                    'Then the full error is sent in the ', { rid: r.error }, ' header on a separate stream. The headers of the separate stream also contain ',
+                    { rid: r.reference }, ' with a value of ', { rid: r.error }, ' and ', { rid: r.stream_id }, ' with the id of the original stream.'
+                ]
+            ]
+        },
+        {
+            title: 'Identity', heading: 2, id: [], paragraphs: [
+                ['A new identity is created by sending a request to the ', { rid: r.identity }, ' subpath of an authority.'],
+                ['The body of the request is a map with ', { rid: r.identity_key }, ' containing an inner map where the keys are user supplied ids for authentication keys to be configured.'],
+                ['The value of each inner key is an array with the first item specifying the type of authentication key and the remaining items are parameters for that key type.'],
+                ['The response contains the identity id generated by the server.']
+            ]
+        },
+        {
+            title: 'Authentication', heading: 2, id: [], paragraphs: [
+                
             ]
         },
     ]
