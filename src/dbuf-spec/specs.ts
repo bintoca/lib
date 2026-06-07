@@ -1101,7 +1101,8 @@ export const protocolDoc: Doc = {
                 { item: ['The exporter context defined above.'] },
                 ],
                 ['The header store parameters are the signature and the 33rd-48th bytes of the exporter output.'],
-                ['To validate the authentication on the receiving end, reconstruct the exporter context, exporter output and signing message, then validate the signature and validate the 33rd-48th bytes of the exporter output match the header store parameter.']
+                ['To validate the authentication on the receiving end, reconstruct the exporter context, exporter output and signing message, then validate the signature and validate the 33rd-48th bytes of the exporter output match the header store parameter.'],
+                ['The protected headers must contain a ', { rid: r.reference }, ' with an authority for the corresponding server.']
             ]
         },
     ]
