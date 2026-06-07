@@ -1029,7 +1029,7 @@ export const protocolDoc: Doc = {
         {
             title: 'Stream Format', heading: 2, id: [], paragraphs: [
                 ['A protocol stream is a series of DBUF items encoded with the basic encoding.'],
-                ['A stream optionally begins with a stream group identifier. If the first item\'s basic type is unsigned integer, it is interpreted as the stream group identifier.' +
+                ['A stream optionally begins with a stream group identifier. If the first item\'s basic type is unsigned integer, it is interpreted as the stream group identifier. ' +
                     'If the stream group identifier is omitted it is implied to be zero. Stream group semantics will be defined in a future specification.'
                 ],
                 ['Next, a stream consists of a series of payloads. A payload consists of headers, an optional body and optional footers.'],
@@ -1052,7 +1052,7 @@ export const protocolDoc: Doc = {
                 {
                     item: ['If value is an array, the first item is an unsigned integer specifying the id of the store data. The second item is a map of headers to be stored. ' +
                         'If the array contains more than two items, the third item is an ', { rid: r.identity }, ' id and the fourth item is an ', { rid: r.identity_key }, ' id. ' +
-                        'Any additional items are parameters for authentication according to the configured algorithm of the ', { rid: r.identity_key }]
+                    'Any additional items are parameters for authentication according to the configured algorithm of the ', { rid: r.identity_key }]
                 }]
             ]
         },
@@ -1084,7 +1084,24 @@ export const protocolDoc: Doc = {
         },
         {
             title: 'Authentication', heading: 2, id: [], paragraphs: [
-                
+                ['An identity authenticates by providing a digital signature and context data as part of the header store parameters of a request. The authenticated identity can be reused on subsequent requests merely by specifying the header store id.'],
+                ['The message to be signed is the concatenation of:'],
+                [{ item: ['The string "DBUF demo transport authentication" in UTF8 encoding.'] },
+                { item: ['Exporter context'] },
+                { item: ['The first 32 bytes of exporter output.'] },
+                ],
+                ['Exporter context is the concatenation of the DBUF item encodings of:'],
+                [{ item: ['The header store headers.'] },
+                { item: ['The ', { rid: r.identity }, ' id'] },
+                { item: ['The ', { rid: r.identity_key }, ' id'] },
+                { item: ['The array of parameters configured on creation of the ', { rid: r.identity_key }] },
+                ],
+                ['Exporter output is the result of the export keying material function of the transport layer. For TLS refer to Exporters in RFC 8446. The parameter of the export function are:'],
+                [{ item: ['"EXPORTER: DBUF demo transport authentication"'] },
+                { item: ['The exporter context defined above.'] },
+                ],
+                ['The header store parameters are the signature and the 33rd-48th bytes of the exporter output.'],
+                ['To validate the authentication on the receiving end, reconstruct the exporter context, exporter output and signing message, then validate the signature and validate the 33rd-48th bytes of the exporter output match the header store parameter.']
             ]
         },
     ]
